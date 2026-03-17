@@ -46,3 +46,16 @@ docker compose up --build
 ## SwiftUI client roadmap
 
 The API contracts are stable under `/api/v1` and intentionally JSON-oriented for a future SwiftUI iOS client.
+
+
+## What is the `alembic/` folder?
+
+The `alembic/` folder contains database migration tooling and revision files.
+
+- `alembic/env.py` wires Alembic to SQLAlchemy metadata.
+- `alembic/versions/` stores versioned migration scripts (for example `0001_initial.py`).
+- You run these migrations with `alembic upgrade head` to create/update DB schema predictably across environments.
+
+## Python version
+
+This project is configured for Python 3.14 in Docker and CI.
