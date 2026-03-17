@@ -39,3 +39,9 @@ def test_websocket_hub_connect_broadcast_disconnect() -> None:
     hub.disconnect(list_id, ws)
     # cover no-op branch
     hub.disconnect(list_id, ws)
+
+
+def test_security_helpers_handle_long_passwords() -> None:
+    long_password = "x" * 100
+    password_hash = hash_password(long_password)
+    assert verify_password(long_password, password_hash)
