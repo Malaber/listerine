@@ -23,7 +23,9 @@ async def ws_list(websocket: WebSocket, list_id: UUID) -> None:
         await get_list_for_user(db, list_id, user.id)
         await hub.connect(list_id, websocket)
         result = await db.execute(select(GroceryItem).where(GroceryItem.list_id == list_id))
-        snapshot = [GroceryItemOut.model_validate(row).model_dump(mode="json") for row in result.scalars()]
+        snapshot = [
+            GroceryItemOut.model_validate(row).model_dump(mode="json") for row in result.scalars()
+        ]
         await websocket.send_json(
             {
                 "type": "list_snapshot",

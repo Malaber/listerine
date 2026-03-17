@@ -48,6 +48,7 @@ source = ["app"]
 
 [tool.black]
 line-length = 100
+target-version = ["py312"]
 
 [tool.flake8]
 max-line-length = 100

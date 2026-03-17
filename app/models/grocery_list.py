@@ -12,7 +12,9 @@ class GroceryList(Base):
     __tablename__ = "grocery_lists"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    household_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("households.id"), nullable=False)
+    household_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("households.id"), nullable=False
+    )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
     created_by: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"), nullable=False)

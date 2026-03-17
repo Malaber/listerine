@@ -19,7 +19,9 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
-app.add_middleware(SessionMiddleware, secret_key=settings.secret_key, https_only=settings.secure_cookies)
+app.add_middleware(
+    SessionMiddleware, secret_key=settings.secret_key, https_only=settings.secure_cookies
+)
 app.include_router(api_router, prefix="/api/v1")
 app.include_router(web_router)
 app.mount("/static", StaticFiles(directory="app/web/static"), name="static")

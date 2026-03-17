@@ -24,7 +24,9 @@ class HouseholdMember(Base):
     __tablename__ = "household_members"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    household_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("households.id"), nullable=False)
+    household_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("households.id"), nullable=False
+    )
     user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"), nullable=False)
     role: Mapped[str] = mapped_column(String(20), default="member")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

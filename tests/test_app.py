@@ -45,11 +45,11 @@ def test_full_flow() -> None:
     item_id = item["id"]
 
     assert client.post(f"/api/v1/items/{item_id}/check", headers=headers).json()["checked"] is True
-    assert client.post(f"/api/v1/items/{item_id}/uncheck", headers=headers).json()["checked"] is False
+    assert (
+        client.post(f"/api/v1/items/{item_id}/uncheck", headers=headers).json()["checked"] is False
+    )
 
-    updated = client.patch(
-        f"/api/v1/items/{item_id}", json={"note": "2%"}, headers=headers
-    ).json()
+    updated = client.patch(f"/api/v1/items/{item_id}", json={"note": "2%"}, headers=headers).json()
     assert updated["note"] == "2%"
 
     with client.websocket_connect(f"/api/v1/ws/lists/{list_id}?token={token}") as ws:
