@@ -12,7 +12,9 @@ def _auth_headers(client, email: str) -> dict[str, str]:
     assert register.status_code == 200
     login = client.post("/api/v1/auth/login", json={"email": email, "password": password})
     assert login.status_code == 200
-    return {"Authorization": f"Bearer {login.json()['access_token']}"}
+    token = login.json()["access_token"]
+    client.cookies.clear()
+    return {"Authorization": f"Bearer {token}"}
 
 
 def test_full_flow(client) -> None:
