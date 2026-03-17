@@ -1,13 +1,12 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_list_for_user
 from app.core.database import get_db
-from app.models import GroceryItem, User
+from app.models import GroceryItem
 from app.schemas.domain import GroceryItemOut
 from app.services.websocket_hub import hub
 
