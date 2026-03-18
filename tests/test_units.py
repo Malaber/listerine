@@ -1,8 +1,11 @@
 import asyncio
 from uuid import uuid4
 
+from starlette.requests import Request
+
 from app.core.security import create_access_token, hash_password, verify_password
 from app.services.websocket_hub import WebSocketHub
+from app.web.routes import _has_session_access_token
 
 
 class DummyWebSocket:
@@ -45,3 +48,9 @@ def test_security_helpers_handle_long_passwords() -> None:
     long_password = "x" * 100
     password_hash = hash_password(long_password)
     assert verify_password(long_password, password_hash)
+
+
+def test_has_session_access_token_rejects_invalid_jwt() -> None:
+    request = Request({"type": "http", "headers": [], "session": {"access_token": "bad-token"}})
+
+    assert _has_session_access_token(request) is False
