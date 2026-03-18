@@ -737,16 +737,21 @@ function setListSettingsOpen(root, state, isOpen) {
 
 function renderItemSuggestions(root, state) {
   const suggestionsNode = root.querySelector("[data-item-suggestions]");
+  const suggestionsSlot = root.querySelector("[data-item-suggestions-slot]");
   const nameInput = root.querySelector("[data-item-name-input]");
 
-  if (!suggestionsNode || !(nameInput instanceof HTMLInputElement)) {
+  if (
+    !(suggestionsNode instanceof HTMLElement) ||
+    !(suggestionsSlot instanceof HTMLElement) ||
+    !(nameInput instanceof HTMLInputElement)
+  ) {
     return;
   }
 
   const query = normalizeItemName(nameInput.value);
   suggestionsNode.innerHTML = "";
   if (!query) {
-    suggestionsNode.hidden = true;
+    suggestionsSlot.classList.remove("is-active");
     return;
   }
 
@@ -773,7 +778,7 @@ function renderItemSuggestions(root, state) {
     .slice(0, 4);
 
   if (matches.length === 0) {
-    suggestionsNode.hidden = true;
+    suggestionsSlot.classList.remove("is-active");
     return;
   }
 
@@ -817,7 +822,7 @@ function renderItemSuggestions(root, state) {
     suggestionsNode.appendChild(wrapper);
   });
 
-  suggestionsNode.hidden = false;
+  suggestionsSlot.classList.add("is-active");
 }
 
 function highlightItem(root, state, itemId) {

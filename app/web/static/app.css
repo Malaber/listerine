@@ -528,8 +528,9 @@ main {
   position: fixed;
   inset: 0;
   display: grid;
-  place-items: center;
-  padding: 1.5rem;
+  justify-items: center;
+  align-items: start;
+  padding: clamp(1.5rem, 4vw, 2.5rem) 1.5rem 1.5rem;
   z-index: 40;
 }
 
@@ -553,6 +554,7 @@ main {
   margin: 0;
   z-index: 1;
   overflow: auto;
+  transform-origin: top center;
 }
 
 .item-edit-panel {
@@ -562,6 +564,7 @@ main {
   margin: 0;
   z-index: 1;
   overflow: auto;
+  transform-origin: top center;
 }
 
 .add-item-panel-header {
@@ -579,6 +582,27 @@ main {
   font: inherit;
   font-size: 1.8rem;
   line-height: 1;
+}
+
+.item-suggestion-slot {
+  display: grid;
+  gap: 0.5rem;
+  min-height: 0;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(-0.35rem);
+  transition:
+    max-height 220ms ease,
+    opacity 180ms ease,
+    transform 220ms ease,
+    margin 220ms ease;
+}
+
+.item-suggestion-slot.is-active {
+  max-height: 22rem;
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .item-suggestion-list {
