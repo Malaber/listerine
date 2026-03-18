@@ -146,6 +146,7 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
           build-args: |
             LISTERINE_VERSION=${{ needs.version.outputs.release_version }}
           push: true
