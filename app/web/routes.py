@@ -1,9 +1,23 @@
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from jose import JWTError, jwt
+
+from app.core.config import settings
 
 router = APIRouter(tags=["web"])
 templates = Jinja2Templates(directory="app/web/templates")
+
+
+def _has_session_access_token(request: Request) -> bool:
+    raw_token = request.session.get("access_token")
+    if not raw_token:
+        return False
+    try:
+        payload = jwt.decode(raw_token, settings.secret_key, algorithms=[settings.algorithm])
+    except JWTError:
+        return False
+    return bool(payload.get("sub"))
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -12,10 +26,14 @@ async def login_page(request: Request) -> HTMLResponse:
 
 
 @router.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request) -> HTMLResponse:
+async def dashboard(request: Request) -> HTMLResponse | RedirectResponse:
+    if not _has_session_access_token(request):
+        return RedirectResponse(url="/login", status_code=303)
     return templates.TemplateResponse(request, "dashboard.html")
 
 
 @router.get("/lists/{list_id}", response_class=HTMLResponse)
-async def list_detail(request: Request, list_id: str) -> HTMLResponse:
+async def list_detail(request: Request, list_id: str) -> HTMLResponse | RedirectResponse:
+    if not _has_session_access_token(request):
+        return RedirectResponse(url="/login", status_code=303)
     return templates.TemplateResponse(request, "list_detail.html", {"list_id": list_id})

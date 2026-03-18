@@ -5,10 +5,10 @@ Listerine is a self-hostable grocery-list backend and fallback browser UI built 
 ## Features in this baseline
 
 - `/api/v1` REST API with OpenAPI docs.
-- Auth endpoints: register/login/logout/me.
+- Auth endpoints: passkey-only register/login/logout/me.
 - Household, list, category, and item CRUD.
 - List live updates over WebSocket at `/api/v1/ws/lists/{list_id}`.
-- Server-rendered fallback UI pages (`/login`, `/`, `/lists/{id}`).
+- Server-rendered fallback UI pages (`/login`, `/`, `/lists/{id}`), with dashboard and list pages gated behind login.
 - SQLAlchemy 2 async ORM and Alembic migration scaffold.
 - Docker Compose setup with Postgres.
 - CI with black, flake8, and pytest 100% coverage gate.
