@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Request
+from fastapi import Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from jose import JWTError, jwt
@@ -25,15 +26,15 @@ async def login_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "login.html")
 
 
-@router.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request) -> HTMLResponse | RedirectResponse:
+@router.get("/", response_class=HTMLResponse, response_model=None)
+async def dashboard(request: Request) -> Response:
     if not _has_session_access_token(request):
         return RedirectResponse(url="/login", status_code=303)
     return templates.TemplateResponse(request, "dashboard.html")
 
 
-@router.get("/lists/{list_id}", response_class=HTMLResponse)
-async def list_detail(request: Request, list_id: str) -> HTMLResponse | RedirectResponse:
+@router.get("/lists/{list_id}", response_class=HTMLResponse, response_model=None)
+async def list_detail(request: Request, list_id: str) -> Response:
     if not _has_session_access_token(request):
         return RedirectResponse(url="/login", status_code=303)
     return templates.TemplateResponse(request, "list_detail.html", {"list_id": list_id})
