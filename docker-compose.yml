@@ -7,6 +7,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:-sqlite+aiosqlite:////data/listerine.db}
       SECURE_COOKIES: ${SECURE_COOKIES:-true}
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      UVICORN_FORWARDED_ALLOW_IPS: ${UVICORN_FORWARDED_ALLOW_IPS:-127.0.0.1}
     ports:
       - "8000:8000"
     volumes:
