@@ -572,7 +572,10 @@ def test_web_pages_render_for_logged_in_user(client, monkeypatch) -> None:
     assert list_detail.status_code == 200
     assert 'action="/logout"' in list_detail.text
     assert "data-item-form-toggle" in list_detail.text
+    assert "data-item-panel-overlay" in list_detail.text
+    assert "data-item-edit-overlay" in list_detail.text
     assert "data-item-suggestions" in list_detail.text
+    assert "danger-button" in list_detail.text
     assert "data-list-sync-status" in list_detail.text
 
     admin_page = client.get("/admin", follow_redirects=False)
@@ -601,6 +604,31 @@ def test_web_pages_show_admin_link_for_admin_user(client, monkeypatch) -> None:
     dashboard = client.get("/")
     assert dashboard.status_code == 200
     assert 'href="/admin"' in dashboard.text
+
+
+def test_admin_page_shows_application_link_for_admin(client, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: _mock_verified_registration(),
+    )
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.settings.bootstrap_admin_email", "admin@example.com"
+    )
+
+    client.post(
+        "/api/v1/auth/register/options",
+        json={"email": "admin@example.com", "display_name": "Admin"},
+    )
+    verify = client.post(
+        "/api/v1/auth/register/verify",
+        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+    )
+    assert verify.status_code == 200
+
+    response = client.get("/admin/")
+    assert response.status_code == 200
+    assert 'href="/"' in response.text
+    assert "Go to application" in response.text
 
 
 def test_admin_page_redirects_for_non_admin(client) -> None:

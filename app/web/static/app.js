@@ -405,21 +405,37 @@ function normalizeItemName(value) {
   return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
+function syncModalState(root) {
+  const addOverlay = root.querySelector("[data-item-panel-overlay]");
+  const editOverlay = root.querySelector("[data-item-edit-overlay]");
+  const hasModalOpen =
+    (addOverlay instanceof HTMLElement && !addOverlay.hidden) ||
+    (editOverlay instanceof HTMLElement && !editOverlay.hidden);
+
+  root.classList.toggle("has-modal-open", hasModalOpen);
+  document.body.classList.toggle("has-list-modal-open", hasModalOpen);
+}
+
 function setItemPanelOpen(root, isOpen) {
   const panel = root.querySelector("[data-item-panel]");
+  const overlay = root.querySelector("[data-item-panel-overlay]");
   const toggle = root.querySelector("[data-item-form-toggle]");
   const nameInput = root.querySelector("[data-item-name-input]");
   const editPanel = root.querySelector("[data-item-edit-panel]");
+  const editOverlay = root.querySelector("[data-item-edit-overlay]");
 
-  if (!panel || !toggle) {
+  if (!panel || !overlay || !toggle) {
     return;
   }
 
+  overlay.hidden = !isOpen;
   panel.hidden = !isOpen;
-  if (isOpen && editPanel instanceof HTMLElement) {
+  if (isOpen && editPanel instanceof HTMLElement && editOverlay instanceof HTMLElement) {
     editPanel.hidden = true;
+    editOverlay.hidden = true;
   }
   toggle.setAttribute("aria-expanded", String(isOpen));
+  syncModalState(root);
 
   if (isOpen && nameInput instanceof HTMLElement) {
     window.setTimeout(() => {
@@ -580,27 +596,39 @@ async function saveCategoryOrder(root, state) {
 
 function setItemEditPanelOpen(root, state, itemId) {
   const panel = root.querySelector("[data-item-edit-panel]");
+  const overlay = root.querySelector("[data-item-edit-overlay]");
   const form = root.querySelector("[data-item-edit-form]");
   const title = root.querySelector("[data-item-edit-title]");
-  if (!(panel instanceof HTMLElement) || !(form instanceof HTMLFormElement) || !title) {
+  if (
+    !(panel instanceof HTMLElement) ||
+    !(overlay instanceof HTMLElement) ||
+    !(form instanceof HTMLFormElement) ||
+    !title
+  ) {
     return;
   }
 
   state.editingItemId = itemId;
   if (!itemId) {
+    overlay.hidden = true;
     panel.hidden = true;
     form.reset();
+    syncModalState(root);
     return;
   }
 
   const item = state.items.get(itemId);
   if (!item) {
+    overlay.hidden = true;
     panel.hidden = true;
+    syncModalState(root);
     return;
   }
 
   setItemPanelOpen(root, false);
+  overlay.hidden = false;
   panel.hidden = false;
+  syncModalState(root);
   title.textContent = item.name;
 
   form.elements.namedItem("name").value = item.name;
@@ -807,56 +835,60 @@ function renderItems(root, state) {
     section.appendChild(heading);
 
     items.forEach((item) => {
-    const article = document.createElement("article");
-    article.className = `item-card${item.checked ? " is-checked" : ""}`;
-    article.dataset.itemCard = item.id;
-    article.dataset.itemEdit = item.id;
+      const article = document.createElement("article");
+      article.className = `item-card${item.checked ? " is-checked" : ""}`;
+      article.dataset.itemCard = item.id;
+      article.dataset.itemEdit = item.id;
 
-    const main = document.createElement("div");
-    main.className = "item-main";
+      const main = document.createElement("div");
+      main.className = "item-main";
 
-    const checkButton = document.createElement("button");
-    checkButton.className = `item-check${item.checked ? " is-checked" : ""}`;
-    checkButton.type = "button";
-    checkButton.dataset.itemToggle = item.id;
-    checkButton.setAttribute("aria-label", item.checked ? `Uncheck ${item.name}` : `Check ${item.name}`);
-    main.appendChild(checkButton);
+      const checkButton = document.createElement("button");
+      checkButton.className = `item-check${item.checked ? " is-checked" : ""}`;
+      checkButton.type = "button";
+      checkButton.dataset.itemToggle = item.id;
+      checkButton.setAttribute(
+        "aria-label",
+        item.checked ? `Uncheck ${item.name}` : `Check ${item.name}`
+      );
+      main.appendChild(checkButton);
 
-    const copy = document.createElement("div");
-    copy.className = "item-copy";
+      const copy = document.createElement("div");
+      copy.className = "item-copy";
 
-    const title = document.createElement("h3");
-    title.className = "item-name";
-    title.textContent = item.name;
-    copy.appendChild(title);
+      const title = document.createElement("h3");
+      title.className = "item-name";
+      title.textContent = item.name;
+      copy.appendChild(title);
 
-    if (item.quantity_text) {
-      const quantity = document.createElement("p");
-      quantity.className = "item-meta";
-      quantity.textContent = `Qty: ${item.quantity_text}`;
-      copy.appendChild(quantity);
-    }
+      if (item.quantity_text) {
+        const quantity = document.createElement("p");
+        quantity.className = "item-meta";
+        quantity.textContent = `Qty: ${item.quantity_text}`;
+        copy.appendChild(quantity);
+      }
 
-    if (item.note) {
-      const note = document.createElement("p");
-      note.className = "item-meta";
-      note.textContent = item.note;
-      copy.appendChild(note);
-    }
+      if (item.note) {
+        const note = document.createElement("p");
+        note.className = "item-meta";
+        note.textContent = item.note;
+        copy.appendChild(note);
+      }
 
-    main.appendChild(copy);
-    article.appendChild(main);
+      main.appendChild(copy);
+      article.appendChild(main);
 
-    const actions = document.createElement("div");
-    actions.className = "item-actions";
+      const actions = document.createElement("div");
+      actions.className = "item-actions";
 
-    const deleteButton = document.createElement("button");
-    deleteButton.type = "button";
-    deleteButton.dataset.itemDelete = item.id;
-    deleteButton.textContent = "Delete";
-    actions.appendChild(deleteButton);
+      const deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.className = "danger-button";
+      deleteButton.dataset.itemDelete = item.id;
+      deleteButton.textContent = "Delete";
+      actions.appendChild(deleteButton);
 
-    article.appendChild(actions);
+      article.appendChild(actions);
       section.appendChild(article);
     });
 
@@ -998,16 +1030,36 @@ async function initListDetail() {
     renderItemSuggestions(root, state);
   });
 
-  root.querySelector("[data-item-form-close]")?.addEventListener("click", () => {
-    setItemPanelOpen(root, false);
+  root.querySelectorAll("[data-item-form-close]").forEach((node) => {
+    node.addEventListener("click", () => {
+      setItemPanelOpen(root, false);
+    });
   });
 
-  root.querySelector("[data-item-edit-close]")?.addEventListener("click", () => {
-    setItemEditPanelOpen(root, state, null);
+  root.querySelectorAll("[data-item-edit-close]").forEach((node) => {
+    node.addEventListener("click", () => {
+      setItemEditPanelOpen(root, state, null);
+    });
   });
 
   nameInput?.addEventListener("input", () => {
     renderItemSuggestions(root, state);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") {
+      return;
+    }
+
+    if (state.editingItemId) {
+      setItemEditPanelOpen(root, state, null);
+      return;
+    }
+
+    const panel = root.querySelector("[data-item-panel]");
+    if (panel instanceof HTMLElement && !panel.hidden) {
+      setItemPanelOpen(root, false);
+    }
   });
 
   document.addEventListener("keydown", (event) => {
@@ -1017,13 +1069,18 @@ async function initListDetail() {
 
     const activeElement = document.activeElement;
     const panel = root.querySelector("[data-item-panel]");
+    const editOverlay = root.querySelector("[data-item-edit-overlay]");
     const isTypingContext =
       activeElement instanceof HTMLInputElement ||
       activeElement instanceof HTMLTextAreaElement ||
       activeElement instanceof HTMLSelectElement ||
       activeElement?.isContentEditable;
 
-    if (isTypingContext || !panel?.hidden) {
+    if (
+      isTypingContext ||
+      !panel?.hidden ||
+      (editOverlay instanceof HTMLElement && !editOverlay.hidden)
+    ) {
       return;
     }
 

@@ -1,8 +1,11 @@
+from pathlib import Path
+
 from fastapi import FastAPI, Request
+from fastapi.responses import RedirectResponse, Response
 from markupsafe import Markup
-from fastapi.responses import RedirectResponse
 from sqladmin import Admin, ModelView
 from sqladmin.authentication import AuthenticationBackend
+from sqladmin.authentication import login_required
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, engine
@@ -61,11 +64,21 @@ class CategoryAdmin(ModelView, model=Category):
     }
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+class ListerineAdmin(Admin):
+    @login_required
+    async def index(self, request: Request) -> Response:
+        return await self.templates.TemplateResponse(request, "listerine_admin/index.html")
+
+
 def configure_admin(app: FastAPI) -> Admin:
-    admin = Admin(
+    admin = ListerineAdmin(
         app=app,
         engine=engine,
         title="Listerine Admin",
+        templates_dir=str(PROJECT_ROOT / "app" / "admin_templates"),
         authentication_backend=SessionAdminAuth(),
     )
     admin.add_view(UserAdmin)
