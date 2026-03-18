@@ -6,7 +6,7 @@ from uuid import uuid4
 from jose import jwt
 from starlette.requests import Request
 
-from app.admin import SessionAdminAuth
+from app.admin import SessionAdminAuth, get_application_version
 from app.api.v1.routes.auth import (
     _apply_bootstrap_admin_email,
     _origin_for_request,
@@ -122,6 +122,21 @@ def test_get_session_user_clears_invalid_session_payloads() -> None:
 
     assert asyncio.run(_get_session_user(request, None)) is None
     assert request.session == {}
+
+
+def test_get_application_version_reads_version_file(tmp_path, monkeypatch) -> None:
+    version_file = tmp_path / "VERSION"
+    version_file.write_text("9.9.9\n", encoding="utf-8")
+    monkeypatch.setattr("app.admin.VERSION_FILE", version_file)
+    get_application_version.cache_clear()
+
+    assert get_application_version() == "9.9.9"
+
+    missing_version_file = tmp_path / "MISSING_VERSION"
+    monkeypatch.setattr("app.admin.VERSION_FILE", missing_version_file)
+    get_application_version.cache_clear()
+
+    assert get_application_version() == "unknown"
 
 
 def test_admin_auth_backend_redirects_and_allows(monkeypatch) -> None:

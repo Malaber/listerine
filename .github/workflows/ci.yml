@@ -38,8 +38,51 @@ jobs:
       - name: Run Swift package tests with coverage gate
         run: cd ios/ListerineIOS && ./Scripts/check_coverage.sh
 
+  version_change:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.version_change.outputs.changed }}
+      release_version: ${{ steps.version.outputs.release_version }}
+      git_tag: ${{ steps.version.outputs.git_tag }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Detect VERSION changes on main
+        id: version_change
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "$EVENT_NAME" != "push" ] || [ "$REF_NAME" != "main" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ -n "$BEFORE_SHA" ] && git cat-file -e "$BEFORE_SHA^{commit}" 2>/dev/null; then
+            if git diff --quiet "$BEFORE_SHA" "$GITHUB_SHA" -- VERSION; then
+              echo "changed=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "changed=true" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Read release version from VERSION
+        id: version
+        run: |
+          RELEASE_VERSION=$(tr -d '[:space:]' < VERSION)
+          echo "release_version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "git_tag=v$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+
   docker_build:
     runs-on: ubuntu-latest
+    needs:
+      - python_test
+      - swift_test
+      - version_change
+    if: needs.version_change.outputs.changed == 'true'
     outputs:
       image: ${{ steps.image.outputs.image }}
     steps:
@@ -55,74 +98,38 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and publish commit image
+      - name: Build and publish release image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ${{ steps.image.outputs.image }}:sha-${{ github.sha }}
+          tags: |
+            ${{ steps.image.outputs.image }}:sha-${{ github.sha }}
+            ${{ steps.image.outputs.image }}:${{ needs.version_change.outputs.release_version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   release:
     runs-on: ubuntu-latest
     needs:
-      - python_test
-      - swift_test
       - docker_build
+      - version_change
+    if: needs.version_change.outputs.changed == 'true'
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v6
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-      - name: Compute release version
-        id: version
+      - name: Create git tag from VERSION
         env:
-          REF_NAME: ${{ github.ref_name }}
-          RUN_NUMBER: ${{ github.run_number }}
-        run: |
-          BASE_VERSION=$(python - <<'PY'
-          import tomllib
-          with open('pyproject.toml', 'rb') as fh:
-              print(tomllib.load(fh)['project']['version'])
-          PY
-          )
-
-          if [ "$REF_NAME" = "main" ]; then
-            RELEASE_VERSION="$BASE_VERSION"
-          else
-            RELEASE_VERSION="$BASE_VERSION-rc.$RUN_NUMBER"
-          fi
-
-          echo "base_version=$BASE_VERSION" >> "$GITHUB_OUTPUT"
-          echo "release_version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
-          echo "git_tag=v$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
-      - name: Create or update git tag
-        env:
-          GIT_TAG: ${{ steps.version.outputs.git_tag }}
+          GIT_TAG: ${{ needs.version_change.outputs.git_tag }}
         run: |
           if git rev-parse "$GIT_TAG" >/dev/null 2>&1; then
-            echo "Tag $GIT_TAG already exists."
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git tag "$GIT_TAG" "$GITHUB_SHA"
-            git push origin "$GIT_TAG"
+            echo "Tag $GIT_TAG already exists. Did VERSION get bumped for this main-branch release?"
+            exit 1
           fi
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/setup-buildx-action@v3
-      - name: Promote tested image to release tag
-        env:
-          IMAGE: ${{ needs.docker_build.outputs.image }}
-          RELEASE_VERSION: ${{ steps.version.outputs.release_version }}
-        run: |
-          docker buildx imagetools create \
-            --tag "$IMAGE:$RELEASE_VERSION" \
-            "$IMAGE:sha-$GITHUB_SHA"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "$GIT_TAG" "$GITHUB_SHA"
+          git push origin "$GIT_TAG"

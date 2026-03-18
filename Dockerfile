@@ -9,7 +9,7 @@ WORKDIR /app
 RUN addgroup --system app && adduser --system --ingroup app app
 RUN mkdir /data && chown app:app /data
 
-COPY pyproject.toml README.md alembic.ini ./
+COPY pyproject.toml VERSION README.md alembic.ini ./
 COPY app ./app
 COPY alembic ./alembic
 

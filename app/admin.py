@@ -1,3 +1,4 @@
+from functools import lru_cache
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -73,12 +74,25 @@ class CategoryAdmin(ModelView, model=Category):
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+VERSION_FILE = PROJECT_ROOT / "VERSION"
+
+
+@lru_cache(maxsize=1)
+def get_application_version() -> str:
+    try:
+        return VERSION_FILE.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        return "unknown"
 
 
 class ListerineAdmin(Admin):
     @login_required
     async def index(self, request: Request) -> Response:
-        return await self.templates.TemplateResponse(request, "listerine_admin/index.html")
+        return await self.templates.TemplateResponse(
+            request,
+            "listerine_admin/index.html",
+            {"listerine_version": get_application_version()},
+        )
 
 
 def configure_admin(app: FastAPI) -> Admin:
