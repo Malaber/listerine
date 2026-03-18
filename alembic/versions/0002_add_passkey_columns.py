@@ -15,21 +15,22 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "users",
-        sa.Column("passkey_credential_id", sa.String(length=255), nullable=True),
-    )
-    op.add_column("users", sa.Column("passkey_public_key", sa.LargeBinary(), nullable=True))
-    op.add_column(
-        "users", sa.Column("passkey_sign_count", sa.Integer(), nullable=False, server_default="0")
-    )
-    op.create_unique_constraint(
-        "uq_users_passkey_credential_id", "users", ["passkey_credential_id"]
-    )
+    with op.batch_alter_table("users") as batch_op:
+        batch_op.add_column(
+            sa.Column("passkey_credential_id", sa.String(length=255), nullable=True),
+        )
+        batch_op.add_column(sa.Column("passkey_public_key", sa.LargeBinary(), nullable=True))
+        batch_op.add_column(
+            sa.Column("passkey_sign_count", sa.Integer(), nullable=False, server_default="0")
+        )
+        batch_op.create_unique_constraint(
+            "uq_users_passkey_credential_id", ["passkey_credential_id"]
+        )
 
 
 def downgrade() -> None:
-    op.drop_constraint("uq_users_passkey_credential_id", "users", type_="unique")
-    op.drop_column("users", "passkey_sign_count")
-    op.drop_column("users", "passkey_public_key")
-    op.drop_column("users", "passkey_credential_id")
+    with op.batch_alter_table("users") as batch_op:
+        batch_op.drop_constraint("uq_users_passkey_credential_id", type_="unique")
+        batch_op.drop_column("passkey_sign_count")
+        batch_op.drop_column("passkey_public_key")
+        batch_op.drop_column("passkey_credential_id")

@@ -8,15 +8,14 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.admin import configure_admin
 from app.api.v1.router import api_router
 from app.core.config import settings
-from app.core.database import Base, engine
+from app.core.database import run_migrations
 from app.services.preview import ensure_preview_seed_data
 from app.web.routes import router as web_router
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    await run_migrations()
     if settings.preview_seed_data:
         from app.core.database import AsyncSessionLocal
 
