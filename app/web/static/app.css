@@ -366,6 +366,13 @@ main {
   background: #ffffff;
 }
 
+.household-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 1rem;
+}
+
 .household-card h3,
 .dashboard-card h2,
 .dashboard-empty h3 {
@@ -375,6 +382,41 @@ main {
 .household-meta {
   margin: 0.35rem 0 0;
   color: #64748b;
+}
+
+.secondary-button {
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #172033;
+  padding: 0.7rem 1rem;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.secondary-button:hover {
+  border-color: #94a3b8;
+  background: #f8fafc;
+}
+
+.household-invite-output {
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid #dbeafe;
+  border-radius: 16px;
+  background: #f8fbff;
+}
+
+.household-invite-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.household-invite-row input {
+  flex: 1;
+  min-width: 0;
 }
 
 .list-grid {
@@ -474,6 +516,33 @@ main {
 
 .back-link:hover {
   text-decoration: underline;
+}
+
+.invite-shell {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.invite-card {
+  display: grid;
+  gap: 1rem;
+  padding: 1.5rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 24px;
+  background: #ffffff;
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.08);
+}
+
+.invite-lead {
+  margin: 0;
+  color: #475569;
+}
+
+.invite-actions {
+  display: flex;
+  gap: 0.9rem;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .item-card {

@@ -1,12 +1,16 @@
 import asyncio
+import hashlib
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
+from sqlalchemy import select
 from webauthn.helpers import bytes_to_base64url
 
+from app.api.v1.routes.households import _as_utc
 from app.core.database import AsyncSessionLocal
 from app.core.security import create_access_token
-from app.models import User
+from app.models import HouseholdInvite, HouseholdMember, User
 
 
 async def _create_user(email: str, with_passkey: bool = True, is_admin: bool = False) -> UUID:
@@ -36,6 +40,12 @@ async def _delete_user(user_id: UUID) -> None:
         await session.commit()
 
 
+async def _add_household_member(household_id: UUID, user_id: UUID, role: str = "member") -> None:
+    async with AsyncSessionLocal() as session:
+        session.add(HouseholdMember(household_id=household_id, user_id=user_id, role=role))
+        await session.commit()
+
+
 def _auth_headers(client, email: str, is_admin: bool = False) -> dict[str, str]:
     user_id = asyncio.run(_create_user(email, is_admin=is_admin))
     client.cookies.clear()
@@ -52,6 +62,22 @@ def _mock_verified_registration() -> SimpleNamespace:
 
 def _mock_verified_authentication() -> SimpleNamespace:
     return SimpleNamespace(new_sign_count=2)
+
+
+def _register_session_user(client, monkeypatch, email: str) -> None:
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: _mock_verified_registration(),
+    )
+    client.post(
+        "/api/v1/auth/register/options",
+        json={"email": email, "display_name": "Invitee"},
+    )
+    response = client.post(
+        "/api/v1/auth/register/verify",
+        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+    )
+    assert response.status_code == 200
 
 
 def test_full_flow(client) -> None:
@@ -356,6 +382,193 @@ def test_cross_household_forbidden(client) -> None:
         == 403
     )
     assert client.delete(f"/api/v1/categories/{category['id']}", headers=h2).status_code == 403
+
+
+def test_household_invite_helpers_and_owner_accept_path(client) -> None:
+    aware = datetime(2026, 3, 18, 12, 0, tzinfo=UTC)
+    assert _as_utc(aware) == aware
+
+    owner_headers = _auth_headers(client, f"{uuid4()}@example.com", is_admin=True)
+    household = client.post(
+        "/api/v1/households", json={"name": "Home"}, headers=owner_headers
+    ).json()
+
+    invite_response = client.post(
+        f"/api/v1/households/{household['id']}/invites",
+        headers=owner_headers,
+        json={},
+    )
+    token = invite_response.json()["invite_url"].rsplit("/", 1)[-1]
+
+    owner_accept = client.post(
+        f"/api/v1/households/invites/{token}/accept",
+        headers=owner_headers,
+        json={},
+    )
+    assert owner_accept.status_code == 200
+    assert owner_accept.json()["id"] == household["id"]
+
+
+def test_household_invite_flow_allows_joining_and_keeps_access_scoped(client) -> None:
+    owner_headers = _auth_headers(client, f"{uuid4()}@example.com", is_admin=True)
+    recipient_headers = _auth_headers(client, f"{uuid4()}@example.com")
+    outsider_headers = _auth_headers(client, f"{uuid4()}@example.com")
+
+    household = client.post(
+        "/api/v1/households", json={"name": "Home"}, headers=owner_headers
+    ).json()
+    grocery_list = client.post(
+        f"/api/v1/households/{household['id']}/lists",
+        json={"name": "Weekly"},
+        headers=owner_headers,
+    ).json()
+
+    invite_response = client.post(
+        f"/api/v1/households/{household['id']}/invites",
+        headers=owner_headers,
+        json={},
+    )
+    assert invite_response.status_code == 200
+    invite = invite_response.json()
+    token = invite["invite_url"].rsplit("/", 1)[-1]
+    expires_at = datetime.fromisoformat(invite["expires_at"].replace("Z", "+00:00"))
+    assert expires_at > datetime.now(UTC)
+    assert expires_at <= datetime.now(UTC) + timedelta(hours=24, minutes=1)
+
+    owner_preview = client.get(f"/api/v1/households/invites/{token}", headers=owner_headers)
+    assert owner_preview.status_code == 200
+    assert owner_preview.json()["already_member"] is True
+
+    recipient_preview = client.get(f"/api/v1/households/invites/{token}", headers=recipient_headers)
+    assert recipient_preview.status_code == 200
+    assert recipient_preview.json()["household_name"] == "Home"
+    assert recipient_preview.json()["already_member"] is False
+
+    accept_response = client.post(
+        f"/api/v1/households/invites/{token}/accept",
+        headers=recipient_headers,
+        json={},
+    )
+    assert accept_response.status_code == 200
+    assert accept_response.json()["id"] == household["id"]
+
+    assert (
+        client.get(f"/api/v1/households/{household['id']}", headers=recipient_headers).status_code
+        == 200
+    )
+    assert (
+        client.get(
+            f"/api/v1/households/{household['id']}/lists", headers=recipient_headers
+        ).status_code
+        == 200
+    )
+    assert (
+        client.get(f"/api/v1/lists/{grocery_list['id']}", headers=recipient_headers).status_code
+        == 200
+    )
+
+    assert (
+        client.get(f"/api/v1/households/invites/{token}", headers=outsider_headers).status_code
+        == 404
+    )
+    assert (
+        client.post(
+            f"/api/v1/households/invites/{token}/accept",
+            headers=outsider_headers,
+            json={},
+        ).status_code
+        == 404
+    )
+
+
+def test_household_invites_require_owner_and_reject_expired_tokens(client) -> None:
+    owner_headers = _auth_headers(client, f"{uuid4()}@example.com", is_admin=True)
+    member_user_id = asyncio.run(_create_user(f"{uuid4()}@example.com"))
+    member_headers = {"Authorization": f"Bearer {create_access_token(member_user_id)}"}
+
+    missing_household = client.post(
+        f"/api/v1/households/{uuid4()}/invites",
+        headers=owner_headers,
+        json={},
+    )
+    assert missing_household.status_code == 404
+
+    household = client.post(
+        "/api/v1/households", json={"name": "Home"}, headers=owner_headers
+    ).json()
+    asyncio.run(_add_household_member(UUID(household["id"]), member_user_id))
+
+    forbidden = client.post(
+        f"/api/v1/households/{household['id']}/invites",
+        headers=member_headers,
+        json={},
+    )
+    assert forbidden.status_code == 403
+
+    invite_response = client.post(
+        f"/api/v1/households/{household['id']}/invites",
+        headers=owner_headers,
+        json={},
+    )
+    token = invite_response.json()["invite_url"].rsplit("/", 1)[-1]
+
+    async def _expire_invite() -> None:
+        async with AsyncSessionLocal() as session:
+            invite_result = await session.execute(
+                select(HouseholdInvite).where(
+                    HouseholdInvite.token_hash == hashlib.sha256(token.encode("utf-8")).hexdigest()
+                )
+            )
+            invite = invite_result.scalar_one()
+            invite.expires_at = datetime.now(UTC) - timedelta(minutes=1)
+            await session.commit()
+
+    asyncio.run(_expire_invite())
+
+    assert (
+        client.get(f"/api/v1/households/invites/{token}", headers=member_headers).status_code == 404
+    )
+    assert (
+        client.post(
+            f"/api/v1/households/invites/{token}/accept",
+            headers=member_headers,
+            json={},
+        ).status_code
+        == 404
+    )
+
+
+def test_invite_web_flow_redirects_through_login(client, monkeypatch) -> None:
+    owner_headers = _auth_headers(client, f"{uuid4()}@example.com", is_admin=True)
+    household = client.post(
+        "/api/v1/households", json={"name": "Home"}, headers=owner_headers
+    ).json()
+    invite_response = client.post(
+        f"/api/v1/households/{household['id']}/invites",
+        headers=owner_headers,
+        json={},
+    )
+    token = invite_response.json()["invite_url"].rsplit("/", 1)[-1]
+
+    invite_page = client.get(f"/invite/{token}", follow_redirects=False)
+    assert invite_page.status_code == 303
+    assert invite_page.headers["location"] == f"/login?next=/invite/{token}"
+
+    login_page = client.get("/login?next=//evil.example")
+    assert login_page.status_code == 200
+    assert 'data-next-url="/"' in login_page.text
+
+    _register_session_user(client, monkeypatch, f"{uuid4()}@example.com")
+
+    authenticated_login_redirect = client.get(
+        f"/login?next=/invite/{token}", follow_redirects=False
+    )
+    assert authenticated_login_redirect.status_code == 303
+    assert authenticated_login_redirect.headers["location"] == f"/invite/{token}"
+
+    authenticated_invite_page = client.get(f"/invite/{token}")
+    assert authenticated_invite_page.status_code == 200
+    assert f'data-invite-token="{token}"' in authenticated_invite_page.text
 
 
 def test_passkey_register_and_login_flow(client, monkeypatch) -> None:

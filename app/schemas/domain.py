@@ -15,6 +15,18 @@ class HouseholdOut(ORMModel):
     name: str
 
 
+class HouseholdInviteOut(BaseModel):
+    invite_url: str
+    expires_at: datetime
+
+
+class HouseholdInvitePreviewOut(BaseModel):
+    household_id: UUID
+    household_name: str
+    expires_at: datetime
+    already_member: bool
+
+
 class GroceryListCreate(BaseModel):
     name: str
 

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="invite-shell" data-household-invite data-invite-token="{{ invite_token }}">
+  <div class="invite-card">
+    <p class="dashboard-kicker">Household invite</p>
+    <h1>Join a shared grocery space</h1>
+    <p class="invite-lead" data-invite-loading>
+      Checking your invite link and household access.
+    </p>
+    <div class="dashboard-banner dashboard-banner-error" data-invite-error hidden></div>
+    <div class="dashboard-banner dashboard-banner-success" data-invite-success hidden></div>
+    <div data-invite-ready hidden>
+      <h2 data-invite-household-name></h2>
+      <p class="dashboard-helper" data-invite-expiry></p>
+      <p class="dashboard-helper" data-invite-membership-note hidden>
+        You already belong to this household. You can still use this invite to jump back into it.
+      </p>
+      <div class="invite-actions">
+        <button type="button" data-invite-accept>Accept invite</button>
+        <a class="back-link" href="/">Back to dashboard</a>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}
