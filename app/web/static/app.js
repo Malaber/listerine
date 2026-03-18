@@ -359,6 +359,7 @@ function setListSyncStatus(root, message) {
 function hideUndoToast(root, state) {
   const toast = root.querySelector("[data-list-toast]");
   const message = root.querySelector("[data-list-toast-message]");
+  const timer = root.querySelector("[data-list-toast-timer]");
   if (!toast || !message) {
     return;
   }
@@ -369,12 +370,17 @@ function hideUndoToast(root, state) {
   state.undoTimerId = null;
   state.undoAction = null;
   message.textContent = "";
+  if (timer instanceof HTMLElement) {
+    timer.style.animation = "none";
+  }
+  toast.classList.remove("is-active");
   toast.hidden = true;
 }
 
 function showUndoToast(root, state, messageText, undoAction) {
   const toast = root.querySelector("[data-list-toast]");
   const message = root.querySelector("[data-list-toast-message]");
+  const timer = root.querySelector("[data-list-toast-timer]");
   if (!toast || !message) {
     return;
   }
@@ -383,9 +389,16 @@ function showUndoToast(root, state, messageText, undoAction) {
   state.undoAction = undoAction;
   message.textContent = messageText;
   toast.hidden = false;
+  if (timer instanceof HTMLElement) {
+    timer.style.animation = "none";
+    // Force a reflow so the countdown animation reliably restarts each time.
+    void timer.offsetWidth;
+    timer.style.animation = "";
+  }
+  toast.classList.add("is-active");
   state.undoTimerId = window.setTimeout(() => {
     hideUndoToast(root, state);
-  }, 5000);
+  }, 10000);
 }
 
 function normalizeItemName(value) {
