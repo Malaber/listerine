@@ -66,6 +66,43 @@ async function getPreviewHouseholdAndList(token) {
   return { householdId, previewListId: fixtureList.id };
 }
 
+async function resetFixtureItems(token, listId) {
+  const items = await fetchJson(new URL(`/api/v1/lists/${listId}/items`, baseUrl), withHeaders(token));
+  const expectedChecked = new Map([
+    ["Brot", true],
+    ["Eier", false],
+    ["Hackfleisch", false],
+    ["Loose item", false],
+    ["Spaghetti", false],
+    ["Tofu", false],
+    ["Tomaten", false],
+  ]);
+
+  for (const item of items) {
+    if (item.name.startsWith("Fresh thing")) {
+      await fetchJson(
+        new URL(`/api/v1/items/${item.id}`, baseUrl),
+        withHeaders(token, { method: "DELETE" }),
+      );
+      continue;
+    }
+
+    if (!expectedChecked.has(item.name)) {
+      continue;
+    }
+
+    const shouldBeChecked = expectedChecked.get(item.name);
+    if (Boolean(item.checked) === shouldBeChecked) {
+      continue;
+    }
+
+    await fetchJson(
+      new URL(`/api/v1/items/${item.id}/${shouldBeChecked ? "check" : "uncheck"}`, baseUrl),
+      withHeaders(token, { method: "POST" }),
+    );
+  }
+}
+
 async function textList(locator) {
   return locator.evaluateAll((nodes) => nodes.map((node) => node.textContent?.trim() || ""));
 }
@@ -90,6 +127,7 @@ async function main() {
 
     const token = await loginPreview(context);
     const scenario = await getPreviewHouseholdAndList(token);
+    await resetFixtureItems(token, scenario.previewListId);
     const listUrl = new URL(`/lists/${scenario.previewListId}`, baseUrl).toString();
 
     await page.goto(new URL("/", baseUrl).toString(), { waitUntil: "networkidle" });
@@ -205,7 +243,7 @@ async function main() {
     await editForm.locator('input[name="quantity_text"]').fill("4 loaves");
     await editForm.locator('input[name="note"]').fill("for the weekend");
     await editForm.getByRole("button", { name: "Save changes" }).click();
-    await page.getByRole("button", { name: "Close item editor" }).click();
+    await page.locator("[data-item-edit-panel] .add-item-close[data-item-edit-close]").click();
     await expectVisible(itemCard(page, "Tomaten"), "Updated item should remain visible");
     await expectVisible(itemCard(page, "Tomaten").locator(".item-meta", { hasText: "4 loaves" }), "Updated quantity should render");
 
@@ -241,15 +279,16 @@ async function main() {
     );
 
     await page.getByRole("button", { name: "Add item" }).click();
-    await addForm.getByLabel("Item name").fill("Fresh thing");
+    const freshThingName = `Fresh thing ${Date.now()}`;
+    await addForm.getByLabel("Item name").fill(freshThingName);
     await addForm.locator("[data-item-category-search]").fill("brot");
     await addForm.locator(".category-radio-option", { hasText: "Backwaren" }).click();
     await addForm.locator('input[name="quantity_text"]').fill("1");
     await addForm.locator('button[type="submit"]').click();
-    const freshThingCard = itemCard(page, "Fresh thing");
+    const freshThingCard = itemCard(page, freshThingName);
     await expectVisible(freshThingCard, "Expected newly added item");
     await expectVisible(
-      page.locator(".item-category-group", { hasText: "Backwaren" }).locator(".item-card", { hasText: "Fresh thing" }),
+      page.locator(".item-category-group", { hasText: "Backwaren" }).locator(".item-card", { hasText: freshThingName }),
       "New item should land in the Backwaren section",
     );
 
