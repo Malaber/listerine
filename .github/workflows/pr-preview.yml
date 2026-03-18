@@ -1,0 +1,66 @@
+name: PR Preview Screenshots
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    env:
+      PYTHON_VERSION: '3.14'
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+      NODE_VERSION: '24'
+      DATABASE_URL: sqlite+aiosqlite:///./preview.db
+      PREVIEW_MODE: 'true'
+      PREVIEW_SEED_DATA: 'true'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: ./scripts/setup_env.sh
+      - run: npm install --no-save playwright
+      - run: npx playwright install --with-deps chromium
+      - name: Start preview app
+        run: |
+          PYTHONPATH=. uvicorn app.main:app --host 127.0.0.1 --port 8000 > preview-server.log 2>&1 &
+          echo $! > preview-server.pid
+      - name: Wait for preview app
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/health > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Preview app never became healthy" >&2
+          cat preview-server.log >&2
+          exit 1
+      - name: Run browser e2e screenshot flow
+        run: node scripts/capture_preview_screenshots.mjs
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v6
+        with:
+          name: pr-preview-screenshots
+          path: |
+            e2e-artifacts
+            preview-server.log
+      - name: Add job summary
+        run: cat e2e-artifacts/summary.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Stop preview app
+        if: always()
+        run: |
+          if [ -f preview-server.pid ]; then
+            kill "$(cat preview-server.pid)" || true
+          fi

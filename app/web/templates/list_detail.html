@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block content %}
+<section
+  class="list-shell"
+  data-list-detail
+  data-list-id="{{ list_id }}"
+  data-access-token="{{ access_token }}"
+>
+  <div class="list-hero">
+    <div class="list-hero-copy">
+      <p class="dashboard-kicker">Shopping list</p>
+      <div class="list-title-row">
+        <h1 data-list-title>Loading list...</h1>
+        <button class="list-settings-button" type="button" aria-label="Open list settings" data-list-settings-toggle>
+          <span aria-hidden="true">⚙</span>
+        </button>
+      </div>
+    </div>
+    <a class="back-link" href="/">Back to households</a>
+  </div>
+
+  <div class="dashboard-banner dashboard-banner-error" data-list-error hidden></div>
+  <div class="dashboard-banner dashboard-banner-success" data-list-success hidden></div>
+
+  <section class="dashboard-card list-focus-card">
+    <div class="dashboard-section-heading">
+      <div>
+        <p class="dashboard-label">Items</p>
+      </div>
+      <p class="dashboard-helper list-status" data-list-sync-status>Connecting live updates...</p>
+    </div>
+    <div class="dashboard-empty" data-item-empty hidden>
+      <h3>No items yet</h3>
+      <p>Tap the plus button to add the first thing you need.</p>
+    </div>
+    <div class="item-list" data-item-list></div>
+  </section>
+
+  <button
+    class="floating-add-button"
+    type="button"
+    aria-expanded="false"
+    aria-controls="add-item-panel"
+    data-item-form-toggle
+  >
+    <span aria-hidden="true">+</span>
+    <span>Add item</span>
+  </button>
+
+  <div class="item-modal" data-item-panel-overlay hidden>
+    <button class="item-modal-backdrop" type="button" aria-label="Close add item form" data-item-form-close></button>
+    <section class="dashboard-card add-item-panel" id="add-item-panel" data-item-panel hidden>
+      <div class="add-item-panel-header">
+        <div>
+          <p class="dashboard-label">Add fast</p>
+          <h2>Add an item</h2>
+        </div>
+        <button class="add-item-close" type="button" aria-label="Close add item form" data-item-form-close>
+          &times;
+        </button>
+      </div>
+      <form class="dashboard-form" data-item-form>
+        <label class="dashboard-field">
+          <span>Item name</span>
+          <input
+            type="text"
+            name="name"
+            placeholder="Milk"
+            maxlength="255"
+            autocomplete="off"
+            required
+            data-item-name-input
+          />
+        </label>
+        <div class="item-suggestion-slot" data-item-suggestions-slot>
+          <div class="item-suggestion-list" data-item-suggestions></div>
+        </div>
+        <fieldset class="dashboard-field category-radio-group">
+          <legend>Category</legend>
+          <input
+            class="category-search-input"
+            type="search"
+            placeholder="Search categories or aliases"
+            autocomplete="off"
+            data-item-category-search
+          />
+          <div class="category-radio-list" data-item-category-radios></div>
+        </fieldset>
+        <label class="dashboard-field">
+          <span>Quantity</span>
+          <input type="text" name="quantity_text" placeholder="2 bottles" maxlength="120" />
+        </label>
+        <label class="dashboard-field">
+          <span>Note</span>
+          <input type="text" name="note" placeholder="Low fat if possible" />
+        </label>
+        <button type="submit">Add item</button>
+      </form>
+    </section>
+  </div>
+
+  <div class="list-toast" data-list-toast hidden>
+    <p data-list-toast-message></p>
+    <button type="button" data-list-toast-undo>Undo</button>
+    <div class="list-toast-timer" data-list-toast-timer></div>
+  </div>
+
+  <div class="item-modal" data-list-settings-overlay hidden>
+    <button
+      class="item-modal-backdrop"
+      type="button"
+      aria-label="Close list settings"
+      data-list-settings-close
+    ></button>
+    <section class="dashboard-card item-edit-panel" data-list-settings-panel hidden>
+      <div class="add-item-panel-header">
+        <div>
+          <p class="dashboard-label">List settings</p>
+          <h2>Category order</h2>
+        </div>
+        <button class="add-item-close" type="button" aria-label="Close list settings" data-list-settings-close>
+          &times;
+        </button>
+      </div>
+      <p class="dashboard-helper">
+        Put categories in your store order here. Categories you have not moved yet will stay alphabetical.
+      </p>
+      <div class="settings-category-list" data-list-settings-category-list></div>
+    </section>
+  </div>
+
+  <div class="item-modal" data-item-edit-overlay hidden>
+    <button class="item-modal-backdrop" type="button" aria-label="Close item editor" data-item-edit-close></button>
+    <section class="dashboard-card item-edit-panel" data-item-edit-panel hidden>
+      <div class="add-item-panel-header">
+        <div>
+          <p class="dashboard-label">Edit item</p>
+          <h2 data-item-edit-title>Edit item</h2>
+        </div>
+        <button class="add-item-close" type="button" aria-label="Close item editor" data-item-edit-close>
+          &times;
+        </button>
+      </div>
+      <form class="dashboard-form" data-item-edit-form>
+        <label class="dashboard-field">
+          <span>Item name</span>
+          <input type="text" name="name" maxlength="255" required />
+        </label>
+        <fieldset class="dashboard-field category-radio-group">
+          <legend>Category</legend>
+          <input
+            class="category-search-input"
+            type="search"
+            placeholder="Search categories or aliases"
+            autocomplete="off"
+            data-item-edit-category-search
+          />
+          <div class="category-radio-list" data-item-edit-category-radios></div>
+        </fieldset>
+        <label class="dashboard-field">
+          <span>Quantity</span>
+          <input type="text" name="quantity_text" maxlength="120" />
+        </label>
+        <label class="dashboard-field">
+          <span>Note</span>
+          <input type="text" name="note" />
+        </label>
+        <div class="item-edit-actions">
+          <button type="submit">Save changes</button>
+          <button type="button" class="danger-button" data-item-edit-delete>Delete item</button>
+        </div>
+      </form>
+    </section>
+  </div>
+</section>
+{% endblock %}

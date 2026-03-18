@@ -1,0 +1,14 @@
+.git
+.github
+.codex
+.venv
+.pytest_cache
+__pycache__
+*.py[cod]
+*.db
+.coverage
+node_modules
+tests
+e2e-artifacts
+ios
+scripts
