@@ -88,12 +88,14 @@ docker compose up -d
 
 ## Deployment with Docker Compose
 
-The published container is intended to run behind Docker Compose with Postgres:
+The published container is intended to run behind Docker Compose. For a low-traffic self-hosted deployment, SQLite is enough and keeps local and deployed behavior aligned.
 
 - Image: `ghcr.io/malaber/listerine:0.1.2`
 - Default app port inside the container: `8000`
 - Health endpoint: `/health`
 - Database migrations run automatically when the app starts
+- SQLite database file inside the container: `/data/listerine.db`
+- Persisted SQLite file on the host: `./data/listerine.db`
 
 Create a deployment directory with these two files.
 
@@ -102,7 +104,6 @@ Create a deployment directory with these two files.
 ```dotenv
 LISTERINE_IMAGE=ghcr.io/malaber/listerine:0.1.2
 SECRET_KEY=replace-this-with-a-long-random-secret
-POSTGRES_PASSWORD=replace-this-with-a-strong-password
 SECURE_COOKIES=true
 # Optional: first matching user is promoted to admin on login/register
 BOOTSTRAP_ADMIN_EMAIL=admin@example.com
@@ -117,43 +118,25 @@ services:
     restart: unless-stopped
     environment:
       SECRET_KEY: ${SECRET_KEY}
-      DATABASE_URL: postgresql+asyncpg://listerine:${POSTGRES_PASSWORD}@postgres:5432/listerine
+      DATABASE_URL: sqlite+aiosqlite:////data/listerine.db
       SECURE_COOKIES: ${SECURE_COOKIES}
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL}
-    depends_on:
-      postgres:
-        condition: service_healthy
     ports:
       - "8000:8000"
+    volumes:
+      - ./data:/data
     healthcheck:
       test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/health')"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 20s
-
-  postgres:
-    image: postgres:16
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: listerine
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: listerine
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U listerine -d listerine"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-volumes:
-  pgdata:
 ```
 
 Deploy it with:
 
 ```bash
+mkdir -p data
 docker compose pull
 docker compose up -d
 ```
@@ -165,7 +148,7 @@ Notes for production:
 - Set a strong `SECRET_KEY`. The default development value is not safe for deployment.
 - Keep `SECURE_COOKIES=true` when serving over HTTPS.
 - Put the app behind a reverse proxy or load balancer that terminates TLS.
-- Persist the Postgres volume so list data survives container replacement.
+- Keep the `./data` directory on persistent storage so `./data/listerine.db` survives container replacement.
 - To upgrade, change `LISTERINE_IMAGE` to a newer tag such as `ghcr.io/malaber/listerine:0.1.3`, then run `docker compose pull && docker compose up -d`.
 
 ## SwiftUI client roadmap

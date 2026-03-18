@@ -4,34 +4,16 @@ services:
     restart: unless-stopped
     environment:
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in your .env file}
-      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://listerine:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in your .env file}@postgres:5432/listerine}
+      DATABASE_URL: ${DATABASE_URL:-sqlite+aiosqlite:////data/listerine.db}
       SECURE_COOKIES: ${SECURE_COOKIES:-true}
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
     ports:
       - "8000:8000"
-    depends_on:
-      postgres:
-        condition: service_healthy
+    volumes:
+      - ./data:/data
     healthcheck:
       test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/health')"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 20s
-  postgres:
-    image: postgres:16
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: listerine
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in your .env file}
-      POSTGRES_DB: listerine
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U listerine -d listerine"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-volumes:
-  pgdata:
