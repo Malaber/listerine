@@ -549,6 +549,7 @@ def test_web_pages_require_login(client) -> None:
     script = client.get("/static/app.js")
     assert "navigator.credentials.create" in script.text
     assert "navigator.credentials.get" in script.text
+    assert 'typeof value.toJSON === "function"' in script.text
 
 
 def test_login_page_redirects_for_logged_in_user(client, monkeypatch) -> None:
