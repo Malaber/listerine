@@ -24,22 +24,39 @@ def _has_session_access_token(request: Request) -> bool:
 
 
 @router.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(request, "login.html")
+async def login_page(request: Request) -> Response:
+    if _has_session_access_token(request):
+        return RedirectResponse(url="/", status_code=303)
+    localhost_hint = request.url.hostname == "127.0.0.1"
+    return templates.TemplateResponse(
+        request,
+        "login.html",
+        {"localhost_hint": localhost_hint, "is_authenticated": False},
+    )
+
+
+@router.post("/logout")
+async def logout_page(request: Request) -> Response:
+    request.session.clear()
+    return RedirectResponse(url="/login", status_code=303)
 
 
 @router.get("/", response_class=HTMLResponse, response_model=None)
 async def dashboard(request: Request) -> Response:
     if not _has_session_access_token(request):
         return RedirectResponse(url="/login", status_code=303)
-    return templates.TemplateResponse(request, "dashboard.html")
+    return templates.TemplateResponse(request, "dashboard.html", {"is_authenticated": True})
 
 
 @router.get("/lists/{list_id}", response_class=HTMLResponse, response_model=None)
 async def list_detail(request: Request, list_id: str) -> Response:
     if not _has_session_access_token(request):
         return RedirectResponse(url="/login", status_code=303)
-    return templates.TemplateResponse(request, "list_detail.html", {"list_id": list_id})
+    return templates.TemplateResponse(
+        request,
+        "list_detail.html",
+        {"list_id": list_id, "is_authenticated": True},
+    )
 
 
 @router.get("/preview", response_class=HTMLResponse)
@@ -51,4 +68,5 @@ async def preview_dashboard(request: Request, db: AsyncSession = Depends(get_db)
     if context is None:
         raise HTTPException(status_code=503, detail="Preview data has not been seeded")
 
+    context["is_authenticated"] = _has_session_access_token(request)
     return templates.TemplateResponse(request, "preview.html", context)

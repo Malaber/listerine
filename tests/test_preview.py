@@ -52,12 +52,15 @@ def test_preview_page_renders_seeded_data(monkeypatch) -> None:
 
 def test_preview_page_returns_503_without_seed_data(monkeypatch) -> None:
     monkeypatch.setattr("app.web.routes.settings.preview_mode", True)
+    monkeypatch.setattr("app.api.v1.routes.auth.settings.preview_mode", True)
     asyncio.run(_reset_db())
 
     with TestClient(app) as client:
         response = client.get("/preview")
+        login_response = client.post("/api/v1/auth/preview/login")
 
     assert response.status_code == 503
+    assert login_response.status_code == 503
 
     asyncio.run(engine.dispose())
 
@@ -99,14 +102,30 @@ def test_preview_seed_is_idempotent() -> None:
 def test_lifespan_seeds_preview_data(monkeypatch) -> None:
     monkeypatch.setattr("app.main.settings.preview_seed_data", True)
     monkeypatch.setattr("app.web.routes.settings.preview_mode", True)
+    monkeypatch.setattr("app.api.v1.routes.auth.settings.preview_mode", True)
     asyncio.run(_reset_db())
 
     try:
         with TestClient(app) as client:
             response = client.get("/preview")
+            login_response = client.post("/api/v1/auth/preview/login")
         assert response.status_code == 200
         assert "preview@example.com" in response.text
+        assert login_response.status_code == 200
+        assert "access_token" in login_response.json()
     finally:
         monkeypatch.setattr("app.main.settings.preview_seed_data", False)
         monkeypatch.setattr("app.web.routes.settings.preview_mode", False)
+        monkeypatch.setattr("app.api.v1.routes.auth.settings.preview_mode", False)
+        asyncio.run(engine.dispose())
+
+
+def test_preview_login_requires_flag() -> None:
+    asyncio.run(_reset_db())
+
+    try:
+        with TestClient(app) as client:
+            response = client.post("/api/v1/auth/preview/login")
+        assert response.status_code == 404
+    finally:
         asyncio.run(engine.dispose())

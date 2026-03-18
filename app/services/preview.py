@@ -1,11 +1,9 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import hash_password
 from app.models import Category, GroceryItem, GroceryList, Household, HouseholdMember, User
 
 PREVIEW_EMAIL = "preview@example.com"
-PREVIEW_PASSWORD = "preview-secret"
 PREVIEW_USER_NAME = "Preview User"
 PREVIEW_HOUSEHOLD_NAME = "Preview Household"
 PREVIEW_LIST_NAME = "Weekend Shop"
@@ -39,7 +37,7 @@ async def ensure_preview_seed_data(db: AsyncSession) -> None:
 
     user = User(
         email=PREVIEW_EMAIL,
-        password_hash=hash_password(PREVIEW_PASSWORD),
+        password_hash="",
         display_name=PREVIEW_USER_NAME,
     )
     db.add(user)
@@ -141,5 +139,4 @@ async def fetch_preview_context(db: AsyncSession) -> dict[str, object] | None:
         "checked_count": checked_count,
         "total_count": len(items),
         "category_names": category_names,
-        "preview_password": PREVIEW_PASSWORD,
     }

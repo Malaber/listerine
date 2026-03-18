@@ -1,20 +1,48 @@
-from uuid import uuid4
+import asyncio
+from types import SimpleNamespace
+from uuid import UUID, uuid4
 
+from webauthn.helpers import bytes_to_base64url
+
+from app.core.database import AsyncSessionLocal
 from app.core.security import create_access_token
+from app.models import User
+
+
+async def _create_user(email: str, with_passkey: bool = True) -> UUID:
+    async with AsyncSessionLocal() as session:
+        user = User(
+            email=email,
+            password_hash="",
+            display_name="User",
+            passkey_credential_id=(
+                bytes_to_base64url(f"cred-{uuid4()}".encode()) if with_passkey else None
+            ),
+            passkey_public_key=b"public-key" if with_passkey else None,
+            passkey_sign_count=1 if with_passkey else 0,
+        )
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+        return user.id
 
 
 def _auth_headers(client, email: str) -> dict[str, str]:
-    passkey = "secret-passkey"
-    register = client.post(
-        "/api/v1/auth/register",
-        json={"email": email, "passkey": passkey, "display_name": "User"},
-    )
-    assert register.status_code == 200
-    login = client.post("/api/v1/auth/login", json={"email": email, "passkey": passkey})
-    assert login.status_code == 200
-    token = login.json()["access_token"]
+    user_id = asyncio.run(_create_user(email))
     client.cookies.clear()
-    return {"Authorization": f"Bearer {token}"}
+    return {"Authorization": f"Bearer {create_access_token(user_id)}"}
+
+
+def _mock_verified_registration() -> SimpleNamespace:
+    return SimpleNamespace(
+        credential_id=b"credential-id",
+        credential_public_key=b"credential-public-key",
+        sign_count=1,
+    )
+
+
+def _mock_verified_authentication() -> SimpleNamespace:
+    return SimpleNamespace(new_sign_count=2)
 
 
 def test_full_flow(client) -> None:
@@ -107,13 +135,13 @@ def test_auth_and_access_error_paths(client) -> None:
     headers = _auth_headers(client, email)
 
     duplicate = client.post(
-        "/api/v1/auth/register",
-        json={"email": email, "passkey": "secret-passkey", "display_name": "User"},
+        "/api/v1/auth/register/options",
+        json={"email": email, "display_name": "User"},
     )
     assert duplicate.status_code == 400
 
-    bad_login = client.post("/api/v1/auth/login", json={"email": email, "passkey": "wrong-passkey"})
-    assert bad_login.status_code == 401
+    bad_login = client.post("/api/v1/auth/login/options", json={"email": f"{uuid4()}@example.com"})
+    assert bad_login.status_code == 404
 
     assert client.get("/api/v1/auth/me").status_code == 401
     assert (
@@ -172,29 +200,227 @@ def test_cross_household_forbidden(client) -> None:
     )
 
 
+def test_passkey_register_and_login_flow(client, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: _mock_verified_registration(),
+    )
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_authentication_response",
+        lambda **_: _mock_verified_authentication(),
+    )
+
+    email = f"{uuid4()}@example.com"
+    register_options = client.post(
+        "/api/v1/auth/register/options",
+        json={"email": email, "display_name": "User"},
+    )
+    assert register_options.status_code == 200
+    assert "challenge" in register_options.json()
+
+    register_verify = client.post(
+        "/api/v1/auth/register/verify",
+        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+    )
+    assert register_verify.status_code == 200
+    assert register_verify.json()["email"] == email
+
+    client.post("/api/v1/auth/logout")
+
+    login_options = client.post("/api/v1/auth/login/options", json={"email": email})
+    assert login_options.status_code == 200
+    assert "challenge" in login_options.json()
+
+    login_verify = client.post(
+        "/api/v1/auth/login/verify",
+        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+    )
+    assert login_verify.status_code == 200
+    assert "access_token" in login_verify.json()
+
+
+def test_passkey_auth_error_paths(client, monkeypatch) -> None:
+    email = f"{uuid4()}@example.com"
+
+    assert (
+        client.post(
+            "/api/v1/auth/register/verify",
+            json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+        ).status_code
+        == 400
+    )
+    assert (
+        client.post(
+            "/api/v1/auth/login/verify",
+            json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+        ).status_code
+        == 400
+    )
+
+    register_options = client.post(
+        "/api/v1/auth/register/options",
+        json={"email": email, "display_name": "User"},
+    )
+    assert register_options.status_code == 200
+
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: (_ for _ in ()).throw(ValueError("boom")),
+    )
+    bad_register = client.post(
+        "/api/v1/auth/register/verify",
+        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+    )
+    assert bad_register.status_code == 400
+
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: _mock_verified_registration(),
+    )
+    email_taken = f"{uuid4()}@example.com"
+    client.post(
+        "/api/v1/auth/register/options",
+        json={"email": email_taken, "display_name": "User"},
+    )
+    asyncio.run(_create_user(email_taken))
+    duplicate_verify = client.post(
+        "/api/v1/auth/register/verify",
+        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+    )
+    assert duplicate_verify.status_code == 400
+
+    asyncio.run(_create_user(f"{uuid4()}@example.com"))
+    login_options = client.post("/api/v1/auth/login/options", json={"email": email})
+    assert login_options.status_code == 404
+
+    email_with_passkey = f"{uuid4()}@example.com"
+    user_id = asyncio.run(_create_user(email_with_passkey))
+    login_options = client.post("/api/v1/auth/login/options", json={"email": email_with_passkey})
+    assert login_options.status_code == 200
+
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_authentication_response",
+        lambda **_: (_ for _ in ()).throw(ValueError("boom")),
+    )
+    bad_login = client.post(
+        "/api/v1/auth/login/verify",
+        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+    )
+    assert bad_login.status_code == 401
+
+    client.post("/api/v1/auth/login/options", json={"email": email_with_passkey})
+
+    async def _remove_passkey() -> None:
+        async with AsyncSessionLocal() as session:
+            user = await session.get(User, user_id)
+            assert user is not None
+            user.passkey_public_key = None
+            await session.commit()
+
+    asyncio.run(_remove_passkey())
+    missing_user_login = client.post(
+        "/api/v1/auth/login/verify",
+        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+    )
+    assert missing_user_login.status_code == 404
+
+
+def test_password_auth_endpoints_are_disabled(client) -> None:
+    register = client.post(
+        "/api/v1/auth/register",
+        json={"email": f"{uuid4()}@example.com", "passkey": "not-used-123", "display_name": "User"},
+    )
+    assert register.status_code == 400
+
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": f"{uuid4()}@example.com", "passkey": "not-used-123"},
+    )
+    assert login.status_code == 400
+
+
 def test_web_pages_require_login(client) -> None:
-    assert client.get("/login").status_code == 200
+    response = client.get("/login")
+    assert response.status_code == 200
+    assert "Sign in with passkey" in response.text
+    assert "Create passkey" in response.text
+    assert "Password signup and password login are disabled." in response.text
+    assert "Logout" not in response.text
     assert client.get("/", follow_redirects=False).status_code == 303
     assert client.get("/lists/abc", follow_redirects=False).status_code == 303
 
+    script = client.get("/static/app.js")
+    assert "navigator.credentials.create" in script.text
+    assert "navigator.credentials.get" in script.text
 
-def test_web_pages_render_for_logged_in_user(client) -> None:
-    passkey = "secret-passkey"
+
+def test_login_page_redirects_for_logged_in_user(client, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: _mock_verified_registration(),
+    )
+
     email = f"{uuid4()}@example.com"
-    assert (
-        client.post(
-            "/api/v1/auth/register",
-            json={"email": email, "passkey": passkey, "display_name": "User"},
-        ).status_code
-        == 200
+    client.post("/api/v1/auth/register/options", json={"email": email, "display_name": "User"})
+    verify = client.post(
+        "/api/v1/auth/register/verify",
+        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
     )
-    assert (
-        client.post("/api/v1/auth/login", json={"email": email, "passkey": passkey}).status_code
-        == 200
+    assert verify.status_code == 200
+
+    response = client.get("/login", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/"
+
+
+def test_web_pages_render_for_logged_in_user(client, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: _mock_verified_registration(),
     )
 
-    assert client.get("/").status_code == 200
-    assert client.get("/lists/abc").status_code == 200
+    email = f"{uuid4()}@example.com"
+    client.post("/api/v1/auth/register/options", json={"email": email, "display_name": "User"})
+    verify = client.post(
+        "/api/v1/auth/register/verify",
+        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+    )
+    assert verify.status_code == 200
+
+    dashboard = client.get("/")
+    assert dashboard.status_code == 200
+    assert 'action="/logout"' in dashboard.text
+    assert ">Logout<" in dashboard.text
+
+    list_detail = client.get("/lists/abc")
+    assert list_detail.status_code == 200
+    assert 'action="/logout"' in list_detail.text
+
+
+def test_login_page_localhost_hint(client) -> None:
+    response = client.get("/login", headers={"host": "127.0.0.1:8000"})
+    assert response.status_code == 200
+    assert "open this page on <strong>localhost</strong>" in response.text
+
+
+def test_web_logout_redirects_to_login(client, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: _mock_verified_registration(),
+    )
+
+    email = f"{uuid4()}@example.com"
+    client.post("/api/v1/auth/register/options", json={"email": email, "display_name": "User"})
+    verify = client.post(
+        "/api/v1/auth/register/verify",
+        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+    )
+    assert verify.status_code == 200
+
+    logout = client.post("/logout", follow_redirects=False)
+    assert logout.status_code == 303
+    assert logout.headers["location"] == "/login"
+    assert client.get("/", follow_redirects=False).status_code == 303
 
 
 def test_preview_page_requires_flag(client) -> None:

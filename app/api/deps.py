@@ -10,7 +10,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models import GroceryList, HouseholdMember, User
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login/verify", auto_error=False)
 
 
 async def get_current_user(

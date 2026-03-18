@@ -3,6 +3,7 @@ from uuid import uuid4
 
 from starlette.requests import Request
 
+from app.api.v1.routes.auth import _origin_for_request, _password_auth_disabled, _rp_id_for_request
 from app.core.security import create_access_token, hash_password, verify_password
 from app.services.websocket_hub import WebSocketHub
 from app.web.routes import _has_session_access_token
@@ -54,3 +55,28 @@ def test_has_session_access_token_rejects_invalid_jwt() -> None:
     request = Request({"type": "http", "headers": [], "session": {"access_token": "bad-token"}})
 
     assert _has_session_access_token(request) is False
+
+
+def test_passkey_request_helpers() -> None:
+    request = Request(
+        {
+            "type": "http",
+            "scheme": "http",
+            "path": "/login",
+            "server": ("localhost", 8000),
+            "headers": [(b"host", b"localhost:8000")],
+        }
+    )
+
+    assert _rp_id_for_request(request) == "localhost"
+    assert _origin_for_request(request) == "http://localhost:8000"
+    assert _password_auth_disabled().status_code == 400
+
+    hostless_request = Request({"type": "http", "scheme": "http", "path": "/", "headers": []})
+    assert _password_auth_disabled().detail.startswith("Password-based auth is disabled")
+    try:
+        _rp_id_for_request(hostless_request)
+    except Exception as exc:
+        assert getattr(exc, "status_code", None) == 400
+    else:  # pragma: no cover
+        raise AssertionError("Expected hostless passkey request to fail")

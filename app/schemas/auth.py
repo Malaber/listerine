@@ -1,3 +1,4 @@
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
@@ -5,15 +6,22 @@ from pydantic import BaseModel, EmailStr, Field
 from app.schemas.common import ORMModel
 
 
-class RegisterRequest(BaseModel):
+class PasskeyRegisterStartRequest(BaseModel):
     email: EmailStr
-    passkey: str = Field(min_length=8)
     display_name: str
 
 
-class LoginRequest(BaseModel):
+class PasskeyLoginStartRequest(BaseModel):
     email: EmailStr
-    passkey: str
+
+
+class PasskeyFinishRequest(BaseModel):
+    credential: dict[str, Any]
+
+
+class PasswordAuthRequest(BaseModel):
+    email: EmailStr
+    passkey: str = Field(min_length=8)
 
 
 class UserOut(ORMModel):

@@ -1,7 +1,46 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Login</h1>
-<p>Accounts are supported and all lists stay private until you sign in.</p>
-<h2>Passkey-only signup</h2>
-<p>Create accounts with a passkey only. Password signup is disabled.</p>
+<section class="auth-shell" data-passkey-auth>
+  <div class="auth-copy">
+    <h1>Login</h1>
+    <p>Accounts stay private until you sign in with a passkey from your browser or password manager.</p>
+    <h2>Passkey-only authentication</h2>
+    <p>Password signup and password login are disabled.</p>
+    {% if localhost_hint %}
+    <p class="auth-banner auth-banner-info">
+      For local passkeys, open this page on <strong>localhost</strong> instead of <strong>127.0.0.1</strong>.
+    </p>
+    {% endif %}
+    <p class="auth-banner auth-banner-error" data-auth-error hidden></p>
+    <p class="auth-banner auth-banner-success" data-auth-success hidden></p>
+  </div>
+
+  <div class="auth-grid">
+    <section class="auth-card">
+      <h2>Sign in</h2>
+      <form class="auth-form" data-passkey-login>
+        <label class="auth-field">
+          <span>Email</span>
+          <input type="email" name="email" autocomplete="username webauthn" required />
+        </label>
+        <button type="button" data-passkey-login-button>Sign in with passkey</button>
+      </form>
+    </section>
+
+    <section class="auth-card">
+      <h2>Register</h2>
+      <form class="auth-form" data-passkey-register>
+        <label class="auth-field">
+          <span>Display name</span>
+          <input type="text" name="display_name" autocomplete="name" required />
+        </label>
+        <label class="auth-field">
+          <span>Email</span>
+          <input type="email" name="email" autocomplete="username webauthn" required />
+        </label>
+        <button type="button" data-passkey-register-button>Create passkey</button>
+      </form>
+    </section>
+  </div>
+</section>
 {% endblock %}

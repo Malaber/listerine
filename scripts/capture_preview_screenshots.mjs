@@ -5,7 +5,6 @@ import { chromium } from "playwright";
 const baseUrl = process.env.PREVIEW_BASE_URL ?? "http://127.0.0.1:8000";
 const artifactDir = process.env.PREVIEW_ARTIFACT_DIR ?? "e2e-artifacts";
 const previewEmail = "preview@example.com";
-const previewPassword = "preview-secret";
 
 async function fetchJson(url, init = {}) {
   const response = await fetch(url, init);
@@ -36,15 +35,12 @@ async function main() {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1200 } });
 
   try {
-    const auth = await fetchJson(new URL("/api/v1/auth/login", baseUrl), {
+    const auth = await fetchJson(new URL("/api/v1/auth/preview/login", baseUrl), {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: previewEmail, passkey: previewPassword }),
     });
 
-    await page.request.post(new URL("/api/v1/auth/login", baseUrl).toString(), {
-      headers: { "content-type": "application/json" },
-      data: { email: previewEmail, passkey: previewPassword },
+    await page.request.post(new URL("/api/v1/auth/preview/login", baseUrl).toString(), {
+      data: { email: previewEmail },
     });
 
     const headers = { Authorization: `Bearer ${auth.access_token}` };
