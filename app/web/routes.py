@@ -1,11 +1,15 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from jose import JWTError, jwt
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.models import User
 from app.services.preview import fetch_preview_context
 
 router = APIRouter(tags=["web"])
@@ -23,9 +27,32 @@ def _has_session_access_token(request: Request) -> bool:
     return bool(payload.get("sub"))
 
 
+async def _get_session_user(request: Request, db: AsyncSession) -> User | None:
+    raw_token = request.session.get("access_token")
+    if not raw_token:
+        return None
+
+    try:
+        payload = jwt.decode(raw_token, settings.secret_key, algorithms=[settings.algorithm])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise JWTError("Missing user subject")
+        user_uuid = UUID(user_id)
+    except (JWTError, ValueError):
+        request.session.clear()
+        return None
+
+    result = await db.execute(select(User).where(User.id == user_uuid))
+    user = result.scalar_one_or_none()
+    if user is None:
+        request.session.clear()
+        return None
+    return user
+
+
 @router.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request) -> Response:
-    if _has_session_access_token(request):
+async def login_page(request: Request, db: AsyncSession = Depends(get_db)) -> Response:
+    if await _get_session_user(request, db) is not None:
         return RedirectResponse(url="/", status_code=303)
     localhost_hint = request.url.hostname == "127.0.0.1"
     return templates.TemplateResponse(
@@ -42,15 +69,19 @@ async def logout_page(request: Request) -> Response:
 
 
 @router.get("/", response_class=HTMLResponse, response_model=None)
-async def dashboard(request: Request) -> Response:
-    if not _has_session_access_token(request):
+async def dashboard(request: Request, db: AsyncSession = Depends(get_db)) -> Response:
+    user = await _get_session_user(request, db)
+    if user is None:
         return RedirectResponse(url="/login", status_code=303)
     return templates.TemplateResponse(request, "dashboard.html", {"is_authenticated": True})
 
 
 @router.get("/lists/{list_id}", response_class=HTMLResponse, response_model=None)
-async def list_detail(request: Request, list_id: str) -> Response:
-    if not _has_session_access_token(request):
+async def list_detail(
+    request: Request, list_id: str, db: AsyncSession = Depends(get_db)
+) -> Response:
+    user = await _get_session_user(request, db)
+    if user is None:
         return RedirectResponse(url="/login", status_code=303)
     return templates.TemplateResponse(
         request,
@@ -72,5 +103,5 @@ async def preview_dashboard(request: Request, db: AsyncSession = Depends(get_db)
     if context is None:
         raise HTTPException(status_code=503, detail="Preview data has not been seeded")
 
-    context["is_authenticated"] = _has_session_access_token(request)
+    context["is_authenticated"] = await _get_session_user(request, db) is not None
     return templates.TemplateResponse(request, "preview.html", context)

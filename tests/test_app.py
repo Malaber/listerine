@@ -27,6 +27,14 @@ async def _create_user(email: str, with_passkey: bool = True) -> UUID:
         return user.id
 
 
+async def _delete_user(user_id: UUID) -> None:
+    async with AsyncSessionLocal() as session:
+        user = await session.get(User, user_id)
+        assert user is not None
+        await session.delete(user)
+        await session.commit()
+
+
 def _auth_headers(client, email: str) -> dict[str, str]:
     user_id = asyncio.run(_create_user(email))
     client.cookies.clear()
@@ -424,6 +432,36 @@ def test_web_logout_redirects_to_login(client, monkeypatch) -> None:
     assert logout.status_code == 303
     assert logout.headers["location"] == "/login"
     assert client.get("/", follow_redirects=False).status_code == 303
+
+
+def test_stale_web_session_redirects_to_login(client, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: _mock_verified_registration(),
+    )
+
+    email = f"{uuid4()}@example.com"
+    client.post("/api/v1/auth/register/options", json={"email": email, "display_name": "User"})
+    verify = client.post(
+        "/api/v1/auth/register/verify",
+        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+    )
+    assert verify.status_code == 200
+    user_id = UUID(verify.json()["id"])
+
+    asyncio.run(_delete_user(user_id))
+
+    dashboard = client.get("/", follow_redirects=False)
+    assert dashboard.status_code == 303
+    assert dashboard.headers["location"] == "/login"
+
+    login = client.get("/login")
+    assert login.status_code == 200
+    assert "Logout" not in login.text
+
+    list_detail = client.get("/lists/abc", follow_redirects=False)
+    assert list_detail.status_code == 303
+    assert list_detail.headers["location"] == "/login"
 
 
 def test_preview_page_requires_flag(client) -> None:

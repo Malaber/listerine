@@ -65,6 +65,11 @@ async function postJson(url, payload) {
     body: JSON.stringify(payload),
   });
 
+  if (response.status === 401) {
+    window.location.assign("/login");
+    throw new Error("Unauthorized");
+  }
+
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = typeof data.detail === "string" ? data.detail : "Passkey request failed.";
@@ -76,6 +81,10 @@ async function postJson(url, payload) {
 
 async function fetchJson(url, options) {
   const response = await fetch(url, options);
+  if (response.status === 401) {
+    window.location.assign("/login");
+    throw new Error("Unauthorized");
+  }
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
@@ -764,6 +773,10 @@ async function initListDetail() {
       }
 
       const response = await fetch(`/api/v1/items/${deleteId}`, { method: "DELETE" });
+      if (response.status === 401) {
+        window.location.assign("/login");
+        throw new Error("Unauthorized");
+      }
       if (!response.ok) {
         throw new Error("Could not delete item.");
       }
