@@ -12,6 +12,7 @@ dependencies = [
   "fastapi>=0.115.0",
   "uvicorn[standard]>=0.30.0",
   "sqlalchemy>=2.0.36",
+  "greenlet>=3.1.1",
   "alembic>=1.13.0",
   "asyncpg>=0.29.0",
   "aiosqlite>=0.20.0",
@@ -54,3 +55,4 @@ target-version = ["py314"]
 [tool.flake8]
 max-line-length = 100
 extend-ignore = ["E203", "W503"]
+exclude = [".venv"]

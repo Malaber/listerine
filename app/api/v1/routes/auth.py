@@ -3,6 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models import User
@@ -18,7 +19,7 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
         raise HTTPException(status_code=400, detail="Email already exists")
     user = User(
         email=payload.email,
-        password_hash=hash_password(payload.password),
+        password_hash=hash_password(payload.passkey),
         display_name=payload.display_name,
     )
     db.add(user)
@@ -33,11 +34,11 @@ async def login(
 ) -> TokenOut:
     result = await db.execute(select(User).where(User.email == payload.email))
     user = result.scalar_one_or_none()
-    if user is None or not verify_password(payload.password, user.password_hash):
+    if user is None or not verify_password(payload.passkey, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     token = create_access_token(user.id)
     request.session["access_token"] = token
-    response.set_cookie("session", "active", httponly=True, secure=False)
+    response.set_cookie("session", "active", httponly=True, secure=settings.secure_cookies)
     return TokenOut(access_token=token)
 
 

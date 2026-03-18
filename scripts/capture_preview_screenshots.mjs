@@ -32,23 +32,28 @@ async function capture(page, name, route, assertText) {
 async function main() {
   await fs.mkdir(artifactDir, { recursive: true });
 
-  const auth = await fetchJson(new URL("/api/v1/auth/login", baseUrl), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email: previewEmail, password: previewPassword }),
-  });
-
-  const headers = { Authorization: `Bearer ${auth.access_token}` };
-  const households = await fetchJson(new URL("/api/v1/households", baseUrl), { headers });
-  const lists = await fetchJson(
-    new URL(`/api/v1/households/${households[0].id}/lists`, baseUrl),
-    { headers },
-  );
-
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1440, height: 1200 } });
 
   try {
+    const auth = await fetchJson(new URL("/api/v1/auth/login", baseUrl), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: previewEmail, passkey: previewPassword }),
+    });
+
+    await page.request.post(new URL("/api/v1/auth/login", baseUrl).toString(), {
+      headers: { "content-type": "application/json" },
+      data: { email: previewEmail, passkey: previewPassword },
+    });
+
+    const headers = { Authorization: `Bearer ${auth.access_token}` };
+    const households = await fetchJson(new URL("/api/v1/households", baseUrl), { headers });
+    const lists = await fetchJson(
+      new URL(`/api/v1/households/${households[0].id}/lists`, baseUrl),
+      { headers },
+    );
+
     await capture(page, "preview", "/preview", "Preview Household");
     await capture(page, "login", "/login", "Login");
     await capture(page, "dashboard", "/", "Households and Lists");

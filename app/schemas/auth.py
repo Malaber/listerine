@@ -1,19 +1,19 @@
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 from app.schemas.common import ORMModel
 
 
 class RegisterRequest(BaseModel):
     email: EmailStr
-    password: str
+    passkey: str = Field(min_length=8)
     display_name: str
 
 
 class LoginRequest(BaseModel):
     email: EmailStr
-    password: str
+    passkey: str
 
 
 class UserOut(ORMModel):

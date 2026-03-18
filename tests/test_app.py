@@ -4,13 +4,13 @@ from app.core.security import create_access_token
 
 
 def _auth_headers(client, email: str) -> dict[str, str]:
-    password = "secret"
+    passkey = "secret-passkey"
     register = client.post(
         "/api/v1/auth/register",
-        json={"email": email, "password": password, "display_name": "User"},
+        json={"email": email, "passkey": passkey, "display_name": "User"},
     )
     assert register.status_code == 200
-    login = client.post("/api/v1/auth/login", json={"email": email, "password": password})
+    login = client.post("/api/v1/auth/login", json={"email": email, "passkey": passkey})
     assert login.status_code == 200
     token = login.json()["access_token"]
     client.cookies.clear()
@@ -108,11 +108,11 @@ def test_auth_and_access_error_paths(client) -> None:
 
     duplicate = client.post(
         "/api/v1/auth/register",
-        json={"email": email, "password": "secret", "display_name": "User"},
+        json={"email": email, "passkey": "secret-passkey", "display_name": "User"},
     )
     assert duplicate.status_code == 400
 
-    bad_login = client.post("/api/v1/auth/login", json={"email": email, "password": "wrong"})
+    bad_login = client.post("/api/v1/auth/login", json={"email": email, "passkey": "wrong-passkey"})
     assert bad_login.status_code == 401
 
     assert client.get("/api/v1/auth/me").status_code == 401
@@ -172,8 +172,27 @@ def test_cross_household_forbidden(client) -> None:
     )
 
 
-def test_web_pages(client) -> None:
+def test_web_pages_require_login(client) -> None:
     assert client.get("/login").status_code == 200
+    assert client.get("/", follow_redirects=False).status_code == 303
+    assert client.get("/lists/abc", follow_redirects=False).status_code == 303
+
+
+def test_web_pages_render_for_logged_in_user(client) -> None:
+    passkey = "secret-passkey"
+    email = f"{uuid4()}@example.com"
+    assert (
+        client.post(
+            "/api/v1/auth/register",
+            json={"email": email, "passkey": passkey, "display_name": "User"},
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post("/api/v1/auth/login", json={"email": email, "passkey": passkey}).status_code
+        == 200
+    )
+
     assert client.get("/").status_code == 200
     assert client.get("/lists/abc").status_code == 200
 
