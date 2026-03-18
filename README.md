@@ -48,6 +48,13 @@ PREVIEW_MODE=true PREVIEW_SEED_DATA=true uvicorn app.main:app --reload
 
 Then open `http://localhost:8000/preview`.
 
+For local browser UI e2e coverage:
+
+```bash
+PREVIEW_MODE=true PREVIEW_SEED_DATA=true PREVIEW_UI_E2E_SEED_DATA=true DATABASE_URL=sqlite+aiosqlite:///./tmp-ui-e2e.db PYTHONPATH=. .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+PREVIEW_BASE_URL=http://127.0.0.1:8000 node scripts/run_ui_e2e.mjs
+```
+
 ## Run tests
 
 ```bash

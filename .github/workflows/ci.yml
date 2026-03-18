@@ -29,6 +29,59 @@ jobs:
       - run: PYTHONPATH=. flake8 .
       - run: PYTHONPATH=. pytest
 
+  browser_e2e:
+    runs-on: ubuntu-latest
+    env:
+      PYTHON_VERSION: '3.14'
+      NODE_VERSION: '24'
+      DATABASE_URL: sqlite+aiosqlite:///./tmp-ci-ui-e2e.db
+      PREVIEW_MODE: 'true'
+      PREVIEW_SEED_DATA: 'true'
+      PREVIEW_UI_E2E_SEED_DATA: 'true'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: ./scripts/setup_env.sh
+      - run: npm install --no-save playwright
+      - run: npx playwright install --with-deps chromium
+      - name: Start preview app
+        run: |
+          PYTHONPATH=. uvicorn app.main:app --host 127.0.0.1 --port 8000 > ui-e2e-server.log 2>&1 &
+          echo $! > ui-e2e-server.pid
+      - name: Wait for preview app
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/health > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Preview app never became healthy" >&2
+          cat ui-e2e-server.log >&2
+          exit 1
+      - name: Run browser ui e2e
+        run: PREVIEW_BASE_URL=http://127.0.0.1:8000 node scripts/run_ui_e2e.mjs
+      - name: Upload browser artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: browser-ui-e2e
+          retention-days: 2
+          path: |
+            e2e-artifacts/ui-e2e
+            ui-e2e-server.log
+      - name: Stop preview app
+        if: always()
+        run: |
+          if [ -f ui-e2e-server.pid ]; then
+            kill "$(cat ui-e2e-server.pid)" || true
+          fi
+
   swift_test:
     runs-on: ubuntu-latest
     container:
@@ -59,8 +112,8 @@ jobs:
         run: |
           python - <<'PY'
           import os
+          import re
           import subprocess
-          from pathlib import Path
 
           def tag_exists(tag: str) -> bool:
               return subprocess.run(
@@ -70,8 +123,27 @@ jobs:
                   stderr=subprocess.DEVNULL,
               ).returncode == 0
 
+          def latest_stable_version() -> str:
+              stable_pattern = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
+              tags = subprocess.run(
+                  ["git", "tag", "--list", "v*"],
+                  check=True,
+                  capture_output=True,
+                  text=True,
+              ).stdout.splitlines()
+              versions = [
+                  tuple(map(int, match.groups()))
+                  for tag in tags
+                  if (match := stable_pattern.fullmatch(tag))
+              ]
+              if not versions:
+                  return "0.1.0"
+              major, minor, patch = max(versions)
+              return f"{major}.{minor}.{patch}"
+
           def next_stable_version(version: str) -> str:
               major, minor, patch = map(int, version.split("."))
+              patch += 1
               candidate = f"{major}.{minor}.{patch}"
               while tag_exists(f"v{candidate}"):
                   patch += 1
@@ -86,17 +158,16 @@ jobs:
                   candidate = f"{version}-rc.{rc_number}"
               return candidate
 
-          base_version = Path("VERSION").read_text(encoding="utf-8").strip()
+          base_version = next_stable_version(latest_stable_version())
           ref_name = os.environ["REF_NAME"]
           run_number = int(os.environ["RUN_NUMBER"])
 
           if ref_name == "main":
-              release_version = next_stable_version(base_version)
+              release_version = base_version
           else:
               release_version = next_rc_version(base_version, run_number)
 
-          github_output = Path(os.environ["GITHUB_OUTPUT"])
-          with github_output.open("a", encoding="utf-8") as fh:
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
               fh.write(f"base_version={base_version}\n")
               fh.write(f"release_version={release_version}\n")
               fh.write(f"git_tag=v{release_version}\n")
@@ -128,6 +199,8 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+          build-args: |
+            LISTERINE_VERSION=${{ needs.version.outputs.release_version }}
           push: true
           tags: ${{ steps.image.outputs.image }}:sha-${{ github.sha }}
           cache-from: type=gha
@@ -137,6 +210,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - python_test
+      - browser_e2e
       - swift_test
       - docker_build
       - version

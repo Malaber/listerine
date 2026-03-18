@@ -47,6 +47,15 @@ Use this sequence for reliable local verification:
      workspace with `npm install --no-save playwright` and rerun the screenshot command.
 7. Stop the local preview server after the screenshots complete.
 
+For the seeded browser e2e flow, use a dedicated temporary database and the UI e2e seed flag:
+
+1. Start the preview app:
+   - `PREVIEW_MODE=true PREVIEW_SEED_DATA=true PREVIEW_UI_E2E_SEED_DATA=true DATABASE_URL=sqlite+aiosqlite:///./tmp-ui-e2e-manual.db PYTHONPATH=. .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000`
+2. In a separate shell, run:
+   - `PREVIEW_BASE_URL=http://127.0.0.1:8000 node scripts/run_ui_e2e.mjs`
+3. If you want a completely fresh run, delete `tmp-ui-e2e-manual.db` before restarting the server.
+4. Stop the preview server after the e2e run completes.
+
 This workflow is the preferred fallback whenever the default setup script or an old local preview
 database prevents the normal CI-like commands from succeeding.
 

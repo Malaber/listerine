@@ -136,7 +136,7 @@ def test_get_application_version_reads_version_file(tmp_path, monkeypatch) -> No
     monkeypatch.setattr("app.admin.VERSION_FILE", missing_version_file)
     get_application_version.cache_clear()
 
-    assert get_application_version() == "unknown"
+    assert get_application_version() == "development"
 
 
 def test_admin_auth_backend_redirects_and_allows(monkeypatch) -> None:
