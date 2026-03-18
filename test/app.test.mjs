@@ -1,0 +1,770 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { pathToFileURL } from "node:url";
+
+import { JSDOM } from "jsdom";
+
+const appModuleUrl = pathToFileURL(
+  "/Users/daniel/.codex/worktrees/d87f/listerine/app/web/static/app.js",
+).href;
+const app = await import(appModuleUrl);
+
+function createResponse({ ok = true, status = 200, jsonData = {}, statusText = "OK" } = {}) {
+  return {
+    ok,
+    status,
+    statusText,
+    async json() {
+      return jsonData;
+    },
+  };
+}
+
+function createJsonRejectingResponse({ ok = true, status = 200, statusText = "OK" } = {}) {
+  return {
+    ok,
+    status,
+    statusText,
+    json: async () => {
+      throw new Error("bad json");
+    },
+  };
+}
+
+function dashboardHtml() {
+  return `
+    <section class="dashboard-shell" data-dashboard>
+      <form class="dashboard-form" data-household-form>
+        <input type="text" name="name" />
+        <button type="submit">Create household</button>
+      </form>
+      <form class="dashboard-form" data-list-form>
+        <select name="household_id" data-household-select>
+          <option value="">Create a household first</option>
+        </select>
+        <input type="text" name="name" />
+        <button type="submit">Create list</button>
+      </form>
+      <div data-dashboard-error hidden></div>
+      <div data-dashboard-success hidden></div>
+      <div data-dashboard-empty hidden></div>
+      <div data-household-list></div>
+    </section>
+  `;
+}
+
+function loginHtml() {
+  return `
+    <section data-passkey-auth>
+      <p data-auth-error hidden></p>
+      <p data-auth-success hidden></p>
+      <form data-passkey-login>
+        <input type="email" name="email" value="login@example.com" />
+        <button type="button" data-passkey-login-button>Login</button>
+      </form>
+      <form data-passkey-register>
+        <input type="text" name="display_name" value="Tester" />
+        <input type="email" name="email" value="register@example.com" />
+        <button type="button" data-passkey-register-button>Register</button>
+      </form>
+    </section>
+  `;
+}
+
+function listDetailHtml() {
+  return `
+    <section data-list-detail data-list-id="list-1" data-access-token="token-1">
+      <h1 data-list-title>Loading list...</h1>
+      <button type="button" data-list-settings-toggle>Settings</button>
+      <div data-list-error hidden></div>
+      <div data-list-success hidden></div>
+      <p data-list-sync-status></p>
+      <div data-item-empty hidden></div>
+      <div data-item-list></div>
+      <button type="button" aria-expanded="false" data-item-form-toggle>Add item</button>
+      <div data-item-panel-overlay hidden>
+        <button type="button" data-item-form-close>Close</button>
+        <section data-item-panel hidden>
+          <form data-item-form>
+            <input name="name" data-item-name-input />
+            <div data-item-suggestions-slot><div data-item-suggestions></div></div>
+            <input type="search" data-item-category-search />
+            <div data-item-category-radios></div>
+            <input name="quantity_text" />
+            <input name="note" />
+            <button type="submit">Add</button>
+          </form>
+        </section>
+      </div>
+      <div data-list-toast hidden>
+        <p data-list-toast-message></p>
+        <button type="button" data-list-toast-undo>Undo</button>
+        <div data-list-toast-timer></div>
+      </div>
+      <div data-list-settings-overlay hidden>
+        <button type="button" data-list-settings-close>Close settings</button>
+        <section data-list-settings-panel hidden>
+          <div data-list-settings-category-list></div>
+        </section>
+      </div>
+      <div data-item-edit-overlay hidden>
+        <button type="button" data-item-edit-close>Close edit</button>
+        <section data-item-edit-panel hidden>
+          <h2 data-item-edit-title>Edit item</h2>
+          <form data-item-edit-form>
+            <input name="name" />
+            <input type="search" data-item-edit-category-search />
+            <div data-item-edit-category-radios></div>
+            <input name="quantity_text" />
+            <input name="note" />
+            <button type="submit">Save</button>
+            <button type="button" data-item-edit-delete>Delete item</button>
+          </form>
+        </section>
+      </div>
+    </section>
+  `;
+}
+
+function installDom(html, options = {}) {
+  const dom = new JSDOM(`<!doctype html><html><body>${html}</body></html>`, {
+    pretendToBeVisual: true,
+    url: options.url ?? "http://example.com/",
+  });
+
+  const previous = new Map();
+  const assigned = [];
+  const globals = {
+    window: dom.window,
+    document: dom.window.document,
+    navigator: dom.window.navigator,
+    HTMLElement: dom.window.HTMLElement,
+    HTMLInputElement: dom.window.HTMLInputElement,
+    HTMLFormElement: dom.window.HTMLFormElement,
+    HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+    HTMLSelectElement: dom.window.HTMLSelectElement,
+    Event: dom.window.Event,
+    MouseEvent: dom.window.MouseEvent,
+    KeyboardEvent: dom.window.KeyboardEvent,
+    CustomEvent: dom.window.CustomEvent,
+    FormData: dom.window.FormData,
+    DOMParser: dom.window.DOMParser,
+    Node: dom.window.Node,
+    ArrayBuffer: dom.window.ArrayBuffer,
+    Uint8Array: dom.window.Uint8Array,
+    URL: dom.window.URL,
+    atob: (value) => Buffer.from(value, "base64").toString("binary"),
+    btoa: (value) => Buffer.from(value, "binary").toString("base64"),
+    fetch: options.fetch ?? (async () => createResponse()),
+    WebSocket: options.WebSocket ?? class {},
+    __appNavigateTo: (url) => {
+      assigned.push(url);
+    },
+  };
+
+  for (const [key, value] of Object.entries(globals)) {
+    previous.set(key, globalThis[key]);
+    Object.defineProperty(globalThis, key, {
+      configurable: true,
+      writable: true,
+      value,
+    });
+  }
+
+  dom.window.fetch = globalThis.fetch;
+  dom.window.WebSocket = globalThis.WebSocket;
+  dom.window.HTMLElement.prototype.scrollIntoView = () => {};
+
+  const timerFns = options.timers ?? {};
+  dom.window.setTimeout = timerFns.setTimeout ?? ((fn) => {
+    fn();
+    return 1;
+  });
+  dom.window.clearTimeout = timerFns.clearTimeout ?? (() => {});
+
+  return {
+    dom,
+    assigned,
+    restore() {
+      dom.window.close();
+      for (const [key, value] of previous.entries()) {
+        if (value === undefined) {
+          delete globalThis[key];
+        } else {
+          Object.defineProperty(globalThis, key, {
+            configurable: true,
+            writable: true,
+            value,
+          });
+        }
+      }
+    },
+  };
+}
+
+test("conversion and request helpers cover success and failure cases", async () => {
+  const env = installDom("");
+  try {
+    assert.deepEqual([...app.base64UrlToBytes("SGVsbG8")], [72, 101, 108, 108, 111]);
+    assert.equal(app.bytesToBase64Url(new Uint8Array([72, 101, 108, 108, 111])), "SGVsbG8");
+    assert.equal(app.bytesToBase64Url(new Uint8Array([1, 2, 3]).buffer), "AQID");
+
+    const publicKey = app.publicKeyFromJSON({
+      challenge: "AQID",
+      user: { id: "BAUG" },
+      excludeCredentials: [{ id: "BwgJ" }],
+      allowCredentials: [{ id: "CgsM" }],
+    });
+    assert.deepEqual([...publicKey.challenge], [1, 2, 3]);
+    assert.deepEqual([...publicKey.user.id], [4, 5, 6]);
+    assert.deepEqual([...publicKey.excludeCredentials[0].id], [7, 8, 9]);
+    assert.deepEqual([...publicKey.allowCredentials[0].id], [10, 11, 12]);
+
+    assert.deepEqual(app.credentialToJSON([new Uint8Array([1, 2, 3]).buffer]), ["AQID"]);
+    assert.deepEqual(
+      app.credentialToJSON({
+        id: new Uint8Array([1, 2, 3]),
+        nested: { rawId: new Uint8Array([4, 5, 6]) },
+      }),
+      { id: "AQID", nested: { rawId: "BAUG" } },
+    );
+    assert.equal(app.credentialToJSON("plain"), "plain");
+
+    let fetchCalls = [];
+    globalThis.fetch = async (url, options) => {
+      fetchCalls.push([url, options]);
+      return createResponse({ jsonData: { ok: true } });
+    };
+    env.dom.window.fetch = globalThis.fetch;
+    assert.deepEqual(await app.postJson("/api/test", { value: 1 }), { ok: true });
+    assert.deepEqual(fetchCalls, [
+      [
+        "/api/test",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ value: 1 }),
+        },
+      ],
+    ]);
+
+    globalThis.fetch = async () => createResponse({ ok: false, status: 400, jsonData: { detail: "Nope" } });
+    env.dom.window.fetch = globalThis.fetch;
+    await assert.rejects(app.postJson("/api/test", {}), /Nope/);
+
+    globalThis.fetch = async () => createJsonRejectingResponse({ ok: false, status: 500 });
+    env.dom.window.fetch = globalThis.fetch;
+    await assert.rejects(app.postJson("/api/test", {}), /Passkey request failed/);
+
+    globalThis.fetch = async () => createResponse({ ok: false, status: 401 });
+    env.dom.window.fetch = globalThis.fetch;
+    await assert.rejects(app.postJson("/api/test", {}), /Unauthorized/);
+    assert.deepEqual(env.assigned, ["/login"]);
+
+    globalThis.fetch = async () => createResponse({ jsonData: { ok: true, value: 2 } });
+    env.dom.window.fetch = globalThis.fetch;
+    assert.deepEqual(await app.fetchJson("/api/fetch", { method: "GET" }), { ok: true, value: 2 });
+
+    globalThis.fetch = async () => createResponse({ ok: false, status: 418, jsonData: { detail: "Teapot" } });
+    env.dom.window.fetch = globalThis.fetch;
+    await assert.rejects(app.fetchJson("/api/fetch"), /Teapot/);
+
+    globalThis.fetch = async () => createJsonRejectingResponse({ ok: false, status: 500 });
+    env.dom.window.fetch = globalThis.fetch;
+    await assert.rejects(app.fetchJson("/api/fetch"), /Request failed/);
+  } finally {
+    env.restore();
+  }
+});
+
+test("dashboard helpers render household state and form status", async () => {
+  const env = installDom(dashboardHtml());
+  try {
+    const root = document.querySelector("[data-dashboard]");
+    const errorNode = root.querySelector("[data-dashboard-error]");
+    const successNode = root.querySelector("[data-dashboard-success]");
+
+    app.setDashboardMessage(root, "error", "Broken");
+    assert.equal(errorNode.hidden, false);
+    assert.equal(errorNode.textContent, "Broken");
+
+    app.setDashboardMessage(root, "success", "Saved");
+    assert.equal(successNode.hidden, false);
+    assert.equal(successNode.textContent, "Saved");
+
+    app.setDashboardMessage(root, "", "");
+    assert.equal(errorNode.hidden, true);
+    assert.equal(successNode.hidden, true);
+
+    app.toggleDashboardForms(root, true);
+    root.querySelectorAll("button, input, select").forEach((node) => {
+      assert.equal(node.disabled, true);
+    });
+
+    const households = [
+      { id: "house-1", name: "Home" },
+      { id: "house-2", name: "Office" },
+    ];
+    app.updateHouseholdOptions(root, households);
+    const select = root.querySelector("[data-household-select]");
+    assert.equal(select.options.length, 3);
+    assert.equal(select.options[0].textContent, "Select a household");
+
+    app.renderHouseholds(
+      root,
+      households,
+      new Map([
+        ["house-1", [{ id: "list-1", name: "Weekly" }]],
+        ["house-2", []],
+      ]),
+    );
+    assert.match(root.querySelector("[data-household-list]").textContent, /Weekly/);
+    assert.equal(root.querySelector("[data-dashboard-empty]").hidden, true);
+
+    app.renderHouseholds(root, [], new Map());
+    assert.equal(root.querySelector("[data-dashboard-empty]").hidden, false);
+
+    const rootWithoutBanner = document.createElement("section");
+    app.setDashboardMessage(rootWithoutBanner, "error", "ignored");
+
+    let fetchIndex = 0;
+    globalThis.fetch = async () => {
+      fetchIndex += 1;
+      if (fetchIndex === 1) {
+        return createResponse({ jsonData: [{ id: "house-1", name: "Home" }] });
+      }
+      return createResponse({ jsonData: [{ id: "list-1", name: "Weekly" }] });
+    };
+    env.dom.window.fetch = globalThis.fetch;
+    await app.loadDashboardData(root);
+    assert.match(root.querySelector("[data-household-list]").textContent, /Weekly/);
+  } finally {
+    env.restore();
+  }
+});
+
+test("initDashboard handles refresh, household creation, list creation, and errors", async () => {
+  const fetchLog = [];
+  const env = installDom(dashboardHtml(), {
+    fetch: async (url, options = {}) => {
+      fetchLog.push([url, options.method || "GET"]);
+      if (url === "/api/v1/households" && (!options.method || options.method === "GET")) {
+        return createResponse({ jsonData: [{ id: "house-1", name: "Home" }] });
+      }
+      if (url === "/api/v1/households/house-1/lists" && (!options.method || options.method === "GET")) {
+        return createResponse({ jsonData: [{ id: "list-1", name: "Weekly" }] });
+      }
+      if (url === "/api/v1/households" && options.method === "POST") {
+        return createResponse({ jsonData: { id: "house-2", name: "Family" } });
+      }
+      if (url === "/api/v1/households/house-1/lists" && options.method === "POST") {
+        return createResponse({ jsonData: { id: "list-2", name: "Costco" } });
+      }
+      return createResponse({ jsonData: {} });
+    },
+  });
+
+  try {
+    await app.initDashboard();
+
+    const root = document.querySelector("[data-dashboard]");
+    const householdForm = root.querySelector("[data-household-form]");
+    const listForm = root.querySelector("[data-list-form]");
+    householdForm.querySelector('input[name="name"]').value = "Family";
+    householdForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(root.querySelector("[data-dashboard-success]").textContent, "Household created. You can add a list now.");
+
+    listForm.querySelector('select[name="household_id"]').value = "house-1";
+    listForm.querySelector('input[name="name"]').value = "Costco";
+    listForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.deepEqual(env.assigned, ["/lists/list-2"]);
+
+    globalThis.fetch = async () => createResponse({ ok: false, status: 500, jsonData: { detail: "Failed load" } });
+    env.dom.window.fetch = globalThis.fetch;
+    await app.initDashboard();
+    assert.equal(root.querySelector("[data-dashboard-error]").textContent, "Failed load");
+
+    householdForm.querySelector('input[name="name"]').value = "   ";
+    householdForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(root.querySelector("[data-dashboard-error]").textContent, "Please enter a household name.");
+
+    listForm.querySelector('select[name="household_id"]').value = "";
+    listForm.querySelector('input[name="name"]').value = "  ";
+    listForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(root.querySelector("[data-dashboard-error]").textContent, "Create or choose a household before creating a list.");
+    assert.ok(fetchLog.length > 0);
+  } finally {
+    env.restore();
+  }
+});
+
+test("list helpers cover normalization, categories, rendering, and modal state", async () => {
+  let clearedTimeout = null;
+  let timeoutFn = null;
+  const env = installDom(listDetailHtml(), {
+    timers: {
+      setTimeout: (fn) => {
+        timeoutFn = fn;
+        return 42;
+      },
+      clearTimeout: (id) => {
+        clearedTimeout = id;
+      },
+    },
+  });
+
+  try {
+    const root = document.querySelector("[data-list-detail]");
+    const state = {
+      categoryOrder: new Map([["cat-2", 0]]),
+      categories: new Map([
+        ["cat-1", { id: "cat-1", name: "Produce", color: "#00ff00", aliases: ["fruit"] }],
+        ["cat-2", { id: "cat-2", name: "Dairy", color: "#ffffff", aliases: [] }],
+      ]),
+      editingItemId: null,
+      highlightTimers: new Map([["item-1", 5]]),
+      items: new Map([
+        ["item-1", { id: "item-1", name: "Milk", category_id: "cat-2", checked: false, sort_order: 2 }],
+        ["item-2", { id: "item-2", name: "Apple", category_id: "cat-1", checked: true, checked_at: "2024-01-01T00:00:00Z", sort_order: 1 }],
+        ["item-3", { id: "item-3", name: "Bread", category_id: null, checked: false, sort_order: 0 }],
+      ]),
+      socket: null,
+      undoAction: async () => {},
+      undoTimerId: 5,
+    };
+
+    app.setListMessage(root, "error", "Oops");
+    assert.equal(root.querySelector("[data-list-error]").textContent, "Oops");
+    app.setListMessage(root, "success", "Saved");
+    assert.equal(root.querySelector("[data-list-success]").textContent, "Saved");
+    app.setListMessage(document.createElement("div"), "error", "noop");
+
+    app.setListSyncStatus(root, "Synced");
+    assert.equal(root.querySelector("[data-list-sync-status]").textContent, "Synced");
+
+    app.showUndoToast(root, state, "Undone", async () => {});
+    assert.equal(root.querySelector("[data-list-toast]").hidden, false);
+    assert.equal(clearedTimeout, 5);
+    app.hideUndoToast(root, state);
+    assert.equal(root.querySelector("[data-list-toast]").hidden, true);
+    timeoutFn();
+
+    assert.equal(app.normalizeItemName("  Red   Apple "), "red apple");
+    assert.equal(app.normalizeSearchText(" Crème  Brûlée "), "creme brulee");
+
+    app.setItemPanelOpen(root, true);
+    assert.equal(root.querySelector("[data-item-panel]").hidden, false);
+    app.syncModalState(root);
+    assert.equal(document.body.classList.contains("has-list-modal-open"), true);
+
+    assert.equal(
+      app.formatSuggestionMeta(state, { category_id: "cat-1", quantity_text: "2", note: "ripe", checked: false }),
+      "Produce / 2 / ripe / already on this list",
+    );
+    assert.deepEqual(app.categorySortKey(state, null), {
+      color: "",
+      name: "Uncategorized",
+      isExplicit: false,
+      sortOrder: Number.MAX_SAFE_INTEGER,
+    });
+    assert.equal(app.decorateItem(state, state.items.get("item-1"))._categoryName, "Dairy");
+
+    app.setCategoryRadioValue(root, 'input[name="category_id"]', "");
+    assert.equal(app.categoryMatchesQuery({ name: "Produce", aliases: ["fruit"] }, "fruit"), true);
+    assert.equal(app.categoryMatchesQuery({ name: "Produce", aliases: [] }, "meat"), false);
+
+    app.syncCategoryRadioGroups(root, state);
+    assert.ok(root.querySelector('[name="category_id"]'));
+    root.querySelector("[data-item-category-search]").value = "nomatch";
+    app.syncCategoryRadioGroup(
+      root.querySelector("[data-item-category-radios]"),
+      "category_id",
+      "missing-category",
+      state,
+      "nomatch",
+    );
+    assert.match(root.querySelector("[data-item-category-radios]").textContent, /No category/);
+
+    assert.deepEqual(app.getManualCategoryIds(state), ["cat-2"]);
+    assert.deepEqual(app.getAlphabeticalCategoryIds(state), ["cat-1"]);
+    assert.deepEqual(app.getOrderedCategoryIds(state), ["cat-2", "cat-1"]);
+    assert.deepEqual(app.getDisplayedCategoryIds(state), ["cat-2"]);
+    assert.deepEqual(app.deriveManualCategoryIds(state, ["cat-2", "cat-1"]), []);
+    app.setCategoryOrder(state, ["cat-1", "cat-2"]);
+    assert.deepEqual([...state.categoryOrder.entries()], [["cat-1", 0], ["cat-2", 1]]);
+
+    globalThis.fetch = async () => createResponse({
+      jsonData: [
+        { category_id: "cat-2", sort_order: 0 },
+        { category_id: "cat-1", sort_order: 1 },
+      ],
+    });
+    env.dom.window.fetch = globalThis.fetch;
+    await app.saveCategoryOrder(root, state);
+    assert.deepEqual([...state.categoryOrder.entries()], [["cat-2", 0], ["cat-1", 1]]);
+
+    app.renderCategoryOrderSettings(root, state);
+    assert.equal(root.querySelectorAll("[data-settings-category-move]").length >= 0, true);
+    app.setListSettingsOpen(root, state, true);
+    assert.equal(root.querySelector("[data-list-settings-panel]").hidden, false);
+
+    root.querySelector("[data-item-name-input]").value = "mil";
+    app.renderItemSuggestions(root, state);
+    assert.equal(root.querySelectorAll("[data-item-reuse]").length >= 0, true);
+    assert.match(root.querySelector("[data-item-suggestions]").textContent, /Milk/);
+
+    app.renderItems(root, state);
+    assert.match(root.querySelector("[data-item-list]").textContent, /Milk/);
+    assert.match(root.querySelector("[data-item-list]").textContent, /Checked off/);
+
+    const itemCard = root.querySelector('[data-item-card="item-1"]');
+    app.highlightItem(root, state, "item-1");
+    assert.equal(itemCard.classList.contains("is-highlighted"), true);
+    timeoutFn();
+    assert.equal(itemCard.classList.contains("is-highlighted"), false);
+
+    assert.ok(app.compareActiveItems(state, state.items.get("item-3"), state.items.get("item-1")) < 0);
+    assert.ok(app.compareCheckedItems(state.items.get("item-2"), { ...state.items.get("item-2"), checked_at: "2023-01-01T00:00:00Z", name: "Yogurt" }) < 0);
+    assert.deepEqual(app.getActiveGroupOrder(state, [...state.items.values()].filter((item) => !item.checked)), ["uncategorized", "cat-2"]);
+
+    app.replaceItems(state, [{ id: "item-4", name: "Eggs" }]);
+    app.upsertItem(state, { id: "item-5", name: "Butter" });
+    app.removeItem(state, "item-4");
+    assert.equal(state.items.has("item-5"), true);
+
+    state.items = new Map([["item-5", { id: "item-5", name: "Butter", quantity_text: "", note: "", category_id: null }]]);
+    app.setItemEditPanelOpen(root, state, "item-5");
+    assert.equal(root.querySelector("[data-item-edit-panel]").hidden, false);
+    app.setItemEditPanelOpen(root, state, null);
+    assert.equal(root.querySelector("[data-item-edit-panel]").hidden, true);
+  } finally {
+    env.restore();
+  }
+});
+
+test("list detail bootstraps, reacts to websocket updates, and handles list actions", async () => {
+  const sockets = [];
+  const scheduled = [];
+  const fetchLog = [];
+  class MockSocket {
+    constructor(url) {
+      this.url = url;
+      this.handlers = new Map();
+      sockets.push(this);
+    }
+    addEventListener(type, callback) {
+      this.handlers.set(type, callback);
+    }
+    emit(type, payload) {
+      this.handlers.get(type)?.(payload);
+    }
+    close() {
+      this.emit("close");
+    }
+  }
+
+  const env = installDom(listDetailHtml(), {
+    WebSocket: MockSocket,
+    timers: {
+      setTimeout: (fn) => {
+        scheduled.push(fn);
+        return scheduled.length;
+      },
+      clearTimeout: () => {},
+    },
+    fetch: async (url, options = {}) => {
+      fetchLog.push([url, options.method || "GET"]);
+      if (url === "/api/v1/lists/list-1") {
+        return createResponse({ jsonData: { id: "list-1", name: "Weekly Groceries" } });
+      }
+      if (url === "/api/v1/lists/list-1/items") {
+        return createResponse({
+          jsonData: [
+            { id: "item-1", name: "Milk", checked: false, category_id: "cat-1", sort_order: 1, quantity_text: "", note: "" },
+            { id: "item-2", name: "Bread", checked: true, checked_at: "2024-01-02T00:00:00Z", category_id: null, sort_order: 2, quantity_text: "", note: "" },
+          ],
+        });
+      }
+      if (url === "/api/v1/categories") {
+        return createResponse({ jsonData: [{ id: "cat-1", name: "Dairy", color: "#fff", aliases: ["milk"] }] });
+      }
+      if (url === "/api/v1/lists/list-1/category-order") {
+        return createResponse({ jsonData: [{ category_id: "cat-1", sort_order: 0 }] });
+      }
+      if (url === "/api/v1/lists/list-1/items" && options.method === "POST") {
+        return createResponse({ jsonData: { id: "item-3", name: "Eggs", checked: false, category_id: "cat-1", sort_order: 3, quantity_text: "", note: "" } });
+      }
+      if (url === "/api/v1/items/item-1/check") {
+        return createResponse({ jsonData: { id: "item-1", name: "Milk", checked: true, checked_at: "2024-01-03T00:00:00Z", category_id: "cat-1", sort_order: 1, quantity_text: "", note: "" } });
+      }
+      if (url === "/api/v1/items/item-1/uncheck") {
+        return createResponse({ jsonData: { id: "item-1", name: "Milk", checked: false, category_id: "cat-1", sort_order: 1, quantity_text: "", note: "" } });
+      }
+      if (url === "/api/v1/items/item-5/check") {
+        return createResponse({ jsonData: { id: "item-5", name: "Soap", checked: true, checked_at: "2024-01-03T00:00:00Z", category_id: null, sort_order: 0, quantity_text: "", note: "" } });
+      }
+      if (url === "/api/v1/items/item-5/uncheck") {
+        return createResponse({ jsonData: { id: "item-5", name: "Soap", checked: false, category_id: null, sort_order: 0, quantity_text: "", note: "" } });
+      }
+      if (url === "/api/v1/items/item-3" && options.method === "PATCH") {
+        return createResponse({ jsonData: { id: "item-3", name: "Eggs updated", checked: false, category_id: null, sort_order: 3, quantity_text: "1 dozen", note: "Free range" } });
+      }
+      if (url === "/api/v1/items/item-3" && options.method === "DELETE") {
+        return createResponse({ ok: true, status: 204, jsonData: {} });
+      }
+      if (url === "/api/v1/items/item-5" && options.method === "DELETE") {
+        return createResponse({ ok: true, status: 204, jsonData: {} });
+      }
+      if (url === "/api/v1/lists/list-1/category-order" && options.method === "PUT") {
+        return createResponse({ jsonData: [{ category_id: "cat-1", sort_order: 0 }] });
+      }
+      return createResponse({ jsonData: {} });
+    },
+  });
+
+  try {
+    await app.initListDetail();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const root = document.querySelector("[data-list-detail]");
+    assert.equal(root.querySelector("[data-list-title]").textContent, "Weekly Groceries");
+    assert.ok(sockets[0].url.includes("/api/v1/ws/lists/list-1?token=token-1"));
+
+    sockets[0].emit("open");
+    assert.equal(root.querySelector("[data-list-sync-status]").textContent, "Live updates on.");
+
+    sockets[0].emit("message", {
+      data: JSON.stringify({
+        type: "list_snapshot",
+        payload: {
+          items: [{ id: "item-4", name: "Apples", checked: false, category_id: null, sort_order: 0, quantity_text: "", note: "" }],
+          category_order: [],
+        },
+      }),
+    });
+    assert.match(root.querySelector("[data-item-list]").textContent, /Apples/);
+
+    sockets[0].emit("message", {
+      data: JSON.stringify({ type: "category_order_updated", payload: { category_order: [{ category_id: "cat-1", sort_order: 0 }] } }),
+    });
+    sockets[0].emit("message", {
+      data: JSON.stringify({ type: "item_deleted", payload: { item: { id: "item-4" } } }),
+    });
+    sockets[0].emit("message", {
+      data: JSON.stringify({ type: "item_updated", payload: { item: { id: "item-5", name: "Soap", checked: false, category_id: null, sort_order: 0, quantity_text: "", note: "" } } }),
+    });
+    assert.match(root.querySelector("[data-item-list]").textContent, /Soap/);
+
+    sockets[0].emit("close");
+    assert.equal(root.querySelector("[data-list-sync-status]").textContent, "Live updates paused. Reconnecting...");
+    scheduled[0]();
+    assert.equal(sockets.length > 1, true);
+
+    root.querySelector("[data-item-form-toggle]").click();
+    assert.equal(root.querySelector("[data-item-panel]").hidden, false);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    assert.equal(root.querySelector("[data-item-panel]").hidden, true);
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    assert.equal(root.querySelector("[data-item-panel]").hidden, false);
+
+    root.querySelector('[data-item-form] input[name="name"]').value = "Eggs";
+    root.querySelector("[data-item-form]").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(root.querySelector("[data-list-success]").textContent, "Item added.");
+
+    root.querySelector('[data-item-card="item-5"]').click();
+    root.querySelector('[data-item-edit-form] input[name="name"]').value = "Eggs updated";
+    root.querySelector('[data-item-edit-form] input[name="quantity_text"]').value = "1 dozen";
+    root.querySelector('[data-item-edit-form] input[name="note"]').value = "Free range";
+    root.querySelector("[data-item-edit-form]").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(root.querySelector("[data-list-success]").textContent, "Item updated.");
+
+    root.querySelector('[data-item-toggle="item-5"]').click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.match(root.querySelector("[data-list-toast-message]").textContent, /Soap checked/);
+    root.querySelector("[data-list-toast-undo]").click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    root.querySelector('[data-item-delete="item-5"]').click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(root.querySelector("[data-list-success]").textContent, "Item deleted.");
+
+    root.querySelector("[data-list-settings-toggle]").click();
+    assert.equal(root.querySelector("[data-list-settings-panel]").hidden, false);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    assert.equal(root.querySelector("[data-list-settings-panel]").hidden, true);
+
+    document.dispatchEvent(new Event("beforeunload"));
+    assert.ok(fetchLog.length > 0);
+  } finally {
+    env.restore();
+  }
+});
+
+test("passkey helpers and auth initialization handle supported and unsupported browsers", async () => {
+  const passkeyCalls = [];
+  const env = installDom(loginHtml(), {
+    fetch: async (url) => {
+      if (url === "/api/v1/auth/register/options") {
+        return createResponse({ jsonData: { challenge: "AQID", user: { id: "BAUG" } } });
+      }
+      if (url === "/api/v1/auth/login/options") {
+        return createResponse({ jsonData: { challenge: "AQID" } });
+      }
+      return createResponse({ jsonData: {} });
+    },
+  });
+
+  try {
+    env.dom.window.PublicKeyCredential = class {};
+    globalThis.window.PublicKeyCredential = env.dom.window.PublicKeyCredential;
+    globalThis.navigator.credentials = {
+      async create(options) {
+        passkeyCalls.push(["create", options.publicKey.challenge.length]);
+        return {
+          id: "cred-1",
+          rawId: new Uint8Array([1, 2, 3]).buffer,
+          response: { clientDataJSON: new Uint8Array([4, 5, 6]) },
+        };
+      },
+      async get(options) {
+        passkeyCalls.push(["get", options.publicKey.challenge.length]);
+        return {
+          id: "cred-2",
+          rawId: new Uint8Array([1, 2, 3]).buffer,
+          response: { authenticatorData: new Uint8Array([4, 5, 6]) },
+        };
+      },
+    };
+
+    const root = document.querySelector("[data-passkey-auth]");
+    const registerForm = root.querySelector("[data-passkey-register]");
+    const loginForm = root.querySelector("[data-passkey-login]");
+
+    await app.registerWithPasskey(root, registerForm);
+    await app.loginWithPasskey(root, loginForm);
+    assert.deepEqual(passkeyCalls, [
+      ["create", 3],
+      ["get", 3],
+    ]);
+    assert.deepEqual(env.assigned, ["/", "/"]);
+
+    await app.initPasskeyAuth();
+    root.querySelector("[data-passkey-register-button]").click();
+    root.querySelector("[data-passkey-login-button]").click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    delete globalThis.window.PublicKeyCredential;
+    delete globalThis.navigator.credentials;
+    await app.initPasskeyAuth();
+    assert.equal(root.querySelector("[data-auth-error]").textContent, "This browser does not support passkeys.");
+  } finally {
+    env.restore();
+  }
+});

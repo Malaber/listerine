@@ -1,0 +1,11 @@
+{
+  "name": "listerine",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:js": "node --test --experimental-test-coverage --test-coverage-include=app/web/static/*.js --test-coverage-lines=100 --test-coverage-functions=100 --test-coverage-branches=100"
+  },
+  "devDependencies": {
+    "jsdom": "^29.0.0"
+  }
+}

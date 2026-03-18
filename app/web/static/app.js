@@ -58,6 +58,15 @@ function credentialToJSON(value) {
   return value;
 }
 
+function navigateTo(url) {
+  if (typeof globalThis.__appNavigateTo === "function") {
+    globalThis.__appNavigateTo(url);
+    return;
+  }
+
+  window.location.assign(url);
+}
+
 async function postJson(url, payload) {
   const response = await fetch(url, {
     method: "POST",
@@ -66,7 +75,7 @@ async function postJson(url, payload) {
   });
 
   if (response.status === 401) {
-    window.location.assign("/login");
+    navigateTo("/login");
     throw new Error("Unauthorized");
   }
 
@@ -82,7 +91,7 @@ async function postJson(url, payload) {
 async function fetchJson(url, options) {
   const response = await fetch(url, options);
   if (response.status === 401) {
-    window.location.assign("/login");
+    navigateTo("/login");
     throw new Error("Unauthorized");
   }
   const data = await response.json().catch(() => ({}));
@@ -299,7 +308,7 @@ async function initDashboard() {
       const groceryList = await postJson(`/api/v1/households/${householdId}/lists`, { name });
       listForm.reset();
       await refresh();
-      window.location.assign(`/lists/${groceryList.id}`);
+      navigateTo(`/lists/${groceryList.id}`);
     } catch (error) {
       setDashboardMessage(
         root,
@@ -556,14 +565,6 @@ function syncCategoryRadioGroup(container, groupName, currentValue, state, searc
     (category, index) =>
       index === 0 || category.id === (currentValue || "") || categoryMatchesQuery(category, searchQuery)
   );
-
-  if (options.length === 0) {
-    const emptyState = document.createElement("p");
-    emptyState.className = "category-radio-empty";
-    emptyState.textContent = "No category matches that search yet.";
-    container.appendChild(emptyState);
-    return;
-  }
 
   options.forEach((category, index) => {
     const option = document.createElement("label");
@@ -1613,7 +1614,7 @@ async function initListDetail() {
       }
       const response = await fetch(`/api/v1/items/${deleteId}`, { method: "DELETE" });
       if (response.status === 401) {
-        window.location.assign("/login");
+        navigateTo("/login");
         throw new Error("Unauthorized");
       }
       if (!response.ok) {
@@ -1678,7 +1679,7 @@ async function registerWithPasskey(root, form) {
     credential: credentialToJSON(credential),
   });
   setMessage(root, "success", "Passkey created. Redirecting to your dashboard...");
-  window.location.assign("/");
+  navigateTo("/");
 }
 
 async function loginWithPasskey(root, form) {
@@ -1693,7 +1694,7 @@ async function loginWithPasskey(root, form) {
     credential: credentialToJSON(credential),
   });
   setMessage(root, "success", "Passkey accepted. Redirecting to your dashboard...");
-  window.location.assign("/");
+  navigateTo("/");
 }
 
 function initPasskeyAuth() {
@@ -1734,6 +1735,71 @@ function initPasskeyAuth() {
   });
 }
 
-initPasskeyAuth();
-initDashboard();
-initListDetail();
+function initApp() {
+  initPasskeyAuth();
+  initDashboard();
+  initListDetail();
+}
+
+if (typeof document !== "undefined") {
+  initApp();
+}
+
+export {
+  base64UrlToBytes,
+  bytesToBase64Url,
+  publicKeyFromJSON,
+  credentialToJSON,
+  navigateTo,
+  postJson,
+  fetchJson,
+  setMessage,
+  toggleButtons,
+  setDashboardMessage,
+  toggleDashboardForms,
+  updateHouseholdOptions,
+  renderHouseholds,
+  loadDashboardData,
+  initDashboard,
+  setListMessage,
+  setListSyncStatus,
+  hideUndoToast,
+  showUndoToast,
+  normalizeItemName,
+  normalizeSearchText,
+  syncModalState,
+  setItemPanelOpen,
+  formatSuggestionMeta,
+  categorySortKey,
+  decorateItem,
+  setCategoryRadioValue,
+  categoryMatchesQuery,
+  syncCategoryRadioGroup,
+  syncCategoryRadioGroups,
+  getManualCategoryIds,
+  getAlphabeticalCategoryIds,
+  getOrderedCategoryIds,
+  getDisplayedCategoryIds,
+  deriveManualCategoryIds,
+  setCategoryOrder,
+  saveCategoryOrder,
+  setItemEditPanelOpen,
+  renderCategoryOrderSettings,
+  setListSettingsOpen,
+  renderItemSuggestions,
+  highlightItem,
+  compareActiveItems,
+  compareCheckedItems,
+  getActiveGroupOrder,
+  renderItems,
+  replaceItems,
+  upsertItem,
+  removeItem,
+  loadListDetail,
+  connectListSocket,
+  initListDetail,
+  registerWithPasskey,
+  loginWithPasskey,
+  initPasskeyAuth,
+  initApp,
+};
