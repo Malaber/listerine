@@ -59,8 +59,8 @@ jobs:
         run: |
           python - <<'PY'
           import os
+          import re
           import subprocess
-          from pathlib import Path
 
           def tag_exists(tag: str) -> bool:
               return subprocess.run(
@@ -70,8 +70,27 @@ jobs:
                   stderr=subprocess.DEVNULL,
               ).returncode == 0
 
+          def latest_stable_version() -> str:
+              stable_pattern = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
+              tags = subprocess.run(
+                  ["git", "tag", "--list", "v*"],
+                  check=True,
+                  capture_output=True,
+                  text=True,
+              ).stdout.splitlines()
+              versions = [
+                  tuple(map(int, match.groups()))
+                  for tag in tags
+                  if (match := stable_pattern.fullmatch(tag))
+              ]
+              if not versions:
+                  return "0.1.0"
+              major, minor, patch = max(versions)
+              return f"{major}.{minor}.{patch}"
+
           def next_stable_version(version: str) -> str:
               major, minor, patch = map(int, version.split("."))
+              patch += 1
               candidate = f"{major}.{minor}.{patch}"
               while tag_exists(f"v{candidate}"):
                   patch += 1
@@ -86,17 +105,16 @@ jobs:
                   candidate = f"{version}-rc.{rc_number}"
               return candidate
 
-          base_version = Path("VERSION").read_text(encoding="utf-8").strip()
+          base_version = next_stable_version(latest_stable_version())
           ref_name = os.environ["REF_NAME"]
           run_number = int(os.environ["RUN_NUMBER"])
 
           if ref_name == "main":
-              release_version = next_stable_version(base_version)
+              release_version = base_version
           else:
               release_version = next_rc_version(base_version, run_number)
 
-          github_output = Path(os.environ["GITHUB_OUTPUT"])
-          with github_output.open("a", encoding="utf-8") as fh:
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
               fh.write(f"base_version={base_version}\n")
               fh.write(f"release_version={release_version}\n")
               fh.write(f"git_tag=v{release_version}\n")
@@ -128,6 +146,8 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+          build-args: |
+            LISTERINE_VERSION=${{ needs.version.outputs.release_version }}
           push: true
           tags: ${{ steps.image.outputs.image }}:sha-${{ github.sha }}
           cache-from: type=gha

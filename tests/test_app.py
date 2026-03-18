@@ -653,7 +653,7 @@ def test_admin_page_shows_application_link_for_admin(client, monkeypatch) -> Non
     assert 'href="/"' in response.text
     assert "Go to application" in response.text
     assert "Listerine version:" in response.text
-    assert "0.1.2" in response.text
+    assert "development" in response.text
 
 
 def test_admin_page_redirects_for_non_admin(client) -> None:
