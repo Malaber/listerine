@@ -1,10 +1,18 @@
-body {
-  margin: 0;
-  font-family: "Avenir Next", "Segoe UI", sans-serif;
-  color: #172033;
+html {
+  min-height: 100%;
   background:
     radial-gradient(circle at top right, rgba(255, 221, 179, 0.45), transparent 30%),
     linear-gradient(180deg, #fffaf2 0%, #f7fbff 45%, #ffffff 100%);
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  color: #172033;
+  background: transparent;
 }
 
 body.has-list-modal-open {
@@ -12,6 +20,7 @@ body.has-list-modal-open {
 }
 
 main {
+  flex: 1;
   padding: 0 2rem 2rem;
 }
 
