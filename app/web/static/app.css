@@ -421,6 +421,7 @@ main {
 .item-category-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.75rem;
 }
 
@@ -440,6 +441,24 @@ main {
 .item-category-header p {
   color: #64748b;
   font-size: 0.92rem;
+}
+
+.item-category-actions {
+  display: flex;
+  gap: 0.45rem;
+  margin-left: auto;
+}
+
+.item-category-actions button {
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #fff;
+  color: #172033;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
 }
 
 .list-focus-card {

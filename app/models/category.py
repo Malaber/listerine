@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import ForeignKey, Integer, String, Uuid
+from sqlalchemy import ForeignKey, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -15,4 +15,3 @@ class Category(Base):
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     color: Mapped[str | None] = mapped_column(String(30), nullable=True)
-    sort_order: Mapped[int] = mapped_column(Integer, default=0)

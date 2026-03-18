@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Request
+from markupsafe import Markup
 from fastapi.responses import RedirectResponse
 from sqladmin import Admin, ModelView
 from sqladmin.authentication import AuthenticationBackend
@@ -44,8 +45,20 @@ class CategoryAdmin(ModelView, model=Category):
     name = "Category"
     name_plural = "Categories"
     icon = "fa-solid fa-tag"
-    column_list = [Category.name, Category.color, Category.sort_order]
-    form_columns = [Category.name, Category.color, Category.sort_order]
+    column_list = [Category.name, Category.color]
+    form_columns = [Category.name, Category.color]
+    form_widget_args = {"color": {"type": "color"}}
+    column_formatters = {
+        Category.color: lambda model, attr: (
+            Markup(
+                f'<span style="display:inline-block;width:0.9rem;height:0.9rem;'
+                f"border-radius:999px;background:{model.color};margin-right:0.45rem;"
+                f'vertical-align:middle;"></span>{model.color}'
+            )
+            if model.color
+            else ""
+        )
+    }
 
 
 def configure_admin(app: FastAPI) -> Admin:

@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import ensure_admin_user, get_current_user
 from app.core.database import get_db
-from app.models import Category, User
+from app.models import Category, GroceryItem, ListCategoryOrder, User
 from app.schemas.domain import CategoryCreate, CategoryOut
 
 router = APIRouter(tags=["categories"])
@@ -23,7 +23,6 @@ async def create_category(
         household_id=None,
         name=payload.name,
         color=payload.color,
-        sort_order=payload.sort_order,
     )
     db.add(category)
     await db.commit()
@@ -36,9 +35,7 @@ async def list_categories(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[Category]:
-    result = await db.execute(
-        select(Category).order_by(Category.sort_order.asc(), Category.name.asc())
-    )
+    result = await db.execute(select(Category).order_by(Category.name.asc()))
     return list(result.scalars().all())
 
 
@@ -54,7 +51,6 @@ async def update_category(
     category = result.scalar_one()
     category.name = payload.name
     category.color = payload.color
-    category.sort_order = payload.sort_order
     await db.commit()
     await db.refresh(category)
     return category
@@ -69,6 +65,18 @@ async def delete_category(
     ensure_admin_user(user)
     result = await db.execute(select(Category).where(Category.id == category_id))
     category = result.scalar_one()
+    item_result = await db.execute(
+        select(GroceryItem).where(GroceryItem.category_id == category_id)
+    )
+    for item in item_result.scalars().all():
+        item.category_id = None
+
+    order_result = await db.execute(
+        select(ListCategoryOrder).where(ListCategoryOrder.category_id == category_id)
+    )
+    for order in order_result.scalars().all():
+        await db.delete(order)
+
     await db.delete(category)
     await db.commit()
     return {"message": "deleted"}

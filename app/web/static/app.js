@@ -446,18 +446,29 @@ function formatSuggestionMeta(state, item) {
 
 function categorySortKey(state, categoryId) {
   if (!categoryId) {
-    return { color: "", name: "Uncategorized", sortOrder: Number.MAX_SAFE_INTEGER };
+    return {
+      color: "",
+      name: "Uncategorized",
+      isExplicit: false,
+      sortOrder: Number.MAX_SAFE_INTEGER,
+    };
   }
 
   const category = state.categories.get(categoryId);
   if (!category) {
-    return { color: "", name: "Uncategorized", sortOrder: Number.MAX_SAFE_INTEGER };
+    return {
+      color: "",
+      name: "Uncategorized",
+      isExplicit: false,
+      sortOrder: Number.MAX_SAFE_INTEGER,
+    };
   }
 
   return {
     color: category.color || "",
     name: category.name,
-    sortOrder: category.sort_order ?? Number.MAX_SAFE_INTEGER,
+    isExplicit: state.categoryOrder.has(categoryId),
+    sortOrder: state.categoryOrder.get(categoryId) ?? Number.MAX_SAFE_INTEGER,
   };
 }
 
@@ -488,9 +499,6 @@ function syncCategorySelects(root, state) {
 
       [...state.categories.values()]
         .sort((left, right) => {
-          if (left.sort_order !== right.sort_order) {
-            return left.sort_order - right.sort_order;
-          }
           return left.name.localeCompare(right.name);
         })
         .forEach((category) => {
@@ -504,6 +512,70 @@ function syncCategorySelects(root, state) {
         select.value = currentValue;
       }
     });
+}
+
+function getManualCategoryIds(state) {
+  return [...state.categories.values()]
+    .filter((category) => state.categoryOrder.has(category.id))
+    .sort((left, right) => state.categoryOrder.get(left.id) - state.categoryOrder.get(right.id))
+    .map((category) => category.id);
+}
+
+function getAlphabeticalCategoryIds(state) {
+  return [...state.categories.values()]
+    .filter((category) => !state.categoryOrder.has(category.id))
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .map((category) => category.id);
+}
+
+function getOrderedCategoryIds(state) {
+  return [...getManualCategoryIds(state), ...getAlphabeticalCategoryIds(state)];
+}
+
+function getDisplayedCategoryIds(state) {
+  const itemCategoryIds = new Set(
+    [...state.items.values()]
+      .map((item) => item.category_id)
+      .filter((categoryId) => categoryId && state.categories.has(categoryId))
+  );
+
+  return getOrderedCategoryIds(state).filter((categoryId) => itemCategoryIds.has(categoryId));
+}
+
+function deriveManualCategoryIds(state, orderedCategoryIds) {
+  for (let prefixLength = 0; prefixLength <= orderedCategoryIds.length; prefixLength += 1) {
+    const prefix = orderedCategoryIds.slice(0, prefixLength);
+    const remainder = orderedCategoryIds.slice(prefixLength);
+    const alphabeticalRemainder = [...remainder].sort((leftId, rightId) => {
+      const leftName = state.categories.get(leftId)?.name || "";
+      const rightName = state.categories.get(rightId)?.name || "";
+      return leftName.localeCompare(rightName);
+    });
+
+    if (
+      remainder.length === alphabeticalRemainder.length &&
+      remainder.every((categoryId, index) => categoryId === alphabeticalRemainder[index])
+    ) {
+      return prefix;
+    }
+  }
+
+  return orderedCategoryIds;
+}
+
+function setCategoryOrder(state, categoryIds) {
+  state.categoryOrder = new Map(categoryIds.map((categoryId, index) => [categoryId, index]));
+}
+
+async function saveCategoryOrder(root, state) {
+  const listId = root.dataset.listId;
+  const categoryIds = getManualCategoryIds(state);
+  const response = await fetchJson(`/api/v1/lists/${listId}/category-order`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ category_ids: categoryIds }),
+  });
+  state.categoryOrder = new Map(response.map((entry) => [entry.category_id, entry.sort_order]));
 }
 
 function setItemEditPanelOpen(root, state, itemId) {
@@ -656,6 +728,9 @@ function renderItems(root, state) {
   const sortedItems = [...state.items.values()].map((item) => decorateItem(state, item)).sort((left, right) => {
     const leftCategory = categorySortKey(state, left.category_id);
     const rightCategory = categorySortKey(state, right.category_id);
+    if (leftCategory.isExplicit !== rightCategory.isExplicit) {
+      return Number(rightCategory.isExplicit) - Number(leftCategory.isExplicit);
+    }
     if (leftCategory.sortOrder !== rightCategory.sortOrder) {
       return leftCategory.sortOrder - rightCategory.sortOrder;
     }
@@ -705,6 +780,30 @@ function renderItems(root, state) {
     headingMeta.textContent = `${items.length} ${items.length === 1 ? "item" : "items"}`;
     headingCopy.appendChild(headingMeta);
     heading.appendChild(headingCopy);
+
+    if (category) {
+      const headerActions = document.createElement("div");
+      headerActions.className = "item-category-actions";
+
+      const moveUp = document.createElement("button");
+      moveUp.type = "button";
+      moveUp.dataset.categoryMove = "up";
+      moveUp.dataset.categoryId = category.id;
+      moveUp.setAttribute("aria-label", `Move ${category.name} up`);
+      moveUp.textContent = "↑";
+      headerActions.appendChild(moveUp);
+
+      const moveDown = document.createElement("button");
+      moveDown.type = "button";
+      moveDown.dataset.categoryMove = "down";
+      moveDown.dataset.categoryId = category.id;
+      moveDown.setAttribute("aria-label", `Move ${category.name} down`);
+      moveDown.textContent = "↓";
+      headerActions.appendChild(moveDown);
+
+      heading.appendChild(headerActions);
+    }
+
     section.appendChild(heading);
 
     items.forEach((item) => {
@@ -784,10 +883,11 @@ function removeItem(state, itemId) {
 
 async function loadListDetail(root, state) {
   const listId = root.dataset.listId;
-  const [groceryList, items, categories] = await Promise.all([
+  const [groceryList, items, categories, categoryOrder] = await Promise.all([
     fetchJson(`/api/v1/lists/${listId}`),
     fetchJson(`/api/v1/lists/${listId}/items`),
     fetchJson("/api/v1/categories"),
+    fetchJson(`/api/v1/lists/${listId}/category-order`),
   ]);
 
   const title = root.querySelector("[data-list-title]");
@@ -796,6 +896,9 @@ async function loadListDetail(root, state) {
   }
 
   state.categories = new Map(categories.map((category) => [category.id, category]));
+  state.categoryOrder = new Map(
+    categoryOrder.map((entry) => [entry.category_id, entry.sort_order])
+  );
   replaceItems(state, items);
   syncCategorySelects(root, state);
   renderItems(root, state);
@@ -874,6 +977,7 @@ async function initListDetail() {
   const nameInput = root.querySelector("[data-item-name-input]");
   const listId = root.dataset.listId;
   const state = {
+    categoryOrder: new Map(),
     categories: new Map(),
     editingItemId: null,
     highlightTimers: new Map(),
@@ -1022,6 +1126,8 @@ async function initListDetail() {
     const toggleId = target.dataset.itemToggle;
     const deleteId = target.dataset.itemDelete;
     const reuseItemId = target.dataset.itemReuse;
+    const categoryMove = target.dataset.categoryMove;
+    const categoryId = target.dataset.categoryId;
     const editCard = target.closest("[data-item-edit]");
 
     if (editCard && !target.closest("button")) {
@@ -1029,11 +1135,48 @@ async function initListDetail() {
       return;
     }
 
-    if (!toggleId && !deleteId && !reuseItemId) {
+    if (!toggleId && !deleteId && !reuseItemId && !categoryMove) {
       return;
     }
 
     try {
+      if (categoryMove && categoryId) {
+        const orderedCategoryIds = getOrderedCategoryIds(state);
+        const displayedCategoryIds = getDisplayedCategoryIds(state);
+        const displayedCategoryIdSet = new Set(displayedCategoryIds);
+        const currentIndex = displayedCategoryIds.indexOf(categoryId);
+        if (currentIndex === -1) {
+          return;
+        }
+
+        const nextIndex = categoryMove === "up" ? currentIndex - 1 : currentIndex + 1;
+        if (nextIndex < 0 || nextIndex >= displayedCategoryIds.length) {
+          return;
+        }
+
+        const nextDisplayedCategoryIds = [...displayedCategoryIds];
+        [nextDisplayedCategoryIds[currentIndex], nextDisplayedCategoryIds[nextIndex]] = [
+          nextDisplayedCategoryIds[nextIndex],
+          nextDisplayedCategoryIds[currentIndex],
+        ];
+
+        let displayedCursor = 0;
+        const nextOrderedCategoryIds = orderedCategoryIds.map((orderedCategoryId) => {
+          if (!displayedCategoryIdSet.has(orderedCategoryId)) {
+            return orderedCategoryId;
+          }
+
+          const replacementCategoryId = nextDisplayedCategoryIds[displayedCursor];
+          displayedCursor += 1;
+          return replacementCategoryId;
+        });
+
+        setCategoryOrder(state, deriveManualCategoryIds(state, nextOrderedCategoryIds));
+        await saveCategoryOrder(root, state);
+        renderItems(root, state);
+        return;
+      }
+
       if (reuseItemId) {
         const existingItem = state.items.get(reuseItemId);
         if (!existingItem) {

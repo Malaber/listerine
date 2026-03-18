@@ -81,7 +81,7 @@ def test_full_flow(client) -> None:
 
     category = client.post(
         "/api/v1/categories",
-        json={"name": "Produce", "color": "green", "sort_order": 1},
+        json={"name": "Produce", "color": "green"},
         headers=headers,
     ).json()
 
@@ -89,11 +89,27 @@ def test_full_flow(client) -> None:
 
     updated_category = client.patch(
         f"/api/v1/categories/{category['id']}",
-        json={"name": "Dairy", "color": "blue", "sort_order": 0},
+        json={"name": "Dairy", "color": "blue"},
         headers=headers,
     ).json()
     assert updated_category["name"] == "Dairy"
-    assert updated_category["sort_order"] == 0
+
+    bakery_category = client.post(
+        "/api/v1/categories",
+        json={"name": "Bakery", "color": "orange"},
+        headers=headers,
+    ).json()
+
+    category_order = client.put(
+        f"/api/v1/lists/{list_id}/category-order",
+        json={"category_ids": [bakery_category["id"], category["id"]]},
+        headers=headers,
+    ).json()
+    assert [entry["category_id"] for entry in category_order] == [
+        bakery_category["id"],
+        category["id"],
+    ]
+    assert client.get(f"/api/v1/lists/{list_id}/category-order", headers=headers).status_code == 200
 
     item = client.post(
         f"/api/v1/lists/{list_id}/items",
@@ -134,6 +150,10 @@ def test_full_flow(client) -> None:
     ).json()
     assert patched_list["name"] == "Weekly 2"
 
+    assert (
+        client.delete(f"/api/v1/categories/{bakery_category['id']}", headers=headers).status_code
+        == 200
+    )
     assert client.delete(f"/api/v1/categories/{category['id']}", headers=headers).status_code == 200
     assert client.delete(f"/api/v1/lists/{list_id}", headers=headers).status_code == 200
     assert client.post("/api/v1/auth/logout", headers=headers).status_code == 200
@@ -186,7 +206,102 @@ def test_auth_and_access_error_paths(client) -> None:
         ).status_code
         == 400
     )
+    assert (
+        client.put(
+            f"/api/v1/lists/{list_res['id']}/category-order",
+            json={"category_ids": [str(uuid4())]},
+            headers=headers,
+        ).status_code
+        == 400
+    )
     assert client.get(f"/api/v1/lists/{uuid4()}", headers=headers).status_code == 404
+
+
+def test_list_category_order_rejects_duplicates_and_list_delete_cleans_up_orders(client) -> None:
+    headers = _auth_headers(client, f"{uuid4()}@example.com", is_admin=True)
+    household = client.post("/api/v1/households", json={"name": "Home"}, headers=headers).json()
+    grocery_list = client.post(
+        f"/api/v1/households/{household['id']}/lists",
+        json={"name": "Weekly"},
+        headers=headers,
+    ).json()
+    category = client.post(
+        "/api/v1/categories",
+        json={"name": "Produce", "color": "#22c55e"},
+        headers=headers,
+    ).json()
+
+    duplicate_order = client.put(
+        f"/api/v1/lists/{grocery_list['id']}/category-order",
+        json={"category_ids": [category["id"], category["id"]]},
+        headers=headers,
+    )
+    assert duplicate_order.status_code == 400
+
+    valid_order = client.put(
+        f"/api/v1/lists/{grocery_list['id']}/category-order",
+        json={"category_ids": [category["id"]]},
+        headers=headers,
+    )
+    assert valid_order.status_code == 200
+
+    cleared_order = client.put(
+        f"/api/v1/lists/{grocery_list['id']}/category-order",
+        json={"category_ids": []},
+        headers=headers,
+    )
+    assert cleared_order.status_code == 200
+    assert cleared_order.json() == []
+
+    restored_order = client.put(
+        f"/api/v1/lists/{grocery_list['id']}/category-order",
+        json={"category_ids": [category["id"]]},
+        headers=headers,
+    )
+    assert restored_order.status_code == 200
+
+    deleted_list = client.delete(f"/api/v1/lists/{grocery_list['id']}", headers=headers)
+    assert deleted_list.status_code == 200
+
+
+def test_delete_category_clears_item_category_and_order(client) -> None:
+    headers = _auth_headers(client, f"{uuid4()}@example.com", is_admin=True)
+    household = client.post("/api/v1/households", json={"name": "Home"}, headers=headers).json()
+    grocery_list = client.post(
+        f"/api/v1/households/{household['id']}/lists",
+        json={"name": "Weekly"},
+        headers=headers,
+    ).json()
+    category = client.post(
+        "/api/v1/categories",
+        json={"name": "Produce", "color": "#22c55e"},
+        headers=headers,
+    ).json()
+
+    item = client.post(
+        f"/api/v1/lists/{grocery_list['id']}/items",
+        json={"name": "Apples", "category_id": category["id"]},
+        headers=headers,
+    ).json()
+    order = client.put(
+        f"/api/v1/lists/{grocery_list['id']}/category-order",
+        json={"category_ids": [category["id"]]},
+        headers=headers,
+    )
+    assert order.status_code == 200
+
+    deleted_category = client.delete(f"/api/v1/categories/{category['id']}", headers=headers)
+    assert deleted_category.status_code == 200
+
+    items = client.get(f"/api/v1/lists/{grocery_list['id']}/items", headers=headers).json()
+    assert items[0]["id"] == item["id"]
+    assert items[0]["category_id"] is None
+
+    category_order = client.get(
+        f"/api/v1/lists/{grocery_list['id']}/category-order", headers=headers
+    )
+    assert category_order.status_code == 200
+    assert category_order.json() == []
 
 
 def test_cross_household_forbidden(client) -> None:
@@ -201,7 +316,7 @@ def test_cross_household_forbidden(client) -> None:
     lid = grocery_list["id"]
     category = client.post(
         "/api/v1/categories",
-        json={"name": "Secret", "color": "red", "sort_order": 0},
+        json={"name": "Secret", "color": "red"},
         headers=h1,
     ).json()
 
@@ -213,7 +328,7 @@ def test_cross_household_forbidden(client) -> None:
     assert (
         client.patch(
             f"/api/v1/categories/{category['id']}",
-            json={"name": "x", "color": None, "sort_order": 0},
+            json={"name": "x", "color": None},
             headers=h2,
         ).status_code
         == 403

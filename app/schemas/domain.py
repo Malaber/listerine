@@ -29,7 +29,6 @@ class GroceryListOut(ORMModel):
 class CategoryCreate(BaseModel):
     name: str
     color: str | None = None
-    sort_order: int = 0
 
 
 class CategoryOut(ORMModel):
@@ -37,6 +36,14 @@ class CategoryOut(ORMModel):
     household_id: UUID | None
     name: str
     color: str | None
+
+
+class ListCategoryOrderUpdate(BaseModel):
+    category_ids: list[UUID]
+
+
+class ListCategoryOrderOut(BaseModel):
+    category_id: UUID
     sort_order: int
 
 
