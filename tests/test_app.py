@@ -125,6 +125,26 @@ def test_full_flow(client) -> None:
     ) as ws:
         event = ws.receive_json()
         assert event["type"] == "list_snapshot"
+        assert [entry["category_id"] for entry in event["payload"]["category_order"]] == [
+            bakery_category["id"],
+            category["id"],
+        ]
+
+        reordered_categories = client.put(
+            f"/api/v1/lists/{list_id}/category-order",
+            json={"category_ids": [category["id"], bakery_category["id"]]},
+            headers=headers,
+        ).json()
+        assert [entry["category_id"] for entry in reordered_categories] == [
+            category["id"],
+            bakery_category["id"],
+        ]
+        category_event = ws.receive_json()
+        assert category_event["type"] == "category_order_updated"
+        assert [entry["category_id"] for entry in category_event["payload"]["category_order"]] == [
+            category["id"],
+            bakery_category["id"],
+        ]
 
         updated = client.patch(
             f"/api/v1/items/{item_id}",

@@ -7,9 +7,14 @@
   data-access-token="{{ access_token }}"
 >
   <div class="list-hero">
-    <div>
+    <div class="list-hero-copy">
       <p class="dashboard-kicker">Shopping list</p>
-      <h1 data-list-title>Loading list...</h1>
+      <div class="list-title-row">
+        <h1 data-list-title>Loading list...</h1>
+        <button class="list-settings-button" type="button" aria-label="Open list settings" data-list-settings-toggle>
+          <span aria-hidden="true">⚙</span>
+        </button>
+      </div>
     </div>
     <a class="back-link" href="/">Back to households</a>
   </div>
@@ -91,6 +96,30 @@
     <p data-list-toast-message></p>
     <button type="button" data-list-toast-undo>Undo</button>
     <div class="list-toast-timer" data-list-toast-timer></div>
+  </div>
+
+  <div class="item-modal" data-list-settings-overlay hidden>
+    <button
+      class="item-modal-backdrop"
+      type="button"
+      aria-label="Close list settings"
+      data-list-settings-close
+    ></button>
+    <section class="dashboard-card item-edit-panel" data-list-settings-panel hidden>
+      <div class="add-item-panel-header">
+        <div>
+          <p class="dashboard-label">List settings</p>
+          <h2>Category order</h2>
+        </div>
+        <button class="add-item-close" type="button" aria-label="Close list settings" data-list-settings-close>
+          &times;
+        </button>
+      </div>
+      <p class="dashboard-helper">
+        Put categories in your store order here. Categories you have not moved yet will stay alphabetical.
+      </p>
+      <div class="settings-category-list" data-list-settings-category-list></div>
+    </section>
   </div>
 
   <div class="item-modal" data-item-edit-overlay hidden>

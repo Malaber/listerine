@@ -408,9 +408,11 @@ function normalizeItemName(value) {
 function syncModalState(root) {
   const addOverlay = root.querySelector("[data-item-panel-overlay]");
   const editOverlay = root.querySelector("[data-item-edit-overlay]");
+  const settingsOverlay = root.querySelector("[data-list-settings-overlay]");
   const hasModalOpen =
     (addOverlay instanceof HTMLElement && !addOverlay.hidden) ||
-    (editOverlay instanceof HTMLElement && !editOverlay.hidden);
+    (editOverlay instanceof HTMLElement && !editOverlay.hidden) ||
+    (settingsOverlay instanceof HTMLElement && !settingsOverlay.hidden);
 
   root.classList.toggle("has-modal-open", hasModalOpen);
   document.body.classList.toggle("has-list-modal-open", hasModalOpen);
@@ -423,6 +425,8 @@ function setItemPanelOpen(root, isOpen) {
   const nameInput = root.querySelector("[data-item-name-input]");
   const editPanel = root.querySelector("[data-item-edit-panel]");
   const editOverlay = root.querySelector("[data-item-edit-overlay]");
+  const settingsPanel = root.querySelector("[data-list-settings-panel]");
+  const settingsOverlay = root.querySelector("[data-list-settings-overlay]");
 
   if (!panel || !overlay || !toggle) {
     return;
@@ -433,6 +437,10 @@ function setItemPanelOpen(root, isOpen) {
   if (isOpen && editPanel instanceof HTMLElement && editOverlay instanceof HTMLElement) {
     editPanel.hidden = true;
     editOverlay.hidden = true;
+  }
+  if (isOpen && settingsPanel instanceof HTMLElement && settingsOverlay instanceof HTMLElement) {
+    settingsPanel.hidden = true;
+    settingsOverlay.hidden = true;
   }
   toggle.setAttribute("aria-expanded", String(isOpen));
   syncModalState(root);
@@ -642,6 +650,91 @@ function setItemEditPanelOpen(root, state, itemId) {
   }
 }
 
+function renderCategoryOrderSettings(root, state) {
+  const container = root.querySelector("[data-list-settings-category-list]");
+  if (!(container instanceof HTMLElement)) {
+    return;
+  }
+
+  container.innerHTML = "";
+  const orderedCategories = getOrderedCategoryIds(state).map((categoryId) => state.categories.get(categoryId)).filter(Boolean);
+
+  if (orderedCategories.length === 0) {
+    const emptyState = document.createElement("p");
+    emptyState.className = "dashboard-helper";
+    emptyState.textContent = "Create categories in admin to customize the order for this list.";
+    container.appendChild(emptyState);
+    return;
+  }
+
+  orderedCategories.forEach((category, index) => {
+    const row = document.createElement("div");
+    row.className = "settings-category-row";
+
+    const swatch = document.createElement("span");
+    swatch.className = "item-category-swatch";
+    swatch.style.background = category.color || "#cbd5e1";
+    row.appendChild(swatch);
+
+    const copy = document.createElement("div");
+    copy.className = "settings-category-copy";
+
+    const title = document.createElement("strong");
+    title.textContent = category.name;
+    copy.appendChild(title);
+
+    const meta = document.createElement("span");
+    meta.textContent = state.categoryOrder.has(category.id)
+      ? "Pinned in this list order"
+      : "Alphabetical until you move it";
+    copy.appendChild(meta);
+    row.appendChild(copy);
+
+    const actions = document.createElement("div");
+    actions.className = "settings-category-actions";
+
+    const moveUp = document.createElement("button");
+    moveUp.type = "button";
+    moveUp.dataset.settingsCategoryMove = "up";
+    moveUp.dataset.categoryId = category.id;
+    moveUp.setAttribute("aria-label", `Move ${category.name} up`);
+    moveUp.disabled = index === 0;
+    moveUp.textContent = "↑";
+    actions.appendChild(moveUp);
+
+    const moveDown = document.createElement("button");
+    moveDown.type = "button";
+    moveDown.dataset.settingsCategoryMove = "down";
+    moveDown.dataset.categoryId = category.id;
+    moveDown.setAttribute("aria-label", `Move ${category.name} down`);
+    moveDown.disabled = index === orderedCategories.length - 1;
+    moveDown.textContent = "↓";
+    actions.appendChild(moveDown);
+
+    row.appendChild(actions);
+    container.appendChild(row);
+  });
+}
+
+function setListSettingsOpen(root, state, isOpen) {
+  const overlay = root.querySelector("[data-list-settings-overlay]");
+  const panel = root.querySelector("[data-list-settings-panel]");
+  if (!(overlay instanceof HTMLElement) || !(panel instanceof HTMLElement)) {
+    return;
+  }
+
+  overlay.hidden = !isOpen;
+  panel.hidden = !isOpen;
+
+  if (isOpen) {
+    setItemPanelOpen(root, false);
+    setItemEditPanelOpen(root, state, null);
+    renderCategoryOrderSettings(root, state);
+  }
+
+  syncModalState(root);
+}
+
 function renderItemSuggestions(root, state) {
   const suggestionsNode = root.querySelector("[data-item-suggestions]");
   const nameInput = root.querySelector("[data-item-name-input]");
@@ -849,29 +942,6 @@ function renderItems(root, state) {
     headingCopy.appendChild(headingMeta);
     heading.appendChild(headingCopy);
 
-    if (category) {
-      const headerActions = document.createElement("div");
-      headerActions.className = "item-category-actions";
-
-      const moveUp = document.createElement("button");
-      moveUp.type = "button";
-      moveUp.dataset.categoryMove = "up";
-      moveUp.dataset.categoryId = category.id;
-      moveUp.setAttribute("aria-label", `Move ${category.name} up`);
-      moveUp.textContent = "↑";
-      headerActions.appendChild(moveUp);
-
-      const moveDown = document.createElement("button");
-      moveDown.type = "button";
-      moveDown.dataset.categoryMove = "down";
-      moveDown.dataset.categoryId = category.id;
-      moveDown.setAttribute("aria-label", `Move ${category.name} down`);
-      moveDown.textContent = "↓";
-      headerActions.appendChild(moveDown);
-
-      heading.appendChild(headerActions);
-    }
-
     section.appendChild(heading);
 
     items.forEach((item) => {
@@ -1017,6 +1087,7 @@ function renderItems(root, state) {
   }
 
   renderItemSuggestions(root, state);
+  renderCategoryOrderSettings(root, state);
   if (state.editingItemId) {
     setItemEditPanelOpen(root, state, state.editingItemId);
   }
@@ -1081,6 +1152,17 @@ function connectListSocket(root, state) {
       const message = JSON.parse(event.data);
       if (message.type === "list_snapshot") {
         replaceItems(state, message.payload.items || []);
+        state.categoryOrder = new Map(
+          (message.payload.category_order || []).map((entry) => [entry.category_id, entry.sort_order])
+        );
+        renderItems(root, state);
+        return;
+      }
+
+      if (message.type === "category_order_updated") {
+        state.categoryOrder = new Map(
+          (message.payload?.category_order || []).map((entry) => [entry.category_id, entry.sort_order])
+        );
         renderItems(root, state);
         return;
       }
@@ -1163,12 +1245,29 @@ async function initListDetail() {
     });
   });
 
+  root.querySelector("[data-list-settings-toggle]")?.addEventListener("click", () => {
+    const panel = root.querySelector("[data-list-settings-panel]");
+    setListSettingsOpen(root, state, panel instanceof HTMLElement ? panel.hidden : true);
+  });
+
+  root.querySelectorAll("[data-list-settings-close]").forEach((node) => {
+    node.addEventListener("click", () => {
+      setListSettingsOpen(root, state, false);
+    });
+  });
+
   nameInput?.addEventListener("input", () => {
     renderItemSuggestions(root, state);
   });
 
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") {
+      return;
+    }
+
+    const settingsPanel = root.querySelector("[data-list-settings-panel]");
+    if (settingsPanel instanceof HTMLElement && !settingsPanel.hidden) {
+      setListSettingsOpen(root, state, false);
       return;
     }
 
@@ -1304,7 +1403,7 @@ async function initListDetail() {
     const toggleId = target.dataset.itemToggle;
     const deleteId = target.dataset.itemDelete;
     const reuseItemId = target.dataset.itemReuse;
-    const categoryMove = target.dataset.categoryMove;
+    const categoryMove = target.dataset.settingsCategoryMove;
     const categoryId = target.dataset.categoryId;
     const editCard = target.closest("[data-item-edit]");
 
@@ -1320,34 +1419,21 @@ async function initListDetail() {
     try {
       if (categoryMove && categoryId) {
         const orderedCategoryIds = getOrderedCategoryIds(state);
-        const displayedCategoryIds = getDisplayedCategoryIds(state);
-        const displayedCategoryIdSet = new Set(displayedCategoryIds);
-        const currentIndex = displayedCategoryIds.indexOf(categoryId);
+        const currentIndex = orderedCategoryIds.indexOf(categoryId);
         if (currentIndex === -1) {
           return;
         }
 
         const nextIndex = categoryMove === "up" ? currentIndex - 1 : currentIndex + 1;
-        if (nextIndex < 0 || nextIndex >= displayedCategoryIds.length) {
+        if (nextIndex < 0 || nextIndex >= orderedCategoryIds.length) {
           return;
         }
 
-        const nextDisplayedCategoryIds = [...displayedCategoryIds];
-        [nextDisplayedCategoryIds[currentIndex], nextDisplayedCategoryIds[nextIndex]] = [
-          nextDisplayedCategoryIds[nextIndex],
-          nextDisplayedCategoryIds[currentIndex],
+        const nextOrderedCategoryIds = [...orderedCategoryIds];
+        [nextOrderedCategoryIds[currentIndex], nextOrderedCategoryIds[nextIndex]] = [
+          nextOrderedCategoryIds[nextIndex],
+          nextOrderedCategoryIds[currentIndex],
         ];
-
-        let displayedCursor = 0;
-        const nextOrderedCategoryIds = orderedCategoryIds.map((orderedCategoryId) => {
-          if (!displayedCategoryIdSet.has(orderedCategoryId)) {
-            return orderedCategoryId;
-          }
-
-          const replacementCategoryId = nextDisplayedCategoryIds[displayedCursor];
-          displayedCursor += 1;
-          return replacementCategoryId;
-        });
 
         setCategoryOrder(state, deriveManualCategoryIds(state, nextOrderedCategoryIds));
         await saveCategoryOrder(root, state);

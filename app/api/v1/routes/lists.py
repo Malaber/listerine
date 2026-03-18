@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -13,8 +14,30 @@ from app.schemas.domain import (
     ListCategoryOrderOut,
     ListCategoryOrderUpdate,
 )
+from app.services.websocket_hub import hub
 
 router = APIRouter(tags=["lists"])
+
+
+async def _broadcast_category_order(
+    list_id: UUID, user_id: UUID, orders: list[ListCategoryOrder]
+) -> None:
+    payload = [
+        ListCategoryOrderOut(category_id=order.category_id, sort_order=order.sort_order).model_dump(
+            mode="json"
+        )
+        for order in orders
+    ]
+    await hub.broadcast(
+        list_id,
+        {
+            "type": "category_order_updated",
+            "list_id": str(list_id),
+            "timestamp": datetime.now(UTC).isoformat(),
+            "actor_user_id": str(user_id),
+            "payload": {"category_order": payload},
+        },
+    )
 
 
 @router.post("/households/{household_id}/lists", response_model=GroceryListOut)
@@ -98,6 +121,7 @@ async def update_list_category_order(
     await db.commit()
     for order in orders:
         await db.refresh(order)
+    await _broadcast_category_order(list_id, user.id, orders)
     return orders
 
 
