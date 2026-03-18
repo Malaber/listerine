@@ -1,5 +1,65 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>List {{ list_id }}</h1>
-<div id="items"></div>
+<section class="list-shell" data-list-detail data-list-id="{{ list_id }}">
+  <div class="list-hero">
+    <div>
+      <p class="dashboard-kicker">Shopping list</p>
+      <h1 data-list-title>Loading List...</h1>
+      <p class="dashboard-intro">
+        Add items, check them off in the store, and keep the whole household in sync.
+      </p>
+    </div>
+    <a class="back-link" href="/">Back to households</a>
+  </div>
+
+  <div class="dashboard-banner dashboard-banner-error" data-list-error hidden></div>
+  <div class="dashboard-banner dashboard-banner-success" data-list-success hidden></div>
+
+  <section class="dashboard-grid">
+    <div class="dashboard-card">
+      <p class="dashboard-label">Add fast</p>
+      <h2>Add an item</h2>
+      <form class="dashboard-form" data-item-form>
+        <label class="dashboard-field">
+          <span>Item name</span>
+          <input type="text" name="name" placeholder="Milk" maxlength="255" required />
+        </label>
+        <label class="dashboard-field">
+          <span>Quantity</span>
+          <input type="text" name="quantity_text" placeholder="2 bottles" maxlength="120" />
+        </label>
+        <label class="dashboard-field">
+          <span>Note</span>
+          <input type="text" name="note" placeholder="Low fat if possible" />
+        </label>
+        <button type="submit">Add item</button>
+      </form>
+    </div>
+
+    <div class="dashboard-card">
+      <p class="dashboard-label">How it works</p>
+      <h2>Quick guide</h2>
+      <ol class="dashboard-steps">
+        <li>Add a simple item name first.</li>
+        <li>Use quantity for things like 2 packs or 1 kg.</li>
+        <li>Check items off when they are in the cart.</li>
+        <li>Delete items you no longer need.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="dashboard-card">
+    <div class="dashboard-section-heading">
+      <div>
+        <p class="dashboard-label">Items</p>
+        <h2>Current Shopping List</h2>
+      </div>
+    </div>
+    <div class="dashboard-empty" data-item-empty hidden>
+      <h3>No items yet</h3>
+      <p>Add the first item above to start your list.</p>
+    </div>
+    <div class="item-list" data-item-list></div>
+  </section>
+</section>
 {% endblock %}

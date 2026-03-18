@@ -35,6 +35,8 @@ async function main() {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1200 } });
 
   try {
+    await capture(page, "login", "/login", "Login");
+
     const auth = await fetchJson(new URL("/api/v1/auth/preview/login", baseUrl), {
       method: "POST",
     });
@@ -51,7 +53,6 @@ async function main() {
     );
 
     await capture(page, "preview", "/preview", "Preview Household");
-    await capture(page, "login", "/login", "Login");
     await capture(page, "dashboard", "/", "Households and Lists");
     await capture(page, "list-detail", `/lists/${lists[0].id}`, "List");
   } finally {

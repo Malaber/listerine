@@ -4,11 +4,40 @@
 
 Always run `.codex/setup.sh` first.
 
+If `.codex/setup.sh` fails because the host Python is externally managed, use the repo virtualenv
+fallback instead of stopping:
+
+- `.venv/bin/pytest -q`
+- `.venv/bin/black --check .`
+- `.venv/bin/flake8 .`
+
 Then run:
 - `pytest -q`
 - `black --check .`
 - `flake8 .`
 - `node scripts/capture_preview_screenshots.mjs` with the same preview env vars CI uses after starting the preview app locally
+
+## Local testing workflow
+
+Use this sequence for reliable local verification:
+
+1. Run `.codex/setup.sh`.
+2. If setup fails with an externally-managed Python error, use the existing `.venv` commands listed
+   above for Python checks.
+3. Run the Python checks before browser checks:
+   - `pytest -q`
+   - `black --check .`
+   - `flake8 .`
+4. For the preview screenshot flow, prefer a fresh temporary SQLite database instead of reusing
+   `preview.db`, because an old file may not match the current schema.
+5. Start the preview app locally with the CI-style env vars, for example:
+   - `PREVIEW_MODE=true PREVIEW_SEED_DATA=true DATABASE_URL=sqlite+aiosqlite:///./tmp-preview-check.db PYTHONPATH=. .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000`
+6. In a separate shell, run:
+   - `PREVIEW_BASE_URL=http://127.0.0.1:8000 node scripts/capture_preview_screenshots.mjs`
+7. Stop the local preview server after the screenshots complete.
+
+This workflow is the preferred fallback whenever the default setup script or an old local preview
+database prevents the normal CI-like commands from succeeding.
 
 
 ## Testing expectations

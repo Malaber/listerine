@@ -1,5 +1,104 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Households and Lists</h1>
-<p>This dashboard is only shown to authenticated users.</p>
+<section class="dashboard-shell" data-dashboard>
+  <div class="dashboard-hero">
+    <div class="dashboard-copy">
+      <p class="dashboard-kicker">Shared grocery planning</p>
+      <h1>Households and Lists</h1>
+      <p class="dashboard-intro">
+        Start by creating one household for the people who shop together. Then create one or
+        more lists inside that household, like Weekly Groceries, Costco Run, or Party Supplies.
+      </p>
+    </div>
+    <aside class="dashboard-card dashboard-card-accent">
+      <h2>How the data is organized</h2>
+      <ol class="dashboard-steps">
+        <li><strong>You</strong> sign in and become a user.</li>
+        <li><strong>A household</strong> groups the people sharing lists.</li>
+        <li><strong>A list</strong> lives inside one household.</li>
+        <li><strong>Items and categories</strong> live inside a list.</li>
+      </ol>
+      <p class="dashboard-note">
+        If this page is empty, it usually means you have not created your first household yet.
+      </p>
+    </aside>
+  </div>
+
+  <section class="dashboard-grid">
+    <div class="dashboard-card">
+      <div class="dashboard-section-heading">
+        <div>
+          <p class="dashboard-label">Step 1</p>
+          <h2>Create a household</h2>
+        </div>
+      </div>
+      <p class="dashboard-helper">
+        Examples: Home, Flatshare, Family, Office Kitchen.
+      </p>
+      <form class="dashboard-form" data-household-form>
+        <label class="dashboard-field">
+          <span>Household name</span>
+          <input
+            type="text"
+            name="name"
+            placeholder="Home"
+            maxlength="120"
+            required
+          />
+        </label>
+        <button type="submit">Create household</button>
+      </form>
+    </div>
+
+    <div class="dashboard-card">
+      <div class="dashboard-section-heading">
+        <div>
+          <p class="dashboard-label">Step 2</p>
+          <h2>Create a list</h2>
+        </div>
+      </div>
+      <p class="dashboard-helper">
+        Choose a household first, then add a list everyone can open and update.
+      </p>
+      <form class="dashboard-form" data-list-form>
+        <label class="dashboard-field">
+          <span>Household</span>
+          <select name="household_id" data-household-select required>
+            <option value="">Create a household first</option>
+          </select>
+        </label>
+        <label class="dashboard-field">
+          <span>List name</span>
+          <input
+            type="text"
+            name="name"
+            placeholder="Weekly groceries"
+            maxlength="120"
+            required
+          />
+        </label>
+        <button type="submit">Create list</button>
+      </form>
+    </div>
+  </section>
+
+  <div class="dashboard-banner dashboard-banner-error" data-dashboard-error hidden></div>
+  <div class="dashboard-banner dashboard-banner-success" data-dashboard-success hidden></div>
+
+  <section class="dashboard-card dashboard-lists" aria-live="polite">
+    <div class="dashboard-section-heading">
+      <div>
+        <p class="dashboard-label">Your space</p>
+        <h2>Your households</h2>
+      </div>
+    </div>
+    <div class="dashboard-empty" data-dashboard-empty hidden>
+      <h3>No households yet</h3>
+      <p>
+        Create your first household above. Once it exists, you can add lists to it immediately.
+      </p>
+    </div>
+    <div class="dashboard-household-list" data-household-list></div>
+  </section>
+</section>
 {% endblock %}
