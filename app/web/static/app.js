@@ -387,7 +387,7 @@ function formatSuggestionMeta(item) {
   if (item.note) {
     meta.push(item.note);
   }
-  meta.push(item.checked ? "already checked" : "already on this list");
+  meta.push(item.checked ? "checked earlier" : "already on this list");
   return meta.join(" / ");
 }
 
@@ -434,13 +434,22 @@ function renderItemSuggestions(root, state) {
   }
 
   matches.forEach((item) => {
-    const wrapper = document.createElement("div");
-    wrapper.className = "item-suggestion";
+    const wrapper = document.createElement("article");
+    wrapper.className = `item-suggestion${item.checked ? " is-checked" : ""}`;
+
+    const main = document.createElement("div");
+    main.className = "item-main";
+
+    const checkmark = document.createElement("span");
+    checkmark.className = `item-check item-suggestion-check${item.checked ? " is-checked" : ""}`;
+    checkmark.setAttribute("aria-hidden", "true");
+    main.appendChild(checkmark);
 
     const copy = document.createElement("div");
-    copy.className = "item-suggestion-copy";
+    copy.className = "item-copy item-suggestion-copy";
 
     const title = document.createElement("strong");
+    title.className = "item-name";
     title.textContent = item.name;
     copy.appendChild(title);
 
@@ -448,12 +457,19 @@ function renderItemSuggestions(root, state) {
     meta.textContent = formatSuggestionMeta(item);
     copy.appendChild(meta);
 
+    main.appendChild(copy);
+    wrapper.appendChild(main);
+
     const button = document.createElement("button");
     button.type = "button";
-    button.dataset.scrollToItem = item.id;
-    button.textContent = "Show item";
+    button.dataset.itemReuse = item.id;
+    button.setAttribute(
+      "aria-label",
+      item.checked ? `Add ${item.name} back to the list` : `Jump to ${item.name} in the list`
+    );
+    button.textContent = "+";
 
-    wrapper.append(copy, button);
+    wrapper.appendChild(button);
     suggestionsNode.appendChild(wrapper);
   });
 
@@ -742,19 +758,34 @@ async function initListDetail() {
     const toggleId = target.dataset.itemToggle;
     const undoId = target.dataset.itemUndo;
     const deleteId = target.dataset.itemDelete;
-    const scrollToItemId = target.dataset.scrollToItem;
+    const reuseItemId = target.dataset.itemReuse;
 
-    if (scrollToItemId) {
-      setItemPanelOpen(root, false);
-      highlightItem(root, state, scrollToItemId);
-      return;
-    }
-
-    if (!toggleId && !undoId && !deleteId) {
+    if (!toggleId && !undoId && !deleteId && !reuseItemId) {
       return;
     }
 
     try {
+      if (reuseItemId) {
+        const existingItem = state.items.get(reuseItemId);
+        if (!existingItem) {
+          throw new Error("Could not find that item.");
+        }
+        if (existingItem.checked) {
+          const updatedItem = await postJson(`/api/v1/items/${reuseItemId}/uncheck`, {});
+          upsertItem(state, updatedItem, { clearRecent: true });
+          itemForm.reset();
+          renderItems(root, state);
+          setItemPanelOpen(root, false);
+          highlightItem(root, state, reuseItemId);
+          setListMessage(root, "success", "Item added back to the list.");
+          return;
+        }
+
+        setItemPanelOpen(root, false);
+        highlightItem(root, state, reuseItemId);
+        return;
+      }
+
       const actionableId = toggleId || undoId;
       if (actionableId) {
         const existingItem = state.items.get(actionableId);
