@@ -551,6 +551,7 @@ function getOrderedCategoryIds(state) {
 function getDisplayedCategoryIds(state) {
   const itemCategoryIds = new Set(
     [...state.items.values()]
+      .filter((item) => !item.checked)
       .map((item) => item.category_id)
       .filter((categoryId) => categoryId && state.categories.has(categoryId))
   );
@@ -746,14 +747,14 @@ function highlightItem(root, state, itemId) {
   state.highlightTimers.set(itemId, timeoutId);
 }
 
-function renderItems(root, state) {
-  const container = root.querySelector("[data-item-list]");
-  const emptyState = root.querySelector("[data-item-empty]");
-  if (!container || !emptyState) {
-    return;
+function compareActiveItems(state, left, right) {
+  const leftIsUncategorized = !left.category_id;
+  const rightIsUncategorized = !right.category_id;
+  if (leftIsUncategorized !== rightIsUncategorized) {
+    return Number(rightIsUncategorized) - Number(leftIsUncategorized);
   }
 
-  const sortedItems = [...state.items.values()].map((item) => decorateItem(state, item)).sort((left, right) => {
+  if (!leftIsUncategorized && !rightIsUncategorized) {
     const leftCategory = categorySortKey(state, left.category_id);
     const rightCategory = categorySortKey(state, right.category_id);
     if (leftCategory.isExplicit !== rightCategory.isExplicit) {
@@ -765,28 +766,67 @@ function renderItems(root, state) {
     if (leftCategory.name !== rightCategory.name) {
       return leftCategory.name.localeCompare(rightCategory.name);
     }
-    if (left.checked !== right.checked) {
-      return Number(left.checked) - Number(right.checked);
+  }
+
+  if (left.sort_order !== right.sort_order) {
+    return left.sort_order - right.sort_order;
+  }
+  return left.name.localeCompare(right.name);
+}
+
+function compareCheckedItems(left, right) {
+  const leftCheckedAt = left.checked_at ? Date.parse(left.checked_at) : 0;
+  const rightCheckedAt = right.checked_at ? Date.parse(right.checked_at) : 0;
+  if (leftCheckedAt !== rightCheckedAt) {
+    return rightCheckedAt - leftCheckedAt;
+  }
+  return left.name.localeCompare(right.name);
+}
+
+function getActiveGroupOrder(state, items) {
+  const groupKeys = new Set(
+    items.map((item) => item.category_id || "uncategorized")
+  );
+
+  const orderedKeys = ["uncategorized"];
+  getOrderedCategoryIds(state).forEach((categoryId) => {
+    if (groupKeys.has(categoryId)) {
+      orderedKeys.push(categoryId);
     }
-    if (left.sort_order !== right.sort_order) {
-      return left.sort_order - right.sort_order;
-    }
-    return left.name.localeCompare(right.name);
   });
+
+  return orderedKeys.filter((groupKey) => groupKeys.has(groupKey));
+}
+
+function renderItems(root, state) {
+  const container = root.querySelector("[data-item-list]");
+  const emptyState = root.querySelector("[data-item-empty]");
+  if (!container || !emptyState) {
+    return;
+  }
+
+  const decoratedItems = [...state.items.values()].map((item) => decorateItem(state, item));
+  const activeItems = decoratedItems
+    .filter((item) => !item.checked)
+    .sort((left, right) => compareActiveItems(state, left, right));
+  const checkedItems = decoratedItems
+    .filter((item) => item.checked)
+    .sort(compareCheckedItems);
 
   container.innerHTML = "";
-  emptyState.hidden = sortedItems.length > 0;
+  emptyState.hidden = decoratedItems.length > 0;
 
-  const groupedItems = new Map();
-  sortedItems.forEach((item) => {
+  const groupedActiveItems = new Map();
+  activeItems.forEach((item) => {
     const groupKey = item.category_id || "uncategorized";
-    if (!groupedItems.has(groupKey)) {
-      groupedItems.set(groupKey, []);
+    if (!groupedActiveItems.has(groupKey)) {
+      groupedActiveItems.set(groupKey, []);
     }
-    groupedItems.get(groupKey).push(item);
+    groupedActiveItems.get(groupKey).push(item);
   });
 
-  groupedItems.forEach((items, groupKey) => {
+  getActiveGroupOrder(state, activeItems).forEach((groupKey) => {
+    const items = groupedActiveItems.get(groupKey) || [];
     const section = document.createElement("section");
     section.className = "item-category-group";
 
@@ -894,6 +934,87 @@ function renderItems(root, state) {
 
     container.appendChild(section);
   });
+
+  if (checkedItems.length > 0) {
+    const section = document.createElement("section");
+    section.className = "item-category-group";
+
+    const heading = document.createElement("div");
+    heading.className = "item-category-header";
+
+    const swatch = document.createElement("span");
+    swatch.className = "item-category-swatch";
+    swatch.style.background = "#94a3b8";
+    heading.appendChild(swatch);
+
+    const headingCopy = document.createElement("div");
+    const headingTitle = document.createElement("h3");
+    headingTitle.textContent = "Checked off";
+    headingCopy.appendChild(headingTitle);
+
+    const headingMeta = document.createElement("p");
+    headingMeta.textContent = `${checkedItems.length} ${checkedItems.length === 1 ? "item" : "items"}`;
+    headingCopy.appendChild(headingMeta);
+    heading.appendChild(headingCopy);
+    section.appendChild(heading);
+
+    checkedItems.forEach((item) => {
+      const article = document.createElement("article");
+      article.className = "item-card is-checked";
+      article.dataset.itemCard = item.id;
+      article.dataset.itemEdit = item.id;
+
+      const main = document.createElement("div");
+      main.className = "item-main";
+
+      const checkButton = document.createElement("button");
+      checkButton.className = "item-check is-checked";
+      checkButton.type = "button";
+      checkButton.dataset.itemToggle = item.id;
+      checkButton.setAttribute("aria-label", `Uncheck ${item.name}`);
+      main.appendChild(checkButton);
+
+      const copy = document.createElement("div");
+      copy.className = "item-copy";
+
+      const title = document.createElement("h3");
+      title.className = "item-name";
+      title.textContent = item.name;
+      copy.appendChild(title);
+
+      if (item.quantity_text) {
+        const quantity = document.createElement("p");
+        quantity.className = "item-meta";
+        quantity.textContent = `Qty: ${item.quantity_text}`;
+        copy.appendChild(quantity);
+      }
+
+      if (item.note) {
+        const note = document.createElement("p");
+        note.className = "item-meta";
+        note.textContent = item.note;
+        copy.appendChild(note);
+      }
+
+      main.appendChild(copy);
+      article.appendChild(main);
+
+      const actions = document.createElement("div");
+      actions.className = "item-actions";
+
+      const deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.className = "danger-button";
+      deleteButton.dataset.itemDelete = item.id;
+      deleteButton.textContent = "Delete";
+      actions.appendChild(deleteButton);
+
+      article.appendChild(actions);
+      section.appendChild(article);
+    });
+
+    container.appendChild(section);
+  }
 
   renderItemSuggestions(root, state);
   if (state.editingItemId) {
