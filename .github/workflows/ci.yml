@@ -29,6 +29,58 @@ jobs:
       - run: PYTHONPATH=. flake8 .
       - run: PYTHONPATH=. pytest
 
+  browser_e2e:
+    runs-on: ubuntu-latest
+    env:
+      PYTHON_VERSION: '3.14'
+      NODE_VERSION: '24'
+      DATABASE_URL: sqlite+aiosqlite:///./tmp-ci-ui-e2e.db
+      PREVIEW_MODE: 'true'
+      PREVIEW_SEED_DATA: 'true'
+      PREVIEW_UI_E2E_SEED_DATA: 'true'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: ./scripts/setup_env.sh
+      - run: npm install --no-save playwright
+      - run: npx playwright install --with-deps chromium
+      - name: Start preview app
+        run: |
+          PYTHONPATH=. .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 > ui-e2e-server.log 2>&1 &
+          echo $! > ui-e2e-server.pid
+      - name: Wait for preview app
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/health > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Preview app never became healthy" >&2
+          cat ui-e2e-server.log >&2
+          exit 1
+      - name: Run browser ui e2e
+        run: PREVIEW_BASE_URL=http://127.0.0.1:8000 node scripts/run_ui_e2e.mjs
+      - name: Upload browser artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: browser-ui-e2e
+          path: |
+            e2e-artifacts/ui-e2e
+            ui-e2e-server.log
+      - name: Stop preview app
+        if: always()
+        run: |
+          if [ -f ui-e2e-server.pid ]; then
+            kill "$(cat ui-e2e-server.pid)" || true
+          fi
+
   swift_test:
     runs-on: ubuntu-latest
     container:
@@ -69,6 +121,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - python_test
+      - browser_e2e
       - swift_test
       - docker_build
     steps:
