@@ -105,6 +105,7 @@ Create a deployment directory with these two files.
 LISTERINE_IMAGE=ghcr.io/malaber/listerine:0.1.2
 SECRET_KEY=replace-this-with-a-long-random-secret
 SECURE_COOKIES=true
+UVICORN_FORWARDED_ALLOW_IPS=127.0.0.1
 # Optional: first matching user is promoted to admin on login/register
 BOOTSTRAP_ADMIN_EMAIL=admin@example.com
 ```
@@ -121,6 +122,7 @@ services:
       DATABASE_URL: sqlite+aiosqlite:////data/listerine.db
       SECURE_COOKIES: ${SECURE_COOKIES}
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL}
+      UVICORN_FORWARDED_ALLOW_IPS: ${UVICORN_FORWARDED_ALLOW_IPS}
     ports:
       - "8000:8000"
     volumes:
@@ -148,6 +150,8 @@ Notes for production:
 - Set a strong `SECRET_KEY`. The default development value is not safe for deployment.
 - Keep `SECURE_COOKIES=true` when serving over HTTPS.
 - Put the app behind a reverse proxy or load balancer that terminates TLS.
+- Set `UVICORN_FORWARDED_ALLOW_IPS` to the IP or CIDR of your trusted proxy network so forwarded scheme and host headers are only accepted from Traefik or another trusted proxy.
+- If you intentionally want to trust any proxy source, `UVICORN_FORWARDED_ALLOW_IPS=*` is supported, but that is less strict.
 - Keep the `./data` directory on persistent storage so `./data/listerine.db` survives container replacement.
 - To upgrade, change `LISTERINE_IMAGE` to a newer tag such as `ghcr.io/malaber/listerine:0.1.3`, then run `docker compose pull && docker compose up -d`.
 
