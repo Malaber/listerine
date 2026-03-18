@@ -55,7 +55,11 @@ async def list_detail(request: Request, list_id: str) -> Response:
     return templates.TemplateResponse(
         request,
         "list_detail.html",
-        {"list_id": list_id, "is_authenticated": True},
+        {
+            "list_id": list_id,
+            "is_authenticated": True,
+            "access_token": request.session.get("access_token", ""),
+        },
     )
 
 

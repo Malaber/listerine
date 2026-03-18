@@ -395,6 +395,9 @@ def test_web_pages_render_for_logged_in_user(client, monkeypatch) -> None:
     list_detail = client.get("/lists/abc")
     assert list_detail.status_code == 200
     assert 'action="/logout"' in list_detail.text
+    assert "data-item-form-toggle" in list_detail.text
+    assert "data-item-suggestions" in list_detail.text
+    assert "data-list-sync-status" in list_detail.text
 
 
 def test_login_page_localhost_hint(client) -> None:

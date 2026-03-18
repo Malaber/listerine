@@ -340,18 +340,152 @@ function setListMessage(root, type, message) {
   successNode.textContent = message;
 }
 
-function renderItems(root, items) {
+function setListSyncStatus(root, message) {
+  const statusNode = root.querySelector("[data-list-sync-status]");
+  if (statusNode) {
+    statusNode.textContent = message;
+  }
+}
+
+function normalizeItemName(value) {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function setItemPanelOpen(root, isOpen) {
+  const panel = root.querySelector("[data-item-panel]");
+  const toggle = root.querySelector("[data-item-form-toggle]");
+  const nameInput = root.querySelector("[data-item-name-input]");
+
+  if (!panel || !toggle) {
+    return;
+  }
+
+  panel.hidden = !isOpen;
+  toggle.setAttribute("aria-expanded", String(isOpen));
+
+  if (isOpen && nameInput instanceof HTMLElement) {
+    window.setTimeout(() => {
+      nameInput.focus();
+    }, 0);
+  }
+}
+
+function formatSuggestionMeta(item) {
+  const meta = [];
+  if (item.quantity_text) {
+    meta.push(item.quantity_text);
+  }
+  if (item.note) {
+    meta.push(item.note);
+  }
+  meta.push(item.checked ? "already checked" : "already on this list");
+  return meta.join(" / ");
+}
+
+function renderItemSuggestions(root, state) {
+  const suggestionsNode = root.querySelector("[data-item-suggestions]");
+  const nameInput = root.querySelector("[data-item-name-input]");
+
+  if (!suggestionsNode || !(nameInput instanceof HTMLInputElement)) {
+    return;
+  }
+
+  const query = normalizeItemName(nameInput.value);
+  suggestionsNode.innerHTML = "";
+  if (!query) {
+    suggestionsNode.hidden = true;
+    return;
+  }
+
+  const matches = [...state.items.values()]
+    .filter((item) => normalizeItemName(item.name).includes(query))
+    .sort((left, right) => {
+      const leftName = normalizeItemName(left.name);
+      const rightName = normalizeItemName(right.name);
+      const leftExact = Number(leftName === query);
+      const rightExact = Number(rightName === query);
+      if (leftExact !== rightExact) {
+        return rightExact - leftExact;
+      }
+      const leftStarts = Number(leftName.startsWith(query));
+      const rightStarts = Number(rightName.startsWith(query));
+      if (leftStarts !== rightStarts) {
+        return rightStarts - leftStarts;
+      }
+      if (left.checked !== right.checked) {
+        return Number(left.checked) - Number(right.checked);
+      }
+      return left.name.localeCompare(right.name);
+    })
+    .slice(0, 4);
+
+  if (matches.length === 0) {
+    suggestionsNode.hidden = true;
+    return;
+  }
+
+  matches.forEach((item) => {
+    const wrapper = document.createElement("div");
+    wrapper.className = "item-suggestion";
+
+    const copy = document.createElement("div");
+    copy.className = "item-suggestion-copy";
+
+    const title = document.createElement("strong");
+    title.textContent = item.name;
+    copy.appendChild(title);
+
+    const meta = document.createElement("span");
+    meta.textContent = formatSuggestionMeta(item);
+    copy.appendChild(meta);
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.scrollToItem = item.id;
+    button.textContent = "Show item";
+
+    wrapper.append(copy, button);
+    suggestionsNode.appendChild(wrapper);
+  });
+
+  suggestionsNode.hidden = false;
+}
+
+function highlightItem(root, state, itemId) {
+  const itemCard = root.querySelector(`[data-item-card="${itemId}"]`);
+  if (!(itemCard instanceof HTMLElement)) {
+    return;
+  }
+
+  const existingTimer = state.highlightTimers.get(itemId);
+  if (existingTimer) {
+    window.clearTimeout(existingTimer);
+  }
+
+  itemCard.classList.add("is-highlighted");
+  itemCard.scrollIntoView({ behavior: "smooth", block: "center" });
+  const timeoutId = window.setTimeout(() => {
+    itemCard.classList.remove("is-highlighted");
+    state.highlightTimers.delete(itemId);
+  }, 1800);
+  state.highlightTimers.set(itemId, timeoutId);
+}
+
+function renderItems(root, state) {
   const container = root.querySelector("[data-item-list]");
   const emptyState = root.querySelector("[data-item-empty]");
   if (!container || !emptyState) {
     return;
   }
 
-  const sortedItems = [...items].sort((left, right) => {
+  const sortedItems = [...state.items.values()].sort((left, right) => {
     if (left.checked !== right.checked) {
       return Number(left.checked) - Number(right.checked);
     }
-    return left.sort_order - right.sort_order;
+    if (left.sort_order !== right.sort_order) {
+      return left.sort_order - right.sort_order;
+    }
+    return left.name.localeCompare(right.name);
   });
 
   container.innerHTML = "";
@@ -360,27 +494,88 @@ function renderItems(root, items) {
   sortedItems.forEach((item) => {
     const article = document.createElement("article");
     article.className = `item-card${item.checked ? " is-checked" : ""}`;
-    const quantity = item.quantity_text ? `<p class="item-meta">Qty: ${item.quantity_text}</p>` : "";
-    const note = item.note ? `<p class="item-meta">${item.note}</p>` : "";
+    article.dataset.itemCard = item.id;
 
-    article.innerHTML = `
-      <div>
-        <h3>${item.name}</h3>
-        ${quantity}
-        ${note}
-      </div>
-      <div class="item-actions">
-        <button type="button" data-item-toggle="${item.id}">
-          ${item.checked ? "Uncheck" : "Check"}
-        </button>
-        <button type="button" data-item-delete="${item.id}">Delete</button>
-      </div>
-    `;
+    const main = document.createElement("div");
+    main.className = "item-main";
+
+    const checkButton = document.createElement("button");
+    checkButton.className = `item-check${item.checked ? " is-checked" : ""}`;
+    checkButton.type = "button";
+    checkButton.dataset.itemToggle = item.id;
+    checkButton.setAttribute("aria-label", item.checked ? `Uncheck ${item.name}` : `Check ${item.name}`);
+    main.appendChild(checkButton);
+
+    const copy = document.createElement("div");
+    copy.className = "item-copy";
+
+    const title = document.createElement("h3");
+    title.className = "item-name";
+    title.textContent = item.name;
+    copy.appendChild(title);
+
+    if (item.quantity_text) {
+      const quantity = document.createElement("p");
+      quantity.className = "item-meta";
+      quantity.textContent = `Qty: ${item.quantity_text}`;
+      copy.appendChild(quantity);
+    }
+
+    if (item.note) {
+      const note = document.createElement("p");
+      note.className = "item-meta";
+      note.textContent = item.note;
+      copy.appendChild(note);
+    }
+
+    main.appendChild(copy);
+    article.appendChild(main);
+
+    const actions = document.createElement("div");
+    actions.className = "item-actions";
+
+    if (item.checked && state.recentlyChecked.has(item.id)) {
+      const undoButton = document.createElement("button");
+      undoButton.className = "undo-button";
+      undoButton.type = "button";
+      undoButton.dataset.itemUndo = item.id;
+      undoButton.textContent = "Undo";
+      actions.appendChild(undoButton);
+    }
+
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.dataset.itemDelete = item.id;
+    deleteButton.textContent = "Delete";
+    actions.appendChild(deleteButton);
+
+    article.appendChild(actions);
     container.appendChild(article);
   });
+
+  renderItemSuggestions(root, state);
 }
 
-async function loadListDetail(root) {
+function replaceItems(state, items) {
+  state.items = new Map(items.map((item) => [item.id, item]));
+}
+
+function upsertItem(state, item, options = {}) {
+  state.items.set(item.id, item);
+  if (options.markRecent) {
+    state.recentlyChecked.add(item.id);
+  }
+  if (options.clearRecent || !item.checked) {
+    state.recentlyChecked.delete(item.id);
+  }
+}
+
+function removeItem(state, itemId) {
+  state.items.delete(itemId);
+  state.recentlyChecked.delete(itemId);
+}
+
+async function loadListDetail(root, state) {
   const listId = root.dataset.listId;
   const [groceryList, items] = await Promise.all([
     fetchJson(`/api/v1/lists/${listId}`),
@@ -392,7 +587,75 @@ async function loadListDetail(root) {
     title.textContent = groceryList.name;
   }
 
-  renderItems(root, items);
+  state.recentlyChecked.clear();
+  replaceItems(state, items);
+  renderItems(root, state);
+}
+
+function connectListSocket(root, state) {
+  const listId = root.dataset.listId;
+  const token = root.dataset.accessToken;
+  if (!listId || !token) {
+    setListSyncStatus(root, "Live updates unavailable.");
+    return;
+  }
+
+  let isDisposed = false;
+
+  const connect = () => {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const socketUrl = `${protocol}//${window.location.host}/api/v1/ws/lists/${listId}?token=${encodeURIComponent(token)}`;
+    setListSyncStatus(root, "Connecting live updates...");
+    state.socket = new WebSocket(socketUrl);
+
+    state.socket.addEventListener("open", () => {
+      setListSyncStatus(root, "Live updates on.");
+    });
+
+    state.socket.addEventListener("message", (event) => {
+      const message = JSON.parse(event.data);
+      if (message.type === "list_snapshot") {
+        state.recentlyChecked.clear();
+        replaceItems(state, message.payload.items || []);
+        renderItems(root, state);
+        return;
+      }
+
+      const item = message.payload?.item;
+      if (message.type === "item_deleted") {
+        if (item?.id) {
+          removeItem(state, item.id);
+          renderItems(root, state);
+        }
+        return;
+      }
+
+      if (!item) {
+        return;
+      }
+
+      upsertItem(state, item, {
+        markRecent: message.type === "item_checked",
+        clearRecent: message.type === "item_unchecked",
+      });
+      renderItems(root, state);
+    });
+
+    state.socket.addEventListener("close", () => {
+      state.socket = null;
+      if (isDisposed) {
+        return;
+      }
+      setListSyncStatus(root, "Live updates paused. Reconnecting...");
+      window.setTimeout(connect, 1500);
+    });
+  };
+
+  connect();
+  window.addEventListener("beforeunload", () => {
+    isDisposed = true;
+    state.socket?.close();
+  });
 }
 
 async function initListDetail() {
@@ -402,12 +665,33 @@ async function initListDetail() {
   }
 
   const itemForm = root.querySelector("[data-item-form]");
+  const nameInput = root.querySelector("[data-item-name-input]");
   const listId = root.dataset.listId;
+  const state = {
+    highlightTimers: new Map(),
+    items: new Map(),
+    recentlyChecked: new Set(),
+    socket: null,
+  };
 
   const refresh = async () => {
     setListMessage(root, "", "");
-    await loadListDetail(root);
+    await loadListDetail(root, state);
   };
+
+  root.querySelector("[data-item-form-toggle]")?.addEventListener("click", () => {
+    const panel = root.querySelector("[data-item-panel]");
+    setItemPanelOpen(root, panel?.hidden ?? true);
+    renderItemSuggestions(root, state);
+  });
+
+  root.querySelector("[data-item-form-close]")?.addEventListener("click", () => {
+    setItemPanelOpen(root, false);
+  });
+
+  nameInput?.addEventListener("input", () => {
+    renderItemSuggestions(root, state);
+  });
 
   itemForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -429,9 +713,11 @@ async function initListDetail() {
     }
 
     try {
-      await postJson(`/api/v1/lists/${listId}/items`, payload);
+      const createdItem = await postJson(`/api/v1/lists/${listId}/items`, payload);
+      upsertItem(state, createdItem, { clearRecent: true });
       itemForm.reset();
-      await refresh();
+      renderItems(root, state);
+      setItemPanelOpen(root, false);
       setListMessage(root, "success", "Item added.");
     } catch (error) {
       setListMessage(root, "error", error instanceof Error ? error.message : "Could not add item.");
@@ -445,17 +731,35 @@ async function initListDetail() {
     }
 
     const toggleId = target.dataset.itemToggle;
+    const undoId = target.dataset.itemUndo;
     const deleteId = target.dataset.itemDelete;
+    const scrollToItemId = target.dataset.scrollToItem;
 
-    if (!toggleId && !deleteId) {
+    if (scrollToItemId) {
+      setItemPanelOpen(root, false);
+      highlightItem(root, state, scrollToItemId);
+      return;
+    }
+
+    if (!toggleId && !undoId && !deleteId) {
       return;
     }
 
     try {
-      if (toggleId) {
-        const action = target.textContent?.includes("Uncheck") ? "uncheck" : "check";
-        await postJson(`/api/v1/items/${toggleId}/${action}`, {});
-        await refresh();
+      const actionableId = toggleId || undoId;
+      if (actionableId) {
+        const existingItem = state.items.get(actionableId);
+        if (!existingItem) {
+          throw new Error("Could not find that item.");
+        }
+        const shouldUncheck = Boolean(undoId) || existingItem.checked;
+        const action = shouldUncheck ? "uncheck" : "check";
+        const updatedItem = await postJson(`/api/v1/items/${actionableId}/${action}`, {});
+        upsertItem(state, updatedItem, {
+          markRecent: action === "check",
+          clearRecent: action === "uncheck",
+        });
+        renderItems(root, state);
         return;
       }
 
@@ -463,7 +767,8 @@ async function initListDetail() {
       if (!response.ok) {
         throw new Error("Could not delete item.");
       }
-      await refresh();
+      removeItem(state, deleteId);
+      renderItems(root, state);
       setListMessage(root, "success", "Item deleted.");
     } catch (error) {
       setListMessage(root, "error", error instanceof Error ? error.message : "List action failed.");
@@ -472,6 +777,7 @@ async function initListDetail() {
 
   try {
     await refresh();
+    connectListSocket(root, state);
   } catch (error) {
     setListMessage(root, "error", error instanceof Error ? error.message : "Could not load the list.");
   }
