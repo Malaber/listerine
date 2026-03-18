@@ -356,6 +356,38 @@ function setListSyncStatus(root, message) {
   }
 }
 
+function hideUndoToast(root, state) {
+  const toast = root.querySelector("[data-list-toast]");
+  const message = root.querySelector("[data-list-toast-message]");
+  if (!toast || !message) {
+    return;
+  }
+
+  if (state.undoTimerId) {
+    window.clearTimeout(state.undoTimerId);
+  }
+  state.undoTimerId = null;
+  state.undoAction = null;
+  message.textContent = "";
+  toast.hidden = true;
+}
+
+function showUndoToast(root, state, messageText, undoAction) {
+  const toast = root.querySelector("[data-list-toast]");
+  const message = root.querySelector("[data-list-toast-message]");
+  if (!toast || !message) {
+    return;
+  }
+
+  hideUndoToast(root, state);
+  state.undoAction = undoAction;
+  message.textContent = messageText;
+  toast.hidden = false;
+  state.undoTimerId = window.setTimeout(() => {
+    hideUndoToast(root, state);
+  }, 5000);
+}
+
 function normalizeItemName(value) {
   return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
@@ -559,15 +591,6 @@ function renderItems(root, state) {
     const actions = document.createElement("div");
     actions.className = "item-actions";
 
-    if (item.checked && state.recentlyChecked.has(item.id)) {
-      const undoButton = document.createElement("button");
-      undoButton.className = "undo-button";
-      undoButton.type = "button";
-      undoButton.dataset.itemUndo = item.id;
-      undoButton.textContent = "Undo";
-      actions.appendChild(undoButton);
-    }
-
     const deleteButton = document.createElement("button");
     deleteButton.type = "button";
     deleteButton.dataset.itemDelete = item.id;
@@ -585,19 +608,12 @@ function replaceItems(state, items) {
   state.items = new Map(items.map((item) => [item.id, item]));
 }
 
-function upsertItem(state, item, options = {}) {
+function upsertItem(state, item) {
   state.items.set(item.id, item);
-  if (options.markRecent) {
-    state.recentlyChecked.add(item.id);
-  }
-  if (options.clearRecent || !item.checked) {
-    state.recentlyChecked.delete(item.id);
-  }
 }
 
 function removeItem(state, itemId) {
   state.items.delete(itemId);
-  state.recentlyChecked.delete(itemId);
 }
 
 async function loadListDetail(root, state) {
@@ -612,7 +628,6 @@ async function loadListDetail(root, state) {
     title.textContent = groceryList.name;
   }
 
-  state.recentlyChecked.clear();
   replaceItems(state, items);
   renderItems(root, state);
 }
@@ -640,7 +655,6 @@ function connectListSocket(root, state) {
     state.socket.addEventListener("message", (event) => {
       const message = JSON.parse(event.data);
       if (message.type === "list_snapshot") {
-        state.recentlyChecked.clear();
         replaceItems(state, message.payload.items || []);
         renderItems(root, state);
         return;
@@ -659,10 +673,7 @@ function connectListSocket(root, state) {
         return;
       }
 
-      upsertItem(state, item, {
-        markRecent: message.type === "item_checked",
-        clearRecent: message.type === "item_unchecked",
-      });
+      upsertItem(state, item);
       renderItems(root, state);
     });
 
@@ -695,8 +706,9 @@ async function initListDetail() {
   const state = {
     highlightTimers: new Map(),
     items: new Map(),
-    recentlyChecked: new Set(),
     socket: null,
+    undoAction: null,
+    undoTimerId: null,
   };
 
   const refresh = async () => {
@@ -716,6 +728,21 @@ async function initListDetail() {
 
   nameInput?.addEventListener("input", () => {
     renderItemSuggestions(root, state);
+  });
+
+  root.querySelector("[data-list-toast-undo]")?.addEventListener("click", async () => {
+    if (!state.undoAction) {
+      return;
+    }
+
+    const undoAction = state.undoAction;
+    hideUndoToast(root, state);
+
+    try {
+      await undoAction();
+    } catch (error) {
+      setListMessage(root, "error", error instanceof Error ? error.message : "Could not undo action.");
+    }
   });
 
   itemForm.addEventListener("submit", async (event) => {
@@ -739,10 +766,11 @@ async function initListDetail() {
 
     try {
       const createdItem = await postJson(`/api/v1/lists/${listId}/items`, payload);
-      upsertItem(state, createdItem, { clearRecent: true });
+      upsertItem(state, createdItem);
       itemForm.reset();
       renderItems(root, state);
       setItemPanelOpen(root, false);
+      hideUndoToast(root, state);
       setListMessage(root, "success", "Item added.");
     } catch (error) {
       setListMessage(root, "error", error instanceof Error ? error.message : "Could not add item.");
@@ -756,11 +784,10 @@ async function initListDetail() {
     }
 
     const toggleId = target.dataset.itemToggle;
-    const undoId = target.dataset.itemUndo;
     const deleteId = target.dataset.itemDelete;
     const reuseItemId = target.dataset.itemReuse;
 
-    if (!toggleId && !undoId && !deleteId && !reuseItemId) {
+    if (!toggleId && !deleteId && !reuseItemId) {
       return;
     }
 
@@ -772,11 +799,16 @@ async function initListDetail() {
         }
         if (existingItem.checked) {
           const updatedItem = await postJson(`/api/v1/items/${reuseItemId}/uncheck`, {});
-          upsertItem(state, updatedItem, { clearRecent: true });
+          upsertItem(state, updatedItem);
           itemForm.reset();
           renderItems(root, state);
           setItemPanelOpen(root, false);
           highlightItem(root, state, reuseItemId);
+          showUndoToast(root, state, `${existingItem.name} added back to the list.`, async () => {
+            const revertedItem = await postJson(`/api/v1/items/${reuseItemId}/check`, {});
+            upsertItem(state, revertedItem);
+            renderItems(root, state);
+          });
           setListMessage(root, "success", "Item added back to the list.");
           return;
         }
@@ -786,23 +818,28 @@ async function initListDetail() {
         return;
       }
 
-      const actionableId = toggleId || undoId;
-      if (actionableId) {
-        const existingItem = state.items.get(actionableId);
+      if (toggleId) {
+        const existingItem = state.items.get(toggleId);
         if (!existingItem) {
           throw new Error("Could not find that item.");
         }
-        const shouldUncheck = Boolean(undoId) || existingItem.checked;
-        const action = shouldUncheck ? "uncheck" : "check";
-        const updatedItem = await postJson(`/api/v1/items/${actionableId}/${action}`, {});
-        upsertItem(state, updatedItem, {
-          markRecent: action === "check",
-          clearRecent: action === "uncheck",
-        });
+        const action = existingItem.checked ? "uncheck" : "check";
+        const updatedItem = await postJson(`/api/v1/items/${toggleId}/${action}`, {});
+        upsertItem(state, updatedItem);
         renderItems(root, state);
+        showUndoToast(root, state, `${existingItem.name} ${action === "check" ? "checked" : "unchecked"}.`, async () => {
+          const revertedAction = action === "check" ? "uncheck" : "check";
+          const revertedItem = await postJson(`/api/v1/items/${toggleId}/${revertedAction}`, {});
+          upsertItem(state, revertedItem);
+          renderItems(root, state);
+        });
         return;
       }
 
+      const deletedItem = state.items.get(deleteId);
+      if (!deletedItem) {
+        throw new Error("Could not find that item.");
+      }
       const response = await fetch(`/api/v1/items/${deleteId}`, { method: "DELETE" });
       if (response.status === 401) {
         window.location.assign("/login");
@@ -813,6 +850,21 @@ async function initListDetail() {
       }
       removeItem(state, deleteId);
       renderItems(root, state);
+      showUndoToast(root, state, `${deletedItem.name} deleted.`, async () => {
+        const restoredItem = await postJson(`/api/v1/lists/${listId}/items`, {
+          name: deletedItem.name,
+          quantity_text: deletedItem.quantity_text,
+          note: deletedItem.note,
+          category_id: deletedItem.category_id,
+          sort_order: deletedItem.sort_order,
+        });
+        let nextItem = restoredItem;
+        if (deletedItem.checked) {
+          nextItem = await postJson(`/api/v1/items/${restoredItem.id}/check`, {});
+        }
+        upsertItem(state, nextItem);
+        renderItems(root, state);
+      });
       setListMessage(root, "success", "Item deleted.");
     } catch (error) {
       setListMessage(root, "error", error instanceof Error ? error.message : "List action failed.");
