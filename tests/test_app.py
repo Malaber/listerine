@@ -354,6 +354,25 @@ def test_web_pages_require_login(client) -> None:
     assert "navigator.credentials.get" in script.text
 
 
+def test_login_page_redirects_for_logged_in_user(client, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: _mock_verified_registration(),
+    )
+
+    email = f"{uuid4()}@example.com"
+    client.post("/api/v1/auth/register/options", json={"email": email, "display_name": "User"})
+    verify = client.post(
+        "/api/v1/auth/register/verify",
+        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+    )
+    assert verify.status_code == 200
+
+    response = client.get("/login", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/"
+
+
 def test_web_pages_render_for_logged_in_user(client, monkeypatch) -> None:
     monkeypatch.setattr(
         "app.api.v1.routes.auth.verify_registration_response",

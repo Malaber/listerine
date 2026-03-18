@@ -24,7 +24,9 @@ def _has_session_access_token(request: Request) -> bool:
 
 
 @router.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request) -> HTMLResponse:
+async def login_page(request: Request) -> Response:
+    if _has_session_access_token(request):
+        return RedirectResponse(url="/", status_code=303)
     localhost_hint = request.url.hostname == "127.0.0.1"
     return templates.TemplateResponse(
         request,
