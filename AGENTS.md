@@ -8,12 +8,14 @@ Then run:
 - `pytest -q`
 - `black --check .`
 - `flake8 .`
+- `node scripts/capture_preview_screenshots.mjs` with the same preview env vars CI uses after starting the preview app locally
 
 
 ## Testing expectations
 
 - Test coverage must remain at 100%.
 - Any new Python code must include automated tests that exercise the new behavior and keep coverage at 100%.
+- Before pushing, run all local checks that correspond to CI jobs and fix any failures first.
 
 ## Failure handling
 
