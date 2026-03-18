@@ -1,15 +1,15 @@
 import Foundation
 
-protocol BackendURLStoring {
+public protocol BackendURLStoring: Sendable {
     func load() -> AppConfiguration
     func save(backendURLString: String) throws -> AppConfiguration
     func clear()
 }
 
-enum BackendURLStoreError: LocalizedError {
+public enum BackendURLStoreError: LocalizedError, Equatable {
     case invalidURL
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .invalidURL:
             return "Enter a valid http or https backend URL."
@@ -17,15 +17,19 @@ enum BackendURLStoreError: LocalizedError {
     }
 }
 
-final class BackendURLStore: BackendURLStoring {
+public final class BackendURLStore: BackendURLStoring, @unchecked Sendable {
     private let userDefaults: UserDefaults
-    private let backendURLKey = "listerine.backend-url"
+    private let backendURLKey: String
 
-    init(userDefaults: UserDefaults = .standard) {
+    public init(
+        userDefaults: UserDefaults = .standard,
+        backendURLKey: String = "listerine.backend-url"
+    ) {
         self.userDefaults = userDefaults
+        self.backendURLKey = backendURLKey
     }
 
-    func load() -> AppConfiguration {
+    public func load() -> AppConfiguration {
         guard
             let storedURL = userDefaults.string(forKey: backendURLKey),
             let url = URL(string: storedURL)
@@ -36,7 +40,7 @@ final class BackendURLStore: BackendURLStoring {
         return AppConfiguration(backendURL: url)
     }
 
-    func save(backendURLString: String) throws -> AppConfiguration {
+    public func save(backendURLString: String) throws -> AppConfiguration {
         let trimmedURL = backendURLString.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard
@@ -52,7 +56,7 @@ final class BackendURLStore: BackendURLStoring {
         return AppConfiguration(backendURL: url)
     }
 
-    func clear() {
+    public func clear() {
         userDefaults.removeObject(forKey: backendURLKey)
     }
 }

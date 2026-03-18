@@ -1,10 +1,11 @@
+import ListerineCore
 import SwiftUI
 
 @main
 struct ListerineApp: App {
     @StateObject private var authViewModel = AuthViewModel(
         urlStore: BackendURLStore(),
-        passkeyService: PasskeyAuthService()
+        passkeyService: PasskeyAuthService(client: ApplePasskeyClient())
     )
 
     var body: some Scene {

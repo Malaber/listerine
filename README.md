@@ -89,4 +89,5 @@ It includes:
 - backend URL entry and persistence on first launch
 - passkey sign-up and log-in buttons
 - `AuthenticationServices`-based placeholder request creation while backend passkey endpoints are still in progress
+- a Swift package test suite with a coverage gate for the iOS client core logic
 - App Store release notes in `ios/ListerineIOS/README.md`

@@ -1,3 +1,4 @@
+import ListerineCore
 import SwiftUI
 
 struct RootView: View {
@@ -101,6 +102,9 @@ struct RootView: View {
 #Preview {
     RootView()
         .environmentObject(
-            AuthViewModel(urlStore: BackendURLStore(), passkeyService: PasskeyAuthService())
+            AuthViewModel(
+                urlStore: BackendURLStore(),
+                passkeyService: PasskeyAuthService(client: ApplePasskeyClient())
+            )
         )
 }

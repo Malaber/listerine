@@ -1,23 +1,37 @@
 # Listerine iPhone app
 
-This folder contains a starter SwiftUI iPhone client for Listerine.
+This folder contains a starter SwiftUI iPhone client for Listerine plus a Swift package with automated tests for the app's core logic.
+
+## Folder layout
+
+- `Package.swift` builds the reusable `ListerineCore` module and its test suite
+- `Sources/ListerineCore/` contains the backend URL persistence, passkey scaffolding, and authentication view model logic
+- `App/` contains the SwiftUI application shell and the Apple passkey bridge for Xcode app targets
+- `Tests/ListerineCoreTests/` contains high-coverage tests for the app's core behavior
+
+## Run tests locally
+
+```bash
+cd ios/ListerineIOS
+./Scripts/check_coverage.sh
+```
+
+## Project setup in Xcode
+
+1. Open Xcode 16 or newer on macOS.
+2. Open `ios/ListerineIOS/Package.swift` in Xcode to inspect or run the tests for `ListerineCore`.
+3. Create a new **App** project in Xcode named `Listerine` and add `ListerineCore` as a local package dependency from this folder.
+4. Copy the files from `ios/ListerineIOS/App/` into that Xcode app target.
+5. Set the deployment target to **iOS 16.0** or newer.
+6. Run the app on an iPhone simulator or device.
 
 ## Included app flow
 
 - first-launch backend URL entry and local persistence
 - passkey sign-up button
 - passkey login button
-- placeholder passkey request generation using `AuthenticationServices`
+- placeholder passkey request generation using `AuthenticationServices` on Apple platforms
 - integration notes for connecting to the future backend passkey endpoints
-
-## Project setup in Xcode
-
-1. Open Xcode 16 or newer on macOS.
-2. Create a new **App** project named `Listerine` using **SwiftUI** and **Swift**.
-3. Replace the generated Swift files with the source files from this folder.
-4. Add the `AuthenticationServices` framework if Xcode does not link it automatically.
-5. Set the deployment target to **iOS 16.0** or newer.
-6. Run the app on an iPhone simulator or device.
 
 ## Backend work needed to finish passkey auth
 
@@ -29,7 +43,7 @@ The app is intentionally ready only up to local passkey request creation. To com
 4. verify the assertion response and establish an authenticated session or token
 5. expose the relying party ID and any environment-specific passkey metadata the app should trust
 
-When those routes exist, update `PasskeyAuthService.swift` to fetch the challenge from the configured backend URL and POST the completed registration/assertion payload back to the API.
+When those routes exist, update `ApplePasskeyClient.swift` to submit server-provided challenges and send the completed registration/assertion payload back to the API.
 
 ## Shipping to the App Store
 
