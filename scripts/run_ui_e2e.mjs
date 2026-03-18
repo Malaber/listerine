@@ -5,8 +5,14 @@ import { chromium } from "playwright";
 
 const baseUrl = process.env.PREVIEW_BASE_URL ?? "http://127.0.0.1:8000";
 const artifactDir = process.env.PREVIEW_ARTIFACT_DIR ?? "e2e-artifacts/ui-e2e";
+const videoDir = path.join(artifactDir, "videos");
 const previewEmail = "preview@example.com";
 const fixtureListName = process.env.UI_E2E_LIST_NAME ?? "Browser Test Shop";
+
+async function resetDir(dir) {
+  await fs.rm(dir, { recursive: true, force: true });
+  await fs.mkdir(dir, { recursive: true });
+}
 
 async function ensureDir(dir) {
   await fs.mkdir(dir, { recursive: true });
@@ -112,10 +118,17 @@ function itemCard(page, text) {
 }
 
 async function main() {
-  await ensureDir(artifactDir);
+  await resetDir(artifactDir);
+  await ensureDir(videoDir);
 
   const browser = await chromium.launch();
-  const context = await browser.newContext({ viewport: { width: 1440, height: 1200 } });
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 1200 },
+    recordVideo: {
+      dir: videoDir,
+      size: { width: 1440, height: 1200 },
+    },
+  });
   const page = await context.newPage();
 
   try {

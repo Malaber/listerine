@@ -71,6 +71,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: browser-ui-e2e
+          retention-days: 2
           path: |
             e2e-artifacts/ui-e2e
             ui-e2e-server.log
