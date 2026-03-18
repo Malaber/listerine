@@ -419,6 +419,10 @@ main {
   gap: 0.75rem;
 }
 
+.item-category-header:not(:has(.item-category-actions)) {
+  justify-content: flex-start;
+}
+
 .item-category-swatch {
   width: 0.9rem;
   height: 0.9rem;
