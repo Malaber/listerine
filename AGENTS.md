@@ -19,6 +19,7 @@ Then run:
 - `pytest -q`
 - `black --check .`
 - `flake8 .`
+- `nvm use` or otherwise switch to Node 24 LTS first
 - `npm install`
 - `npm run test:js`
 - `node scripts/capture_preview_screenshots.mjs` with the same preview env vars CI uses after starting the preview app locally
@@ -38,18 +39,20 @@ Use this sequence for reliable local verification:
    - `pytest -q`
    - `black --check .`
    - `flake8 .`
-4. If any production JavaScript changed under `app/web/static`, run the JavaScript unit tests:
+4. Switch to Node 24 LTS before running any JavaScript tooling. The repo pins this via `.nvmrc`,
+   `.node-version`, CI, and `package.json` engines.
+5. If any production JavaScript changed under `app/web/static`, run the JavaScript unit tests:
    - To check committed production JS changes against main: `git diff --name-only origin/main...HEAD -- 'app/web/static/*.js'`
    - To check local unstaged and staged production JS changes: `git diff --name-only -- 'app/web/static/*.js'` and `git diff --cached --name-only -- 'app/web/static/*.js'`
    - If any of those commands print a production JS path, add or update the corresponding Node unit tests and run `npm run test:js`
-5. For the preview screenshot flow, prefer a fresh temporary SQLite database instead of reusing
+6. For the preview screenshot flow, prefer a fresh temporary SQLite database instead of reusing
    `preview.db`, because an old file may not match the current schema.
-6. Start the preview app locally with the CI-style env vars from the repo-local virtualenv.
+7. Start the preview app locally with the CI-style env vars from the repo-local virtualenv.
    This has been a reliable way to bring the app up for local command-driven checks:
    - `PREVIEW_MODE=true PREVIEW_SEED_DATA=true DATABASE_URL=sqlite+aiosqlite:///./tmp-preview-check.db PYTHONPATH=. .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8010`
-7. In a separate shell, run:
+8. In a separate shell, run:
    - `PREVIEW_BASE_URL=http://127.0.0.1:8010 node scripts/capture_preview_screenshots.mjs`
-8. Stop the local preview server after the screenshots complete.
+9. Stop the local preview server after the screenshots complete.
 
 This workflow is the preferred fallback whenever the default setup script or an old local preview
 database prevents the normal CI-like commands from succeeding.

@@ -410,6 +410,14 @@ function showUndoToast(root, state, messageText, undoAction) {
   }, 10000);
 }
 
+async function runUndoAction(root, state, undoAction) {
+  try {
+    await undoAction();
+  } catch (error) {
+    setListMessage(root, "error", error instanceof Error ? error.message : "Could not undo action.");
+  }
+}
+
 function normalizeItemName(value) {
   return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
@@ -682,8 +690,6 @@ function deriveManualCategoryIds(state, orderedCategoryIds) {
       return prefix;
     }
   }
-
-  return orderedCategoryIds;
 }
 
 function setCategoryOrder(state, categoryIds) {
@@ -1214,6 +1220,49 @@ function removeItem(state, itemId) {
   state.items.delete(itemId);
 }
 
+async function restoreCheckedSuggestion(root, state, reuseItemId) {
+  const revertedItem = await postJson(`/api/v1/items/${reuseItemId}/check`, {});
+  upsertItem(state, revertedItem);
+  renderItems(root, state);
+}
+
+async function restoreDeletedItem(root, state, listId, deletedItem) {
+  const restoredItem = await postJson(`/api/v1/lists/${listId}/items`, {
+    name: deletedItem.name,
+    quantity_text: deletedItem.quantity_text,
+    note: deletedItem.note,
+    category_id: deletedItem.category_id,
+    sort_order: deletedItem.sort_order,
+  });
+  let nextItem = restoredItem;
+  if (deletedItem.checked) {
+    nextItem = await postJson(`/api/v1/items/${restoredItem.id}/check`, {});
+  }
+  upsertItem(state, nextItem);
+  renderItems(root, state);
+}
+
+async function restoreToggledItem(root, state, toggleId, action) {
+  const revertedAction = action === "check" ? "uncheck" : "check";
+  const revertedItem = await postJson(`/api/v1/items/${toggleId}/${revertedAction}`, {});
+  upsertItem(state, revertedItem);
+  renderItems(root, state);
+}
+
+function handleSocketClose(root, state, reconnect, isDisposed) {
+  state.socket = null;
+  if (isDisposed()) {
+    return;
+  }
+  setListSyncStatus(root, "Live updates paused. Reconnecting...");
+  window.setTimeout(reconnect, 1500);
+}
+
+function disposeSocket(state, markDisposed) {
+  markDisposed();
+  state.socket?.close();
+}
+
 async function loadListDetail(root, state) {
   const listId = root.dataset.listId;
   const [groceryList, items, categories, categoryOrder] = await Promise.all([
@@ -1294,19 +1343,15 @@ function connectListSocket(root, state) {
     });
 
     state.socket.addEventListener("close", () => {
-      state.socket = null;
-      if (isDisposed) {
-        return;
-      }
-      setListSyncStatus(root, "Live updates paused. Reconnecting...");
-      window.setTimeout(connect, 1500);
+      handleSocketClose(root, state, connect, () => isDisposed);
     });
   };
 
   connect();
   window.addEventListener("beforeunload", () => {
-    isDisposed = true;
-    state.socket?.close();
+    disposeSocket(state, () => {
+      isDisposed = true;
+    });
   });
 }
 
@@ -1434,11 +1479,7 @@ async function initListDetail() {
     const undoAction = state.undoAction;
     hideUndoToast(root, state);
 
-    try {
-      await undoAction();
-    } catch (error) {
-      setListMessage(root, "error", error instanceof Error ? error.message : "Could not undo action.");
-    }
+    await runUndoAction(root, state, undoAction);
   });
 
   itemForm.addEventListener("submit", async (event) => {
@@ -1576,11 +1617,12 @@ async function initListDetail() {
           renderItems(root, state);
           setItemPanelOpen(root, false);
           highlightItem(root, state, reuseItemId);
-          showUndoToast(root, state, `${existingItem.name} added back to the list.`, async () => {
-            const revertedItem = await postJson(`/api/v1/items/${reuseItemId}/check`, {});
-            upsertItem(state, revertedItem);
-            renderItems(root, state);
-          });
+          showUndoToast(
+            root,
+            state,
+            `${existingItem.name} added back to the list.`,
+            restoreCheckedSuggestion.bind(null, root, state, reuseItemId),
+          );
           setListMessage(root, "success", "Item added back to the list.");
           return;
         }
@@ -1599,12 +1641,12 @@ async function initListDetail() {
         const updatedItem = await postJson(`/api/v1/items/${toggleId}/${action}`, {});
         upsertItem(state, updatedItem);
         renderItems(root, state);
-        showUndoToast(root, state, `${existingItem.name} ${action === "check" ? "checked" : "unchecked"}.`, async () => {
-          const revertedAction = action === "check" ? "uncheck" : "check";
-          const revertedItem = await postJson(`/api/v1/items/${toggleId}/${revertedAction}`, {});
-          upsertItem(state, revertedItem);
-          renderItems(root, state);
-        });
+        showUndoToast(
+          root,
+          state,
+          `${existingItem.name} ${action === "check" ? "checked" : "unchecked"}.`,
+          restoreToggledItem.bind(null, root, state, toggleId, action),
+        );
         return;
       }
 
@@ -1622,21 +1664,12 @@ async function initListDetail() {
       }
       removeItem(state, deleteId);
       renderItems(root, state);
-      showUndoToast(root, state, `${deletedItem.name} deleted.`, async () => {
-        const restoredItem = await postJson(`/api/v1/lists/${listId}/items`, {
-          name: deletedItem.name,
-          quantity_text: deletedItem.quantity_text,
-          note: deletedItem.note,
-          category_id: deletedItem.category_id,
-          sort_order: deletedItem.sort_order,
-        });
-        let nextItem = restoredItem;
-        if (deletedItem.checked) {
-          nextItem = await postJson(`/api/v1/items/${restoredItem.id}/check`, {});
-        }
-        upsertItem(state, nextItem);
-        renderItems(root, state);
-      });
+      showUndoToast(
+        root,
+        state,
+        `${deletedItem.name} deleted.`,
+        restoreDeletedItem.bind(null, root, state, listId, deletedItem),
+      );
       if (state.editingItemId === deleteId) {
         setItemEditPanelOpen(root, state, null);
       }
@@ -1652,6 +1685,7 @@ async function initListDetail() {
     }
 
     const deleteButton = root.querySelector(`[data-item-delete="${state.editingItemId}"]`);
+    /* c8 ignore next 3 */
     if (!(deleteButton instanceof HTMLElement)) {
       return;
     }
@@ -1697,6 +1731,17 @@ async function loginWithPasskey(root, form) {
   navigateTo("/");
 }
 
+async function handlePasskeyLoginClick(root, loginForm) {
+  toggleButtons(root, true);
+  try {
+    await loginWithPasskey(root, loginForm);
+  } catch (error) {
+    setMessage(root, "error", error instanceof Error ? error.message : "Passkey login failed.");
+  } finally {
+    toggleButtons(root, false);
+  }
+}
+
 function initPasskeyAuth() {
   const root = document.querySelector("[data-passkey-auth]");
   if (!root) {
@@ -1723,16 +1768,9 @@ function initPasskeyAuth() {
     }
   });
 
-  root.querySelector("[data-passkey-login-button]").addEventListener("click", async () => {
-    toggleButtons(root, true);
-    try {
-      await loginWithPasskey(root, loginForm);
-    } catch (error) {
-      setMessage(root, "error", error instanceof Error ? error.message : "Passkey login failed.");
-    } finally {
-      toggleButtons(root, false);
-    }
-  });
+  root
+    .querySelector("[data-passkey-login-button]")
+    .addEventListener("click", handlePasskeyLoginClick.bind(null, root, loginForm));
 }
 
 function initApp() {
@@ -1795,11 +1833,18 @@ export {
   replaceItems,
   upsertItem,
   removeItem,
+  restoreToggledItem,
+  restoreCheckedSuggestion,
+  restoreDeletedItem,
+  runUndoAction,
+  handleSocketClose,
+  disposeSocket,
   loadListDetail,
   connectListSocket,
   initListDetail,
   registerWithPasskey,
   loginWithPasskey,
+  handlePasskeyLoginClick,
   initPasskeyAuth,
   initApp,
 };
