@@ -16,16 +16,17 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PYTHON_VERSION: '3.14'
-      NODE_VERSION: '22'
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+      NODE_VERSION: '24'
       DATABASE_URL: sqlite+aiosqlite:///./preview.db
       PREVIEW_MODE: 'true'
       PREVIEW_SEED_DATA: 'true'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
       - run: ./scripts/setup_env.sh
@@ -49,7 +50,7 @@ jobs:
       - name: Run browser e2e screenshot flow
         run: node scripts/capture_preview_screenshots.mjs
       - name: Upload screenshots
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: pr-preview-screenshots
           path: |
