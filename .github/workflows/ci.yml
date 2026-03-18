@@ -90,8 +90,76 @@ jobs:
       - name: Run Swift package tests with coverage gate
         run: cd ios/ListerineIOS && ./Scripts/check_coverage.sh
 
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      base_version: ${{ steps.version.outputs.base_version }}
+      release_version: ${{ steps.version.outputs.release_version }}
+      git_tag: ${{ steps.version.outputs.git_tag }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Compute release version
+        id: version
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          python - <<'PY'
+          import os
+          import subprocess
+          from pathlib import Path
+
+          def tag_exists(tag: str) -> bool:
+              return subprocess.run(
+                  ["git", "rev-parse", "--verify", "--quiet", tag],
+                  check=False,
+                  stdout=subprocess.DEVNULL,
+                  stderr=subprocess.DEVNULL,
+              ).returncode == 0
+
+          def next_stable_version(version: str) -> str:
+              major, minor, patch = map(int, version.split("."))
+              candidate = f"{major}.{minor}.{patch}"
+              while tag_exists(f"v{candidate}"):
+                  patch += 1
+                  candidate = f"{major}.{minor}.{patch}"
+              return candidate
+
+          def next_rc_version(version: str, run_number: int) -> str:
+              rc_number = run_number
+              candidate = f"{version}-rc.{rc_number}"
+              while tag_exists(f"v{candidate}"):
+                  rc_number += 1
+                  candidate = f"{version}-rc.{rc_number}"
+              return candidate
+
+          base_version = Path("VERSION").read_text(encoding="utf-8").strip()
+          ref_name = os.environ["REF_NAME"]
+          run_number = int(os.environ["RUN_NUMBER"])
+
+          if ref_name == "main":
+              release_version = next_stable_version(base_version)
+          else:
+              release_version = next_rc_version(base_version, run_number)
+
+          github_output = Path(os.environ["GITHUB_OUTPUT"])
+          with github_output.open("a", encoding="utf-8") as fh:
+              fh.write(f"base_version={base_version}\n")
+              fh.write(f"release_version={release_version}\n")
+              fh.write(f"git_tag=v{release_version}\n")
+          PY
+
   docker_build:
     runs-on: ubuntu-latest
+    needs:
+      - python_test
+      - swift_test
+      - version
     outputs:
       image: ${{ steps.image.outputs.image }}
     steps:
@@ -124,38 +192,14 @@ jobs:
       - browser_e2e
       - swift_test
       - docker_build
+      - version
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v6
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-      - name: Compute release version
-        id: version
-        env:
-          REF_NAME: ${{ github.ref_name }}
-          RUN_NUMBER: ${{ github.run_number }}
-        run: |
-          BASE_VERSION=$(python - <<'PY'
-          import tomllib
-          with open('pyproject.toml', 'rb') as fh:
-              print(tomllib.load(fh)['project']['version'])
-          PY
-          )
-
-          if [ "$REF_NAME" = "main" ]; then
-            RELEASE_VERSION="$BASE_VERSION"
-          else
-            RELEASE_VERSION="$BASE_VERSION-rc.$RUN_NUMBER"
-          fi
-
-          echo "base_version=$BASE_VERSION" >> "$GITHUB_OUTPUT"
-          echo "release_version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
-          echo "git_tag=v$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
       - name: Create or update git tag
         env:
-          GIT_TAG: ${{ steps.version.outputs.git_tag }}
+          GIT_TAG: ${{ needs.version.outputs.git_tag }}
         run: |
           if git rev-parse "$GIT_TAG" >/dev/null 2>&1; then
             echo "Tag $GIT_TAG already exists."
@@ -174,7 +218,7 @@ jobs:
       - name: Promote tested image to release tag
         env:
           IMAGE: ${{ needs.docker_build.outputs.image }}
-          RELEASE_VERSION: ${{ steps.version.outputs.release_version }}
+          RELEASE_VERSION: ${{ needs.version.outputs.release_version }}
         run: |
           docker buildx imagetools create \
             --tag "$IMAGE:$RELEASE_VERSION" \
