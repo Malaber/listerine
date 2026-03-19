@@ -26,19 +26,19 @@ uvicorn app.main:app --reload
 Open `http://localhost:8000/docs`.
 
 
-## Pull request preview screenshots
+## Browser UI e2e
 
-GitHub cannot host a persistent FastAPI staging environment by itself, but it can run a seeded browser e2e smoke flow for every pull request and attach screenshots to the workflow run.
+The repo includes a seeded Playwright browser e2e flow in CI.
 
-This repo now includes a `PR Preview Screenshots` workflow that:
+That flow:
 
 - starts the app in `PREVIEW_MODE`
-- auto-seeds a demo account, household, categories, and grocery items
+- auto-seeds a demo household, a second invitee user, categories, and grocery items
 - opens the app in Chromium with Playwright
-- verifies key routes render and captures screenshots
-- uploads the results as the `pr-preview-screenshots` workflow artifact
+- verifies login gating, list interactions, websocket sync, and invite acceptance
+- records browser video and screenshots into the `browser-ui-e2e` artifact
 
-To enable it in GitHub, just keep Actions enabled for the repository; no external hosting service is required for this screenshot-based PR preview flow.
+No separate screenshot-only workflow is needed.
 
 For local preview testing:
 

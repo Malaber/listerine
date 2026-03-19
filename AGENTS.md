@@ -19,7 +19,7 @@ Then run:
 - `pytest -q`
 - `black --check .`
 - `flake8 .`
-- `node scripts/capture_preview_screenshots.mjs` with the same preview env vars CI uses after starting the preview app locally
+- `node scripts/run_ui_e2e.mjs` with the same preview env vars CI uses after starting the preview app locally
 
 ## Local testing workflow
 
@@ -36,23 +36,16 @@ Use this sequence for reliable local verification:
    - `pytest -q`
    - `black --check .`
    - `flake8 .`
-4. For the preview screenshot flow, prefer a fresh temporary SQLite database instead of reusing
+4. For the browser UI e2e flow, prefer a fresh temporary SQLite database instead of reusing
    `preview.db`, because an old file may not match the current schema.
 5. Start the preview app locally with the CI-style env vars from the repo-local virtualenv.
    This has been a reliable way to bring the app up for local command-driven checks:
-   - `PREVIEW_MODE=true PREVIEW_SEED_DATA=true DATABASE_URL=sqlite+aiosqlite:///./tmp-preview-check.db PYTHONPATH=. .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8010`
+   - `PREVIEW_MODE=true PREVIEW_SEED_DATA=true PREVIEW_UI_E2E_SEED_DATA=true DATABASE_URL=sqlite+aiosqlite:///./tmp-preview-check.db PYTHONPATH=. .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8010`
 6. In a separate shell, run:
-   - `PREVIEW_BASE_URL=http://127.0.0.1:8010 node scripts/capture_preview_screenshots.mjs`
-7. Stop the local preview server after the screenshots complete.
-
-For the seeded browser e2e flow, use a dedicated temporary database and the UI e2e seed flag:
-
-1. Start the preview app:
-   - `PREVIEW_MODE=true PREVIEW_SEED_DATA=true PREVIEW_UI_E2E_SEED_DATA=true DATABASE_URL=sqlite+aiosqlite:///./tmp-ui-e2e-manual.db PYTHONPATH=. .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000`
-2. In a separate shell, run:
-   - `PREVIEW_BASE_URL=http://127.0.0.1:8000 node scripts/run_ui_e2e.mjs`
-3. If you want a completely fresh run, delete `tmp-ui-e2e-manual.db` before restarting the server.
-4. Stop the preview server after the e2e run completes.
+   - `PREVIEW_BASE_URL=http://127.0.0.1:8010 node scripts/run_ui_e2e.mjs`
+   - If the script fails with `Cannot find package 'playwright'`, install it locally in the
+     workspace with `npm install --no-save playwright` and rerun the e2e command.
+7. Stop the local preview server after the e2e run completes.
 
 This workflow is the preferred fallback whenever the default setup script or an old local preview
 database prevents the normal CI-like commands from succeeding.

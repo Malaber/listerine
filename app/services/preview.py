@@ -13,6 +13,8 @@ from app.models import (
 
 PREVIEW_EMAIL = "preview@example.com"
 PREVIEW_USER_NAME = "Preview User"
+PREVIEW_INVITEE_EMAIL = "preview-invitee@example.com"
+PREVIEW_INVITEE_NAME = "Preview Invitee"
 PREVIEW_HOUSEHOLD_NAME = "Preview Household"
 PREVIEW_LIST_NAME = "Weekend Shop"
 UI_E2E_LIST_NAME = "Browser Test Shop"
@@ -76,25 +78,35 @@ UI_E2E_CATEGORY_ORDER: tuple[str, ...] = (
 )
 
 
-async def _get_preview_user(db: AsyncSession) -> User | None:
-    existing_user = await db.execute(select(User).where(User.email == PREVIEW_EMAIL))
+async def _get_user_by_email(db: AsyncSession, email: str) -> User | None:
+    existing_user = await db.execute(select(User).where(User.email == email))
     return existing_user.scalar_one_or_none()
 
 
-async def _ensure_preview_user_and_household(db: AsyncSession) -> tuple[User, Household]:
-    user = await _get_preview_user(db)
+async def _ensure_user(db: AsyncSession, *, email: str, display_name: str, is_admin: bool) -> User:
+    user = await _get_user_by_email(db, email)
     if user is None:
         user = User(
-            email=PREVIEW_EMAIL,
+            email=email,
             password_hash="",
-            display_name=PREVIEW_USER_NAME,
-            is_admin=True,
+            display_name=display_name,
+            is_admin=is_admin,
         )
         db.add(user)
         await db.flush()
-    elif not user.is_admin:
-        user.is_admin = True
+    elif user.is_admin != is_admin:
+        user.is_admin = is_admin
         await db.flush()
+    return user
+
+
+async def _ensure_preview_user_and_household(db: AsyncSession) -> tuple[User, Household]:
+    user = await _ensure_user(
+        db,
+        email=PREVIEW_EMAIL,
+        display_name=PREVIEW_USER_NAME,
+        is_admin=True,
+    )
 
     household_result = await db.execute(
         select(Household)
@@ -186,6 +198,12 @@ async def ensure_preview_seed_data(db: AsyncSession) -> None:
 
 async def ensure_ui_e2e_seed_data(db: AsyncSession) -> None:
     user, household = await _ensure_preview_user_and_household(db)
+    await _ensure_user(
+        db,
+        email=PREVIEW_INVITEE_EMAIL,
+        display_name=PREVIEW_INVITEE_NAME,
+        is_admin=False,
+    )
     grocery_list = await _ensure_list(db, household=household, user=user, name=UI_E2E_LIST_NAME)
 
     categories: dict[str, Category] = {}
@@ -243,7 +261,7 @@ async def ensure_ui_e2e_seed_data(db: AsyncSession) -> None:
 
 
 async def fetch_ui_e2e_context(db: AsyncSession) -> dict[str, object] | None:
-    user = await _get_preview_user(db)
+    user = await _get_user_by_email(db, PREVIEW_EMAIL)
     if user is None:
         return None
 
@@ -290,8 +308,7 @@ async def fetch_ui_e2e_context(db: AsyncSession) -> dict[str, object] | None:
 
 
 async def fetch_preview_context(db: AsyncSession) -> dict[str, object] | None:
-    user_result = await db.execute(select(User).where(User.email == PREVIEW_EMAIL))
-    user = user_result.scalar_one_or_none()
+    user = await _get_user_by_email(db, PREVIEW_EMAIL)
     if user is None:
         return None
 

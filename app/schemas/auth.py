@@ -24,6 +24,10 @@ class PasswordAuthRequest(BaseModel):
     passkey: str = Field(min_length=8)
 
 
+class PreviewLoginRequest(BaseModel):
+    email: EmailStr | None = None
+
+
 class UserOut(ORMModel):
     id: UUID
     email: EmailStr

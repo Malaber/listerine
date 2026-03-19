@@ -7,6 +7,8 @@ const baseUrl = process.env.PREVIEW_BASE_URL ?? "http://127.0.0.1:8000";
 const artifactDir = process.env.PREVIEW_ARTIFACT_DIR ?? "e2e-artifacts/ui-e2e";
 const videoDir = path.join(artifactDir, "videos");
 const previewEmail = "preview@example.com";
+const previewInviteeEmail = "preview-invitee@example.com";
+const previewHouseholdName = "Preview Household";
 const fixtureListName = process.env.UI_E2E_LIST_NAME ?? "Browser Test Shop";
 
 async function resetDir(dir) {
@@ -51,10 +53,14 @@ async function screenshot(page, name) {
   await page.screenshot({ path: path.join(artifactDir, `${name}.png`), fullPage: true });
 }
 
-async function loginPreview(context) {
-  const auth = await fetchJson(new URL("/api/v1/auth/preview/login", baseUrl), { method: "POST" });
+async function loginPreview(context, email = previewEmail) {
+  const auth = await fetchJson(new URL("/api/v1/auth/preview/login", baseUrl), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
   await context.request.post(new URL("/api/v1/auth/preview/login", baseUrl).toString(), {
-    data: { email: previewEmail },
+    data: { email },
   });
   return auth.access_token;
 }
@@ -117,6 +123,97 @@ function itemCard(page, text) {
   return page.locator(".item-card", { hasText: text }).first();
 }
 
+function extractInviteToken(inviteUrl) {
+  const invitePath = new URL(inviteUrl).pathname;
+  return invitePath.split("/").filter(Boolean).at(-1);
+}
+
+async function assertPreviewAndDashboardRoutes(context) {
+  const previewPage = await context.newPage();
+  await previewPage.goto(new URL("/preview", baseUrl).toString(), { waitUntil: "networkidle" });
+  await expectVisible(
+    previewPage.getByRole("heading", { name: previewHouseholdName }),
+    "Expected preview route to render the seeded household",
+  );
+  await previewPage.close();
+}
+
+async function runInviteFlow(ownerPage, browser, scenario) {
+  await ownerPage.goto(new URL("/", baseUrl).toString(), { waitUntil: "networkidle" });
+  await expectVisible(
+    ownerPage.getByRole("heading", { name: "Households and Lists" }),
+    "Expected dashboard heading",
+  );
+
+  const ownerHouseholdCard = ownerPage.locator(".household-card", { hasText: previewHouseholdName }).first();
+  await expectVisible(ownerHouseholdCard, "Expected preview household card on dashboard");
+
+  await ownerHouseholdCard.getByRole("button", { name: "Create invite link" }).click();
+  const inviteInput = ownerHouseholdCard.locator(`[data-invite-link-input="${scenario.householdId}"]`);
+  await expectVisible(inviteInput, "Expected invite link field after creating invite");
+  const inviteUrl = await inviteInput.inputValue();
+  assert(inviteUrl.includes("/invite/"), "Expected invite URL");
+  const inviteToken = extractInviteToken(inviteUrl);
+  assert(inviteToken, "Expected invite token");
+
+  const inviteeContext = await browser.newContext({
+    viewport: { width: 1440, height: 1200 },
+    recordVideo: {
+      dir: videoDir,
+      size: { width: 1440, height: 1200 },
+    },
+  });
+  const inviteeDashboard = await inviteeContext.newPage();
+
+  try {
+    await loginPreview(inviteeContext, previewInviteeEmail);
+    await inviteeDashboard.goto(new URL("/", baseUrl).toString(), { waitUntil: "networkidle" });
+    await expectVisible(
+      inviteeDashboard.getByRole("heading", { name: "No households yet" }),
+      "Invitee should not see any household before accepting an invite",
+    );
+
+    const invitePage = await inviteeContext.newPage();
+    await inviteeContext.request.post(new URL("/api/v1/auth/logout", baseUrl).toString());
+    await invitePage.goto(inviteUrl, { waitUntil: "networkidle" });
+    await invitePage.waitForURL(/\/login\?next=%2Finvite%2F|\/login\?next=\/invite\//);
+    await screenshot(invitePage, "invite-redirect-login");
+
+    await loginPreview(inviteeContext, previewInviteeEmail);
+    await invitePage.reload({ waitUntil: "networkidle" });
+    await invitePage.waitForURL(/\/invite\//);
+    await expectVisible(
+      invitePage.getByRole("heading", { name: "Join a shared grocery space" }),
+      "Expected invite details page after preview login",
+    );
+    await expectVisible(
+      invitePage.getByRole("heading", { name: previewHouseholdName }),
+      "Expected invite page household name",
+    );
+    await invitePage.getByRole("button", { name: "Accept invite" }).click();
+    await invitePage.waitForURL(new URL("/", baseUrl).toString());
+    await expectVisible(
+      invitePage.locator(".household-card", { hasText: previewHouseholdName }).first(),
+      "Invitee should see the household after accepting the invite",
+    );
+    const acceptedHouseholdCard = invitePage
+      .locator(".household-card", { hasText: previewHouseholdName })
+      .filter({ hasText: fixtureListName })
+      .first();
+    await expectVisible(
+      acceptedHouseholdCard,
+      "Invitee should see the seeded UI e2e list after accepting the invite",
+    );
+    await expectVisible(
+      acceptedHouseholdCard.getByRole("link", { name: "Open list" }).first(),
+      "Invitee should be able to reach the seeded UI e2e list after accepting the invite",
+    );
+    await screenshot(invitePage, "invite-accepted");
+  } finally {
+    await inviteeContext.close();
+  }
+}
+
 async function main() {
   await resetDir(artifactDir);
   await ensureDir(videoDir);
@@ -143,8 +240,14 @@ async function main() {
     await resetFixtureItems(token, scenario.previewListId);
     const listUrl = new URL(`/lists/${scenario.previewListId}`, baseUrl).toString();
 
+    await assertPreviewAndDashboardRoutes(context);
+
     await page.goto(new URL("/", baseUrl).toString(), { waitUntil: "networkidle" });
     await expectVisible(page.getByRole("link", { name: "Admin" }), "Expected admin link for preview user");
+    await expectVisible(
+      page.getByRole("heading", { name: "Households and Lists" }),
+      "Expected dashboard heading for preview user",
+    );
 
     const adminPage = await context.newPage();
     await adminPage.goto(new URL("/admin", baseUrl).toString(), { waitUntil: "networkidle" });
@@ -311,6 +414,8 @@ async function main() {
     await page.waitForTimeout(10500);
     await expectHidden(toast, "Undo toast should disappear after timeout");
 
+    await runInviteFlow(page, browser, scenario);
+
     await screenshot(page, "ui-e2e-final");
     await screenshot(pageTwo, "ui-e2e-second-client");
   } catch (error) {
@@ -323,7 +428,7 @@ async function main() {
   const summary = [
     "## UI E2E",
     "",
-    "Browser UI flow passed for login gating, add/edit flows, duplicate suggestions, undo toasts, category alias search, admin navigation, and websocket updates.",
+    "Browser UI flow passed for route rendering, login gating, add/edit flows, duplicate suggestions, undo toasts, category alias search, admin navigation, websocket updates, and household invite acceptance.",
     "",
   ].join("\n");
   await fs.writeFile(path.join(artifactDir, "summary.md"), summary);

@@ -75,6 +75,12 @@ jobs:
           path: |
             e2e-artifacts/ui-e2e
             ui-e2e-server.log
+      - name: Add browser summary
+        if: always()
+        run: |
+          if [ -f e2e-artifacts/ui-e2e/summary.md ]; then
+            cat e2e-artifacts/ui-e2e/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Stop preview app
         if: always()
         run: |
