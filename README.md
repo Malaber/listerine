@@ -98,6 +98,7 @@ docker compose up -d
 The published container is intended to run behind Docker Compose. For a low-traffic self-hosted deployment, SQLite is enough and keeps local and deployed behavior aligned.
 
 - Image: `ghcr.io/malaber/listerine:0.1.2`
+- Published as a multi-architecture image for both `linux/amd64` and `linux/arm64`, so Docker Desktop on Apple silicon can pull and run it natively without an emulation override
 - Default app port inside the container: `8000`
 - Health endpoint: `/health`
 - Database migrations run automatically when the app starts
@@ -149,6 +150,8 @@ mkdir -p data
 docker compose pull
 docker compose up -d
 ```
+
+On Apple silicon Macs, the same compose file will automatically pull the `linux/arm64` variant when it is available.
 
 Then open `http://YOUR_HOST:8000/health` to confirm the container is healthy.
 

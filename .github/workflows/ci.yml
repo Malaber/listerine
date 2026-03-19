@@ -181,6 +181,7 @@ jobs:
       - version
     outputs:
       image: ${{ steps.image.outputs.image }}
+      digest: ${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@v6
       - name: Compute image name
@@ -195,16 +196,39 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and publish commit image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
           build-args: |
             LISTERINE_VERSION=${{ needs.version.outputs.release_version }}
           push: true
           tags: ${{ steps.image.outputs.image }}:sha-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Add docker build summary
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+          IMAGE_TAG: sha-${{ github.sha }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          docker buildx imagetools inspect "$IMAGE:$IMAGE_TAG" > docker-image-inspect.txt
+          {
+            echo "## Docker image publish summary"
+            echo
+            printf 'Published image: `%s`\n' "$IMAGE:$IMAGE_TAG"
+            printf 'Manifest digest: `%s`\n' "$IMAGE_DIGEST"
+            echo
+            echo "### Published platforms"
+            awk '/Platform:/ { printf "- `%s`\n", $2 }' docker-image-inspect.txt
+            echo
+            echo "### Inspection output"
+            echo '```text'
+            cat docker-image-inspect.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   release:
     runs-on: ubuntu-latest
@@ -239,8 +263,31 @@ jobs:
       - name: Promote tested image to release tag
         env:
           IMAGE: ${{ needs.docker_build.outputs.image }}
+          COMMIT_DIGEST: ${{ needs.docker_build.outputs.digest }}
           RELEASE_VERSION: ${{ needs.version.outputs.release_version }}
         run: |
           docker buildx imagetools create \
             --tag "$IMAGE:$RELEASE_VERSION" \
             "$IMAGE:sha-$GITHUB_SHA"
+      - name: Add release image summary
+        env:
+          IMAGE: ${{ needs.docker_build.outputs.image }}
+          COMMIT_DIGEST: ${{ needs.docker_build.outputs.digest }}
+          RELEASE_VERSION: ${{ needs.version.outputs.release_version }}
+        run: |
+          docker buildx imagetools inspect "$IMAGE:$RELEASE_VERSION" > docker-release-inspect.txt
+          {
+            echo "## Docker release summary"
+            echo
+            printf 'Commit image: `%s`\n' "$IMAGE:sha-$GITHUB_SHA"
+            printf 'Commit manifest digest: `%s`\n' "$COMMIT_DIGEST"
+            printf 'Release tag: `%s`\n' "$IMAGE:$RELEASE_VERSION"
+            echo
+            echo "### Published platforms"
+            awk '/Platform:/ { printf "- `%s`\n", $2 }' docker-release-inspect.txt
+            echo
+            echo "### Inspection output"
+            echo '```text'
+            cat docker-release-inspect.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
