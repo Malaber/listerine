@@ -147,16 +147,19 @@ main {
 
 .dashboard-field input,
 .dashboard-field select,
-.dashboard-form button {
+.dashboard-form button,
+.primary-button {
   font: inherit;
 }
 
 .dashboard-field input,
-.dashboard-field select {
+.dashboard-field select,
+.household-invite-row input {
   border: 1px solid #cbd5e1;
   border-radius: 14px;
   padding: 0.85rem 0.95rem;
   background: #fff;
+  color: #172033;
 }
 
 .category-radio-group {
@@ -400,6 +403,28 @@ main {
   background: #f8fafc;
 }
 
+.primary-button,
+.dashboard-form button {
+  border: 0;
+  border-radius: 999px;
+  background: #172033;
+  color: #fff;
+  cursor: pointer;
+  padding: 0.9rem 1.2rem;
+  font-weight: 800;
+}
+
+.primary-button:hover,
+.dashboard-form button:hover {
+  background: #24314f;
+}
+
+.primary-button:disabled,
+.dashboard-form button:disabled {
+  opacity: 0.7;
+  cursor: progress;
+}
+
 .household-invite-output {
   margin-top: 1rem;
   padding: 0.9rem 1rem;
@@ -417,6 +442,7 @@ main {
 .household-invite-row input {
   flex: 1;
   min-width: 0;
+  width: 100%;
 }
 
 .list-grid {
