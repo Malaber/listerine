@@ -51,6 +51,10 @@ function credentialToJSON(value) {
     return value.map(credentialToJSON);
   }
 
+  if (value && typeof value.toJSON === "function") {
+    return credentialToJSON(value.toJSON());
+  }
+
   if (value && typeof value === "object") {
     return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, credentialToJSON(inner)]));
   }

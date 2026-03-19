@@ -82,7 +82,7 @@ def get_application_version() -> str:
     try:
         return VERSION_FILE.read_text(encoding="utf-8").strip()
     except FileNotFoundError:
-        return "unknown"
+        return "development"
 
 
 class ListerineAdmin(Admin):
