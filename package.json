@@ -1,0 +1,15 @@
+{
+  "name": "listerine",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "test:js": "node ./node_modules/c8/bin/c8.js --all --include app/web/static/*.js --branches 100 --functions 100 --lines 100 node --test"
+  },
+  "devDependencies": {
+    "c8": "^11.0.0",
+    "jsdom": "^29.0.0"
+  }
+}
