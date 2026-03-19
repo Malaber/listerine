@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="auth-shell" data-passkey-auth>
+<section class="auth-shell" data-passkey-auth data-next-url="{{ next_url }}">
   <div class="auth-copy">
     <h1>Login</h1>
     <p>Accounts stay private until you sign in with a passkey from your browser or password manager.</p>

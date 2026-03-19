@@ -29,10 +29,11 @@ from app.schemas.auth import (
     PasskeyLoginStartRequest,
     PasskeyRegisterStartRequest,
     PasswordAuthRequest,
+    PreviewLoginRequest,
     TokenOut,
     UserOut,
 )
-from app.services.preview import PREVIEW_EMAIL
+from app.services.preview import PREVIEW_EMAIL, PREVIEW_INVITEE_EMAIL
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -226,11 +227,19 @@ async def login_password_disabled(_: PasswordAuthRequest) -> None:
 
 
 @router.post("/preview/login", response_model=TokenOut)
-async def preview_login(request: Request, db: AsyncSession = Depends(get_db)) -> TokenOut:
+async def preview_login(
+    request: Request,
+    payload: PreviewLoginRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> TokenOut:
     if not settings.preview_mode:
         raise HTTPException(status_code=404)
 
-    result = await db.execute(select(User).where(User.email == PREVIEW_EMAIL))
+    target_email = payload.email if payload and payload.email else PREVIEW_EMAIL
+    if target_email not in {PREVIEW_EMAIL, PREVIEW_INVITEE_EMAIL}:
+        raise HTTPException(status_code=404)
+
+    result = await db.execute(select(User).where(User.email == target_email))
     user = result.scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=503, detail="Preview data has not been seeded")

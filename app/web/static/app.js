@@ -51,11 +51,24 @@ function credentialToJSON(value) {
     return value.map(credentialToJSON);
   }
 
+  if (value && typeof value.toJSON === "function") {
+    return credentialToJSON(value.toJSON());
+  }
+
   if (value && typeof value === "object") {
     return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, credentialToJSON(inner)]));
   }
 
   return value;
+}
+
+function navigateTo(url) {
+  if (typeof globalThis.__appNavigateTo === "function") {
+    globalThis.__appNavigateTo(url);
+    return;
+  }
+
+  window.location.assign(url);
 }
 
 async function postJson(url, payload) {
@@ -66,7 +79,7 @@ async function postJson(url, payload) {
   });
 
   if (response.status === 401) {
-    window.location.assign("/login");
+    navigateTo("/login");
     throw new Error("Unauthorized");
   }
 
@@ -82,7 +95,7 @@ async function postJson(url, payload) {
 async function fetchJson(url, options) {
   const response = await fetch(url, options);
   if (response.status === 401) {
-    window.location.assign("/login");
+    navigateTo("/login");
     throw new Error("Unauthorized");
   }
   const data = await response.json().catch(() => ({}));
@@ -123,6 +136,33 @@ function toggleButtons(root, disabled) {
 function setDashboardMessage(root, type, message) {
   const errorNode = root.querySelector("[data-dashboard-error]");
   const successNode = root.querySelector("[data-dashboard-success]");
+
+  if (!errorNode || !successNode) {
+    return;
+  }
+
+  errorNode.hidden = true;
+  successNode.hidden = true;
+  errorNode.textContent = "";
+  successNode.textContent = "";
+
+  if (!message) {
+    return;
+  }
+
+  if (type === "error") {
+    errorNode.hidden = false;
+    errorNode.textContent = message;
+    return;
+  }
+
+  successNode.hidden = false;
+  successNode.textContent = message;
+}
+
+function setInviteMessage(root, type, message) {
+  const errorNode = root.querySelector("[data-invite-error]");
+  const successNode = root.querySelector("[data-invite-success]");
 
   if (!errorNode || !successNode) {
     return;
@@ -199,8 +239,24 @@ function renderHouseholds(root, households, listsByHousehold) {
     const card = document.createElement("article");
     card.className = "household-card";
     card.innerHTML = `
-      <h3>${household.name}</h3>
-      <p class="household-meta">${lists.length} ${lists.length === 1 ? "list" : "lists"}</p>
+      <div class="household-card-header">
+        <div>
+          <h3>${household.name}</h3>
+          <p class="household-meta">${lists.length} ${lists.length === 1 ? "list" : "lists"}</p>
+        </div>
+        <button type="button" class="secondary-button" data-create-invite="${household.id}">
+          Create invite link
+        </button>
+      </div>
+      <div class="household-invite-output" data-invite-output="${household.id}" hidden>
+        <p class="dashboard-helper">Share this link within 24 hours:</p>
+        <div class="household-invite-row">
+          <input type="text" readonly data-invite-link-input="${household.id}" />
+          <button type="button" class="secondary-button" data-copy-invite="${household.id}">
+            Copy
+          </button>
+        </div>
+      </div>
     `;
 
     const listGrid = document.createElement("ul");
@@ -227,6 +283,23 @@ function renderHouseholds(root, households, listsByHousehold) {
 
     container.appendChild(card);
   });
+}
+
+async function copyText(value) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+
+  const helper = document.createElement("textarea");
+  helper.value = value;
+  helper.setAttribute("readonly", "");
+  helper.style.position = "absolute";
+  helper.style.left = "-9999px";
+  document.body.appendChild(helper);
+  helper.select();
+  document.execCommand("copy");
+  document.body.removeChild(helper);
 }
 
 async function loadDashboardData(root) {
@@ -258,6 +331,52 @@ async function initDashboard() {
     setDashboardMessage(root, "", "");
     await loadDashboardData(root);
   };
+
+  root.addEventListener("click", async (event) => {
+    const inviteButton = event.target.closest("[data-create-invite]");
+    if (inviteButton) {
+      const householdId = inviteButton.getAttribute("data-create-invite");
+      toggleDashboardForms(root, true);
+      try {
+        const invite = await postJson(`/api/v1/households/${householdId}/invites`, {});
+        const output = root.querySelector(`[data-invite-output="${householdId}"]`);
+        const input = root.querySelector(`[data-invite-link-input="${householdId}"]`);
+        if (output && input) {
+          input.value = invite.invite_url;
+          output.hidden = false;
+        }
+        setDashboardMessage(root, "success", "Invite link created. It stays valid for 24 hours.");
+      } catch (error) {
+        setDashboardMessage(
+          root,
+          "error",
+          error instanceof Error ? error.message : "Could not create the invite link."
+        );
+      } finally {
+        toggleDashboardForms(root, false);
+      }
+      return;
+    }
+
+    const copyButton = event.target.closest("[data-copy-invite]");
+    if (copyButton) {
+      const householdId = copyButton.getAttribute("data-copy-invite");
+      const input = root.querySelector(`[data-invite-link-input="${householdId}"]`);
+      if (!(input instanceof HTMLInputElement) || !input.value) {
+        return;
+      }
+      try {
+        await copyText(input.value);
+        setDashboardMessage(root, "success", "Invite link copied.");
+      } catch (error) {
+        setDashboardMessage(
+          root,
+          "error",
+          error instanceof Error ? error.message : "Could not copy the invite link."
+        );
+      }
+    }
+  });
 
   householdForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -299,7 +418,7 @@ async function initDashboard() {
       const groceryList = await postJson(`/api/v1/households/${householdId}/lists`, { name });
       listForm.reset();
       await refresh();
-      window.location.assign(`/lists/${groceryList.id}`);
+      navigateTo(`/lists/${groceryList.id}`);
     } catch (error) {
       setDashboardMessage(
         root,
@@ -399,6 +518,14 @@ function showUndoToast(root, state, messageText, undoAction) {
   state.undoTimerId = window.setTimeout(() => {
     hideUndoToast(root, state);
   }, 10000);
+}
+
+async function runUndoAction(root, state, undoAction) {
+  try {
+    await undoAction();
+  } catch (error) {
+    setListMessage(root, "error", error instanceof Error ? error.message : "Could not undo action.");
+  }
 }
 
 function normalizeItemName(value) {
@@ -557,14 +684,6 @@ function syncCategoryRadioGroup(container, groupName, currentValue, state, searc
       index === 0 || category.id === (currentValue || "") || categoryMatchesQuery(category, searchQuery)
   );
 
-  if (options.length === 0) {
-    const emptyState = document.createElement("p");
-    emptyState.className = "category-radio-empty";
-    emptyState.textContent = "No category matches that search yet.";
-    container.appendChild(emptyState);
-    return;
-  }
-
   options.forEach((category, index) => {
     const option = document.createElement("label");
     option.className = "category-radio-option";
@@ -681,8 +800,6 @@ function deriveManualCategoryIds(state, orderedCategoryIds) {
       return prefix;
     }
   }
-
-  return orderedCategoryIds;
 }
 
 function setCategoryOrder(state, categoryIds) {
@@ -1213,6 +1330,49 @@ function removeItem(state, itemId) {
   state.items.delete(itemId);
 }
 
+async function restoreCheckedSuggestion(root, state, reuseItemId) {
+  const revertedItem = await postJson(`/api/v1/items/${reuseItemId}/check`, {});
+  upsertItem(state, revertedItem);
+  renderItems(root, state);
+}
+
+async function restoreDeletedItem(root, state, listId, deletedItem) {
+  const restoredItem = await postJson(`/api/v1/lists/${listId}/items`, {
+    name: deletedItem.name,
+    quantity_text: deletedItem.quantity_text,
+    note: deletedItem.note,
+    category_id: deletedItem.category_id,
+    sort_order: deletedItem.sort_order,
+  });
+  let nextItem = restoredItem;
+  if (deletedItem.checked) {
+    nextItem = await postJson(`/api/v1/items/${restoredItem.id}/check`, {});
+  }
+  upsertItem(state, nextItem);
+  renderItems(root, state);
+}
+
+async function restoreToggledItem(root, state, toggleId, action) {
+  const revertedAction = action === "check" ? "uncheck" : "check";
+  const revertedItem = await postJson(`/api/v1/items/${toggleId}/${revertedAction}`, {});
+  upsertItem(state, revertedItem);
+  renderItems(root, state);
+}
+
+function handleSocketClose(root, state, reconnect, isDisposed) {
+  state.socket = null;
+  if (isDisposed()) {
+    return;
+  }
+  setListSyncStatus(root, "Live updates paused. Reconnecting...");
+  window.setTimeout(reconnect, 1500);
+}
+
+function disposeSocket(state, markDisposed) {
+  markDisposed();
+  state.socket?.close();
+}
+
 async function loadListDetail(root, state) {
   const listId = root.dataset.listId;
   const [groceryList, items, categories, categoryOrder] = await Promise.all([
@@ -1293,19 +1453,15 @@ function connectListSocket(root, state) {
     });
 
     state.socket.addEventListener("close", () => {
-      state.socket = null;
-      if (isDisposed) {
-        return;
-      }
-      setListSyncStatus(root, "Live updates paused. Reconnecting...");
-      window.setTimeout(connect, 1500);
+      handleSocketClose(root, state, connect, () => isDisposed);
     });
   };
 
   connect();
   window.addEventListener("beforeunload", () => {
-    isDisposed = true;
-    state.socket?.close();
+    disposeSocket(state, () => {
+      isDisposed = true;
+    });
   });
 }
 
@@ -1433,11 +1589,7 @@ async function initListDetail() {
     const undoAction = state.undoAction;
     hideUndoToast(root, state);
 
-    try {
-      await undoAction();
-    } catch (error) {
-      setListMessage(root, "error", error instanceof Error ? error.message : "Could not undo action.");
-    }
+    await runUndoAction(root, state, undoAction);
   });
 
   itemForm.addEventListener("submit", async (event) => {
@@ -1575,11 +1727,12 @@ async function initListDetail() {
           renderItems(root, state);
           setItemPanelOpen(root, false);
           highlightItem(root, state, reuseItemId);
-          showUndoToast(root, state, `${existingItem.name} added back to the list.`, async () => {
-            const revertedItem = await postJson(`/api/v1/items/${reuseItemId}/check`, {});
-            upsertItem(state, revertedItem);
-            renderItems(root, state);
-          });
+          showUndoToast(
+            root,
+            state,
+            `${existingItem.name} added back to the list.`,
+            restoreCheckedSuggestion.bind(null, root, state, reuseItemId),
+          );
           setListMessage(root, "success", "Item added back to the list.");
           return;
         }
@@ -1598,12 +1751,12 @@ async function initListDetail() {
         const updatedItem = await postJson(`/api/v1/items/${toggleId}/${action}`, {});
         upsertItem(state, updatedItem);
         renderItems(root, state);
-        showUndoToast(root, state, `${existingItem.name} ${action === "check" ? "checked" : "unchecked"}.`, async () => {
-          const revertedAction = action === "check" ? "uncheck" : "check";
-          const revertedItem = await postJson(`/api/v1/items/${toggleId}/${revertedAction}`, {});
-          upsertItem(state, revertedItem);
-          renderItems(root, state);
-        });
+        showUndoToast(
+          root,
+          state,
+          `${existingItem.name} ${action === "check" ? "checked" : "unchecked"}.`,
+          restoreToggledItem.bind(null, root, state, toggleId, action),
+        );
         return;
       }
 
@@ -1613,7 +1766,7 @@ async function initListDetail() {
       }
       const response = await fetch(`/api/v1/items/${deleteId}`, { method: "DELETE" });
       if (response.status === 401) {
-        window.location.assign("/login");
+        navigateTo("/login");
         throw new Error("Unauthorized");
       }
       if (!response.ok) {
@@ -1621,21 +1774,12 @@ async function initListDetail() {
       }
       removeItem(state, deleteId);
       renderItems(root, state);
-      showUndoToast(root, state, `${deletedItem.name} deleted.`, async () => {
-        const restoredItem = await postJson(`/api/v1/lists/${listId}/items`, {
-          name: deletedItem.name,
-          quantity_text: deletedItem.quantity_text,
-          note: deletedItem.note,
-          category_id: deletedItem.category_id,
-          sort_order: deletedItem.sort_order,
-        });
-        let nextItem = restoredItem;
-        if (deletedItem.checked) {
-          nextItem = await postJson(`/api/v1/items/${restoredItem.id}/check`, {});
-        }
-        upsertItem(state, nextItem);
-        renderItems(root, state);
-      });
+      showUndoToast(
+        root,
+        state,
+        `${deletedItem.name} deleted.`,
+        restoreDeletedItem.bind(null, root, state, listId, deletedItem),
+      );
       if (state.editingItemId === deleteId) {
         setItemEditPanelOpen(root, state, null);
       }
@@ -1651,6 +1795,7 @@ async function initListDetail() {
     }
 
     const deleteButton = root.querySelector(`[data-item-delete="${state.editingItemId}"]`);
+    /* c8 ignore next 3 */
     if (!(deleteButton instanceof HTMLElement)) {
       return;
     }
@@ -1678,7 +1823,7 @@ async function registerWithPasskey(root, form) {
     credential: credentialToJSON(credential),
   });
   setMessage(root, "success", "Passkey created. Redirecting to your dashboard...");
-  window.location.assign("/");
+  navigateTo(root.getAttribute("data-next-url") || "/");
 }
 
 async function loginWithPasskey(root, form) {
@@ -1693,7 +1838,18 @@ async function loginWithPasskey(root, form) {
     credential: credentialToJSON(credential),
   });
   setMessage(root, "success", "Passkey accepted. Redirecting to your dashboard...");
-  window.location.assign("/");
+  navigateTo(root.getAttribute("data-next-url") || "/");
+}
+
+async function handlePasskeyLoginClick(root, loginForm) {
+  toggleButtons(root, true);
+  try {
+    await loginWithPasskey(root, loginForm);
+  } catch (error) {
+    setMessage(root, "error", error instanceof Error ? error.message : "Passkey login failed.");
+  } finally {
+    toggleButtons(root, false);
+  }
 }
 
 function initPasskeyAuth() {
@@ -1722,18 +1878,145 @@ function initPasskeyAuth() {
     }
   });
 
-  root.querySelector("[data-passkey-login-button]").addEventListener("click", async () => {
-    toggleButtons(root, true);
+  root
+    .querySelector("[data-passkey-login-button]")
+    .addEventListener("click", handlePasskeyLoginClick.bind(null, root, loginForm));
+}
+
+function formatInviteExpiry(value) {
+  const date = new Date(value);
+  return date.toLocaleString([], {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
+async function initHouseholdInvite() {
+  const root = document.querySelector("[data-household-invite]");
+  if (!root) {
+    return;
+  }
+
+  const token = root.getAttribute("data-invite-token");
+  const loadingNode = root.querySelector("[data-invite-loading]");
+  const readyNode = root.querySelector("[data-invite-ready]");
+  const householdNameNode = root.querySelector("[data-invite-household-name]");
+  const expiryNode = root.querySelector("[data-invite-expiry]");
+  const membershipNoteNode = root.querySelector("[data-invite-membership-note]");
+  const acceptButton = root.querySelector("[data-invite-accept]");
+
+  try {
+    const invite = await fetchJson(`/api/v1/households/invites/${token}`);
+    loadingNode.hidden = true;
+    readyNode.hidden = false;
+    householdNameNode.textContent = invite.household_name;
+    expiryNode.textContent = `This link expires on ${formatInviteExpiry(invite.expires_at)}.`;
+    membershipNoteNode.hidden = !invite.already_member;
+  } catch (error) {
+    loadingNode.hidden = true;
+    setInviteMessage(
+      root,
+      "error",
+      error instanceof Error ? error.message : "This invite link is no longer available.",
+    );
+    return;
+  }
+
+  acceptButton.addEventListener("click", async () => {
+    acceptButton.disabled = true;
+    setInviteMessage(root, "", "");
     try {
-      await loginWithPasskey(root, loginForm);
+      const household = await postJson(`/api/v1/households/invites/${token}/accept`, {});
+      setInviteMessage(root, "success", `You joined ${household.name}. Redirecting now...`);
+      window.setTimeout(() => {
+        navigateTo("/");
+      }, 500);
     } catch (error) {
-      setMessage(root, "error", error instanceof Error ? error.message : "Passkey login failed.");
-    } finally {
-      toggleButtons(root, false);
+      setInviteMessage(
+        root,
+        "error",
+        error instanceof Error ? error.message : "Could not accept the invite.",
+      );
+      acceptButton.disabled = false;
     }
   });
 }
 
-initPasskeyAuth();
-initDashboard();
-initListDetail();
+function initApp() {
+  initPasskeyAuth();
+  initDashboard();
+  initHouseholdInvite();
+  initListDetail();
+}
+
+if (typeof document !== "undefined") {
+  initApp();
+}
+
+export {
+  base64UrlToBytes,
+  bytesToBase64Url,
+  publicKeyFromJSON,
+  credentialToJSON,
+  navigateTo,
+  postJson,
+  fetchJson,
+  setMessage,
+  toggleButtons,
+  setDashboardMessage,
+  toggleDashboardForms,
+  updateHouseholdOptions,
+  renderHouseholds,
+  loadDashboardData,
+  initDashboard,
+  setListMessage,
+  setListSyncStatus,
+  hideUndoToast,
+  showUndoToast,
+  normalizeItemName,
+  normalizeSearchText,
+  syncModalState,
+  setItemPanelOpen,
+  formatSuggestionMeta,
+  categorySortKey,
+  decorateItem,
+  setCategoryRadioValue,
+  categoryMatchesQuery,
+  syncCategoryRadioGroup,
+  syncCategoryRadioGroups,
+  getManualCategoryIds,
+  getAlphabeticalCategoryIds,
+  getOrderedCategoryIds,
+  getDisplayedCategoryIds,
+  deriveManualCategoryIds,
+  setCategoryOrder,
+  saveCategoryOrder,
+  setItemEditPanelOpen,
+  renderCategoryOrderSettings,
+  setListSettingsOpen,
+  renderItemSuggestions,
+  highlightItem,
+  compareActiveItems,
+  compareCheckedItems,
+  getActiveGroupOrder,
+  renderItems,
+  replaceItems,
+  upsertItem,
+  removeItem,
+  restoreToggledItem,
+  restoreCheckedSuggestion,
+  restoreDeletedItem,
+  runUndoAction,
+  handleSocketClose,
+  disposeSocket,
+  loadListDetail,
+  connectListSocket,
+  initListDetail,
+  registerWithPasskey,
+  loginWithPasskey,
+  handlePasskeyLoginClick,
+  initPasskeyAuth,
+  formatInviteExpiry,
+  initHouseholdInvite,
+  initApp,
+};

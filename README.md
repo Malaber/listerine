@@ -26,19 +26,19 @@ uvicorn app.main:app --reload
 Open `http://localhost:8000/docs`.
 
 
-## Pull request preview screenshots
+## Browser UI e2e
 
-GitHub cannot host a persistent FastAPI staging environment by itself, but it can run a seeded browser e2e smoke flow for every pull request and attach screenshots to the workflow run.
+The repo includes a seeded Playwright browser e2e flow in CI.
 
-This repo now includes a `PR Preview Screenshots` workflow that:
+That flow:
 
 - starts the app in `PREVIEW_MODE`
-- auto-seeds a demo account, household, categories, and grocery items
+- auto-seeds a demo household, a second invitee user, categories, and grocery items
 - opens the app in Chromium with Playwright
-- verifies key routes render and captures screenshots
-- uploads the results as the `pr-preview-screenshots` workflow artifact
+- verifies login gating, list interactions, websocket sync, and invite acceptance
+- records browser video and screenshots into the `browser-ui-e2e` artifact
 
-To enable it in GitHub, just keep Actions enabled for the repository; no external hosting service is required for this screenshot-based PR preview flow.
+No separate screenshot-only workflow is needed.
 
 For local preview testing:
 
@@ -47,6 +47,13 @@ PREVIEW_MODE=true PREVIEW_SEED_DATA=true uvicorn app.main:app --reload
 ```
 
 Then open `http://localhost:8000/preview`.
+
+For local browser UI e2e coverage:
+
+```bash
+PREVIEW_MODE=true PREVIEW_SEED_DATA=true PREVIEW_UI_E2E_SEED_DATA=true DATABASE_URL=sqlite+aiosqlite:///./tmp-ui-e2e.db PYTHONPATH=. .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+PREVIEW_BASE_URL=http://127.0.0.1:8000 node scripts/run_ui_e2e.mjs
+```
 
 ## Run tests
 
@@ -91,6 +98,7 @@ docker compose up -d
 The published container is intended to run behind Docker Compose. For a low-traffic self-hosted deployment, SQLite is enough and keeps local and deployed behavior aligned.
 
 - Image: `ghcr.io/malaber/listerine:0.1.2`
+- Published as a multi-architecture image for both `linux/amd64` and `linux/arm64`, so Docker Desktop on Apple silicon can pull and run it natively without an emulation override
 - Default app port inside the container: `8000`
 - Health endpoint: `/health`
 - Database migrations run automatically when the app starts
@@ -142,6 +150,8 @@ mkdir -p data
 docker compose pull
 docker compose up -d
 ```
+
+On Apple silicon Macs, the same compose file will automatically pull the `linux/arm64` variant when it is available.
 
 Then open `http://YOUR_HOST:8000/health` to confirm the container is healthy.
 

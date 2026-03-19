@@ -14,6 +14,7 @@ concurrency:
 
 env:
   PYTHON_VERSION: '3.14'
+  NODE_VERSION: '24'
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
@@ -29,6 +30,75 @@ jobs:
       - run: PYTHONPATH=. flake8 .
       - run: PYTHONPATH=. pytest
 
+  javascript_test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: npm ci
+      - run: npm run test:js
+
+  browser_e2e:
+    runs-on: ubuntu-latest
+    env:
+      PYTHON_VERSION: '3.14'
+      NODE_VERSION: '24'
+      DATABASE_URL: sqlite+aiosqlite:///./tmp-ci-ui-e2e.db
+      PREVIEW_MODE: 'true'
+      PREVIEW_SEED_DATA: 'true'
+      PREVIEW_UI_E2E_SEED_DATA: 'true'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: ./scripts/setup_env.sh
+      - run: npm install --no-save playwright
+      - run: npx playwright install --with-deps chromium
+      - name: Start preview app
+        run: |
+          PYTHONPATH=. uvicorn app.main:app --host 127.0.0.1 --port 8000 > ui-e2e-server.log 2>&1 &
+          echo $! > ui-e2e-server.pid
+      - name: Wait for preview app
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/health > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Preview app never became healthy" >&2
+          cat ui-e2e-server.log >&2
+          exit 1
+      - name: Run browser ui e2e
+        run: PREVIEW_BASE_URL=http://127.0.0.1:8000 node scripts/run_ui_e2e.mjs
+      - name: Upload browser artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: browser-ui-e2e
+          retention-days: 2
+          path: |
+            e2e-artifacts/ui-e2e
+            ui-e2e-server.log
+      - name: Add browser summary
+        if: always()
+        run: |
+          if [ -f e2e-artifacts/ui-e2e/summary.md ]; then
+            cat e2e-artifacts/ui-e2e/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Stop preview app
+        if: always()
+        run: |
+          if [ -f ui-e2e-server.pid ]; then
+            kill "$(cat ui-e2e-server.pid)" || true
+          fi
+
   swift_test:
     runs-on: ubuntu-latest
     container:
@@ -38,10 +108,99 @@ jobs:
       - name: Run Swift package tests with coverage gate
         run: cd ios/ListerineIOS && ./Scripts/check_coverage.sh
 
-  docker_build:
+  version:
     runs-on: ubuntu-latest
     outputs:
+      base_version: ${{ steps.version.outputs.base_version }}
+      release_version: ${{ steps.version.outputs.release_version }}
+      git_tag: ${{ steps.version.outputs.git_tag }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Compute release version
+        id: version
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          import subprocess
+
+          def tag_exists(tag: str) -> bool:
+              return subprocess.run(
+                  ["git", "rev-parse", "--verify", "--quiet", tag],
+                  check=False,
+                  stdout=subprocess.DEVNULL,
+                  stderr=subprocess.DEVNULL,
+              ).returncode == 0
+
+          def latest_stable_version() -> str:
+              stable_pattern = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
+              tags = subprocess.run(
+                  ["git", "tag", "--list", "v*"],
+                  check=True,
+                  capture_output=True,
+                  text=True,
+              ).stdout.splitlines()
+              versions = [
+                  tuple(map(int, match.groups()))
+                  for tag in tags
+                  if (match := stable_pattern.fullmatch(tag))
+              ]
+              if not versions:
+                  return "0.1.0"
+              major, minor, patch = max(versions)
+              return f"{major}.{minor}.{patch}"
+
+          def next_stable_version(version: str) -> str:
+              major, minor, patch = map(int, version.split("."))
+              patch += 1
+              candidate = f"{major}.{minor}.{patch}"
+              while tag_exists(f"v{candidate}"):
+                  patch += 1
+                  candidate = f"{major}.{minor}.{patch}"
+              return candidate
+
+          def next_rc_version(version: str, run_number: int) -> str:
+              rc_number = run_number
+              candidate = f"{version}-rc.{rc_number}"
+              while tag_exists(f"v{candidate}"):
+                  rc_number += 1
+                  candidate = f"{version}-rc.{rc_number}"
+              return candidate
+
+          base_version = next_stable_version(latest_stable_version())
+          ref_name = os.environ["REF_NAME"]
+          run_number = int(os.environ["RUN_NUMBER"])
+
+          if ref_name == "main":
+              release_version = base_version
+          else:
+              release_version = next_rc_version(base_version, run_number)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write(f"base_version={base_version}\n")
+              fh.write(f"release_version={release_version}\n")
+              fh.write(f"git_tag=v{release_version}\n")
+          PY
+
+  docker_build:
+    runs-on: ubuntu-latest
+    needs:
+      - python_test
+      - javascript_test
+      - browser_e2e
+      - swift_test
+      - version
+    outputs:
       image: ${{ steps.image.outputs.image }}
+      digest: ${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@v6
       - name: Compute image name
@@ -56,53 +215,56 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and publish commit image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            LISTERINE_VERSION=${{ needs.version.outputs.release_version }}
           push: true
           tags: ${{ steps.image.outputs.image }}:sha-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Add docker build summary
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+          IMAGE_TAG: sha-${{ github.sha }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          docker buildx imagetools inspect "$IMAGE:$IMAGE_TAG" > docker-image-inspect.txt
+          {
+            echo "## Docker image publish summary"
+            echo
+            printf 'Published image: `%s`\n' "$IMAGE:$IMAGE_TAG"
+            printf 'Manifest digest: `%s`\n' "$IMAGE_DIGEST"
+            echo
+            echo "### Published platforms"
+            awk '/Platform:/ { printf "- `%s`\n", $2 }' docker-image-inspect.txt
+            echo
+            echo "### Inspection output"
+            echo '```text'
+            cat docker-image-inspect.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   release:
     runs-on: ubuntu-latest
     needs:
       - python_test
+      - javascript_test
+      - browser_e2e
       - swift_test
       - docker_build
+      - version
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v6
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-      - name: Compute release version
-        id: version
-        env:
-          REF_NAME: ${{ github.ref_name }}
-          RUN_NUMBER: ${{ github.run_number }}
-        run: |
-          BASE_VERSION=$(python - <<'PY'
-          import tomllib
-          with open('pyproject.toml', 'rb') as fh:
-              print(tomllib.load(fh)['project']['version'])
-          PY
-          )
-
-          if [ "$REF_NAME" = "main" ]; then
-            RELEASE_VERSION="$BASE_VERSION"
-          else
-            RELEASE_VERSION="$BASE_VERSION-rc.$RUN_NUMBER"
-          fi
-
-          echo "base_version=$BASE_VERSION" >> "$GITHUB_OUTPUT"
-          echo "release_version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
-          echo "git_tag=v$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
       - name: Create or update git tag
         env:
-          GIT_TAG: ${{ steps.version.outputs.git_tag }}
+          GIT_TAG: ${{ needs.version.outputs.git_tag }}
         run: |
           if git rev-parse "$GIT_TAG" >/dev/null 2>&1; then
             echo "Tag $GIT_TAG already exists."
@@ -121,8 +283,31 @@ jobs:
       - name: Promote tested image to release tag
         env:
           IMAGE: ${{ needs.docker_build.outputs.image }}
-          RELEASE_VERSION: ${{ steps.version.outputs.release_version }}
+          COMMIT_DIGEST: ${{ needs.docker_build.outputs.digest }}
+          RELEASE_VERSION: ${{ needs.version.outputs.release_version }}
         run: |
           docker buildx imagetools create \
             --tag "$IMAGE:$RELEASE_VERSION" \
             "$IMAGE:sha-$GITHUB_SHA"
+      - name: Add release image summary
+        env:
+          IMAGE: ${{ needs.docker_build.outputs.image }}
+          COMMIT_DIGEST: ${{ needs.docker_build.outputs.digest }}
+          RELEASE_VERSION: ${{ needs.version.outputs.release_version }}
+        run: |
+          docker buildx imagetools inspect "$IMAGE:$RELEASE_VERSION" > docker-release-inspect.txt
+          {
+            echo "## Docker release summary"
+            echo
+            printf 'Commit image: `%s`\n' "$IMAGE:sha-$GITHUB_SHA"
+            printf 'Commit manifest digest: `%s`\n' "$COMMIT_DIGEST"
+            printf 'Release tag: `%s`\n' "$IMAGE:$RELEASE_VERSION"
+            echo
+            echo "### Published platforms"
+            awk '/Platform:/ { printf "- `%s`\n", $2 }' docker-release-inspect.txt
+            echo
+            echo "### Inspection output"
+            echo '```text'
+            cat docker-release-inspect.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

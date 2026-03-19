@@ -34,6 +34,13 @@ def _has_session_access_token(request: Request) -> bool:
     return bool(payload.get("sub"))
 
 
+def _safe_next_path(request: Request) -> str:
+    next_path = request.query_params.get("next", "/")
+    if not next_path.startswith("/") or next_path.startswith("//"):
+        return "/"
+    return next_path
+
+
 async def _get_session_user(request: Request, db: AsyncSession) -> User | None:
     raw_token = request.session.get("access_token")
     if not raw_token:
@@ -60,13 +67,14 @@ async def _get_session_user(request: Request, db: AsyncSession) -> User | None:
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, db: AsyncSession = Depends(get_db)) -> Response:
     user = await _get_session_user(request, db)
+    next_path = _safe_next_path(request)
     if user is not None:
-        return RedirectResponse(url="/", status_code=303)
+        return RedirectResponse(url=next_path, status_code=303)
     localhost_hint = request.url.hostname == "127.0.0.1"
     return templates.TemplateResponse(
         request,
         "login.html",
-        {"localhost_hint": localhost_hint, **_template_auth_context(None)},
+        {"localhost_hint": localhost_hint, "next_url": next_path, **_template_auth_context(None)},
     )
 
 
@@ -98,6 +106,23 @@ async def list_detail(
             "list_id": list_id,
             **_template_auth_context(user),
             "access_token": request.session.get("access_token", ""),
+        },
+    )
+
+
+@router.get("/invite/{token}", response_class=HTMLResponse, response_model=None)
+async def invite_detail(
+    request: Request, token: str, db: AsyncSession = Depends(get_db)
+) -> Response:
+    user = await _get_session_user(request, db)
+    if user is None:
+        return RedirectResponse(url=f"/login?next=/invite/{token}", status_code=303)
+    return templates.TemplateResponse(
+        request,
+        "invite_detail.html",
+        {
+            "invite_token": token,
+            **_template_auth_context(user),
         },
     )
 
