@@ -160,6 +160,33 @@ function setDashboardMessage(root, type, message) {
   successNode.textContent = message;
 }
 
+function setInviteMessage(root, type, message) {
+  const errorNode = root.querySelector("[data-invite-error]");
+  const successNode = root.querySelector("[data-invite-success]");
+
+  if (!errorNode || !successNode) {
+    return;
+  }
+
+  errorNode.hidden = true;
+  successNode.hidden = true;
+  errorNode.textContent = "";
+  successNode.textContent = "";
+
+  if (!message) {
+    return;
+  }
+
+  if (type === "error") {
+    errorNode.hidden = false;
+    errorNode.textContent = message;
+    return;
+  }
+
+  successNode.hidden = false;
+  successNode.textContent = message;
+}
+
 function toggleDashboardForms(root, disabled) {
   root
     .querySelectorAll("[data-dashboard] button, [data-dashboard] input, [data-dashboard] select")
@@ -212,8 +239,24 @@ function renderHouseholds(root, households, listsByHousehold) {
     const card = document.createElement("article");
     card.className = "household-card";
     card.innerHTML = `
-      <h3>${household.name}</h3>
-      <p class="household-meta">${lists.length} ${lists.length === 1 ? "list" : "lists"}</p>
+      <div class="household-card-header">
+        <div>
+          <h3>${household.name}</h3>
+          <p class="household-meta">${lists.length} ${lists.length === 1 ? "list" : "lists"}</p>
+        </div>
+        <button type="button" class="secondary-button" data-create-invite="${household.id}">
+          Create invite link
+        </button>
+      </div>
+      <div class="household-invite-output" data-invite-output="${household.id}" hidden>
+        <p class="dashboard-helper">Share this link within 24 hours:</p>
+        <div class="household-invite-row">
+          <input type="text" readonly data-invite-link-input="${household.id}" />
+          <button type="button" class="secondary-button" data-copy-invite="${household.id}">
+            Copy
+          </button>
+        </div>
+      </div>
     `;
 
     const listGrid = document.createElement("ul");
@@ -240,6 +283,23 @@ function renderHouseholds(root, households, listsByHousehold) {
 
     container.appendChild(card);
   });
+}
+
+async function copyText(value) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+
+  const helper = document.createElement("textarea");
+  helper.value = value;
+  helper.setAttribute("readonly", "");
+  helper.style.position = "absolute";
+  helper.style.left = "-9999px";
+  document.body.appendChild(helper);
+  helper.select();
+  document.execCommand("copy");
+  document.body.removeChild(helper);
 }
 
 async function loadDashboardData(root) {
@@ -271,6 +331,52 @@ async function initDashboard() {
     setDashboardMessage(root, "", "");
     await loadDashboardData(root);
   };
+
+  root.addEventListener("click", async (event) => {
+    const inviteButton = event.target.closest("[data-create-invite]");
+    if (inviteButton) {
+      const householdId = inviteButton.getAttribute("data-create-invite");
+      toggleDashboardForms(root, true);
+      try {
+        const invite = await postJson(`/api/v1/households/${householdId}/invites`, {});
+        const output = root.querySelector(`[data-invite-output="${householdId}"]`);
+        const input = root.querySelector(`[data-invite-link-input="${householdId}"]`);
+        if (output && input) {
+          input.value = invite.invite_url;
+          output.hidden = false;
+        }
+        setDashboardMessage(root, "success", "Invite link created. It stays valid for 24 hours.");
+      } catch (error) {
+        setDashboardMessage(
+          root,
+          "error",
+          error instanceof Error ? error.message : "Could not create the invite link."
+        );
+      } finally {
+        toggleDashboardForms(root, false);
+      }
+      return;
+    }
+
+    const copyButton = event.target.closest("[data-copy-invite]");
+    if (copyButton) {
+      const householdId = copyButton.getAttribute("data-copy-invite");
+      const input = root.querySelector(`[data-invite-link-input="${householdId}"]`);
+      if (!(input instanceof HTMLInputElement) || !input.value) {
+        return;
+      }
+      try {
+        await copyText(input.value);
+        setDashboardMessage(root, "success", "Invite link copied.");
+      } catch (error) {
+        setDashboardMessage(
+          root,
+          "error",
+          error instanceof Error ? error.message : "Could not copy the invite link."
+        );
+      }
+    }
+  });
 
   householdForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1717,7 +1823,7 @@ async function registerWithPasskey(root, form) {
     credential: credentialToJSON(credential),
   });
   setMessage(root, "success", "Passkey created. Redirecting to your dashboard...");
-  navigateTo("/");
+  navigateTo(root.getAttribute("data-next-url") || "/");
 }
 
 async function loginWithPasskey(root, form) {
@@ -1732,7 +1838,7 @@ async function loginWithPasskey(root, form) {
     credential: credentialToJSON(credential),
   });
   setMessage(root, "success", "Passkey accepted. Redirecting to your dashboard...");
-  navigateTo("/");
+  navigateTo(root.getAttribute("data-next-url") || "/");
 }
 
 async function handlePasskeyLoginClick(root, loginForm) {
@@ -1777,9 +1883,69 @@ function initPasskeyAuth() {
     .addEventListener("click", handlePasskeyLoginClick.bind(null, root, loginForm));
 }
 
+function formatInviteExpiry(value) {
+  const date = new Date(value);
+  return date.toLocaleString([], {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
+async function initHouseholdInvite() {
+  const root = document.querySelector("[data-household-invite]");
+  if (!root) {
+    return;
+  }
+
+  const token = root.getAttribute("data-invite-token");
+  const loadingNode = root.querySelector("[data-invite-loading]");
+  const readyNode = root.querySelector("[data-invite-ready]");
+  const householdNameNode = root.querySelector("[data-invite-household-name]");
+  const expiryNode = root.querySelector("[data-invite-expiry]");
+  const membershipNoteNode = root.querySelector("[data-invite-membership-note]");
+  const acceptButton = root.querySelector("[data-invite-accept]");
+
+  try {
+    const invite = await fetchJson(`/api/v1/households/invites/${token}`);
+    loadingNode.hidden = true;
+    readyNode.hidden = false;
+    householdNameNode.textContent = invite.household_name;
+    expiryNode.textContent = `This link expires on ${formatInviteExpiry(invite.expires_at)}.`;
+    membershipNoteNode.hidden = !invite.already_member;
+  } catch (error) {
+    loadingNode.hidden = true;
+    setInviteMessage(
+      root,
+      "error",
+      error instanceof Error ? error.message : "This invite link is no longer available.",
+    );
+    return;
+  }
+
+  acceptButton.addEventListener("click", async () => {
+    acceptButton.disabled = true;
+    setInviteMessage(root, "", "");
+    try {
+      const household = await postJson(`/api/v1/households/invites/${token}/accept`, {});
+      setInviteMessage(root, "success", `You joined ${household.name}. Redirecting now...`);
+      window.setTimeout(() => {
+        navigateTo("/");
+      }, 500);
+    } catch (error) {
+      setInviteMessage(
+        root,
+        "error",
+        error instanceof Error ? error.message : "Could not accept the invite.",
+      );
+      acceptButton.disabled = false;
+    }
+  });
+}
+
 function initApp() {
   initPasskeyAuth();
   initDashboard();
+  initHouseholdInvite();
   initListDetail();
 }
 
@@ -1850,5 +2016,7 @@ export {
   loginWithPasskey,
   handlePasskeyLoginClick,
   initPasskeyAuth,
+  formatInviteExpiry,
+  initHouseholdInvite,
   initApp,
 };

@@ -1,12 +1,14 @@
 import asyncio
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
 from app.main import app
 from app.models import Household, User
 from app.services.preview import (
     PREVIEW_EMAIL,
+    PREVIEW_INVITEE_EMAIL,
     UI_E2E_LIST_NAME,
     ensure_preview_seed_data,
     ensure_ui_e2e_seed_data,
@@ -166,6 +168,11 @@ def test_ui_e2e_seed_is_idempotent_and_matches_schema() -> None:
             assert items_by_name["Loose item"].category_id is None
             assert items_by_name["Eier"].quantity_text == "10"
 
+            invitee = await session.execute(select(User).where(User.email == PREVIEW_INVITEE_EMAIL))
+            invitee_user = invitee.scalar_one_or_none()
+            assert invitee_user is not None
+            assert invitee_user.is_admin is False
+
             ordered_category_names = [
                 next(
                     category.name
@@ -255,4 +262,31 @@ def test_preview_login_requires_flag() -> None:
             response = client.post("/api/v1/auth/preview/login")
         assert response.status_code == 404
     finally:
+        asyncio.run(dispose_db())
+
+
+def test_preview_login_accepts_seeded_invitee_and_rejects_unknown_email(monkeypatch) -> None:
+    monkeypatch.setattr("app.main.settings.preview_seed_data", True)
+    monkeypatch.setattr("app.main.settings.preview_ui_e2e_seed_data", True)
+    monkeypatch.setattr("app.api.v1.routes.auth.settings.preview_mode", True)
+    asyncio.run(reset_db())
+
+    try:
+        with TestClient(app) as client:
+            invitee_response = client.post(
+                "/api/v1/auth/preview/login",
+                json={"email": PREVIEW_INVITEE_EMAIL},
+            )
+            unknown_response = client.post(
+                "/api/v1/auth/preview/login",
+                json={"email": "nope@example.com"},
+            )
+
+        assert invitee_response.status_code == 200
+        assert "access_token" in invitee_response.json()
+        assert unknown_response.status_code == 404
+    finally:
+        monkeypatch.setattr("app.main.settings.preview_seed_data", False)
+        monkeypatch.setattr("app.main.settings.preview_ui_e2e_seed_data", False)
+        monkeypatch.setattr("app.api.v1.routes.auth.settings.preview_mode", False)
         asyncio.run(dispose_db())

@@ -23,6 +23,7 @@ Then run:
 - `npm install`
 - `npm run test:js`
 - `node scripts/capture_preview_screenshots.mjs` with the same preview env vars CI uses after starting the preview app locally
+- `node scripts/run_ui_e2e.mjs` with the same preview env vars CI uses after starting the preview app locally
 
 ## Local testing workflow
 
