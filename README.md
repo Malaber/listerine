@@ -165,6 +165,20 @@ Notes for production:
 - Keep the `./data` directory on persistent storage so `./data/listerine.db` survives container replacement.
 - To upgrade, change `LISTERINE_IMAGE` to a newer tag such as `ghcr.io/malaber/listerine:0.1.3`, then run `docker compose pull && docker compose up -d`.
 
+## Webhooker deployment bundle
+
+This repo includes a standalone `webhooker` deployment bundle under `deploy/webhooker/` for both long-lived production and per-PR preview environments.
+
+The bundle includes:
+
+- `compose.production.yml` for the production deployment managed by `webhooker`
+- `compose.review.yml` for per-PR preview deployments managed by `webhooker`
+- `env/production.common.env` and `env/review.common.env` for non-secret runtime defaults
+- `config/listerine-production.yaml` and `config/listerine-review.yaml` as ready-to-edit `webhooker` project definitions
+- `README.md` with the recommended host layout and the worker mounts required for Listerine secrets
+
+The current CI publishes OCI images to `ghcr.io/<owner>/<repo>:sha-<full git sha>`. The provided `webhooker` configs are written against that tag pattern. If you deploy a fork, update the image repository path accordingly.
+
 ## SwiftUI client roadmap
 
 The API contracts are stable under `/api/v1` and intentionally JSON-oriented for a future SwiftUI iOS client.

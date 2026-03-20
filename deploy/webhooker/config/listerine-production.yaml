@@ -1,0 +1,44 @@
+project_id: listerine-production
+
+github:
+  owner: Malaber
+  repo: listerine
+  token_env_var: GITHUB_TOKEN
+  webhook_secret_env_var: GITHUB_WEBHOOK_SECRET
+  allowed_event_types:
+    - push
+    - ping
+
+deployment:
+  mode: production
+  compose_file: /opt/listerine/deploy/webhooker/compose.production.yml
+  working_directory: /opt/listerine/deploy/webhooker
+  production_project_name: listerine
+  production_hostname: listerine.example.com
+
+image:
+  registry: ghcr.io
+  repository: malaber/listerine
+  production_tag_template: sha-{commit_sha}
+
+production:
+  branch: main
+  data_dir: /srv/webhooker/production/listerine/data
+  sqlite_path: /srv/webhooker/production/listerine/data/listerine.db
+  backup_dir: /srv/webhooker/production/listerine/backups
+  backup_keep: 3
+
+reconcile:
+  interval_seconds: 60
+  redeploy_on_config_change: true
+
+traefik:
+  router_name_prefix: listerine
+  service_name_prefix: listerine
+  certresolver: letsencrypt
+
+state:
+  path: /var/lib/webhooker/state/listerine-production.json
+
+wake:
+  path: /var/lib/webhooker/wake/listerine-production.wake

@@ -1,0 +1,42 @@
+project_id: listerine-review
+
+github:
+  owner: Malaber
+  repo: listerine
+  token_env_var: GITHUB_TOKEN
+  webhook_secret_env_var: GITHUB_WEBHOOK_SECRET
+  allowed_event_types:
+    - pull_request
+    - ping
+
+deployment:
+  mode: review
+  compose_file: /opt/listerine/deploy/webhooker/compose.review.yml
+  working_directory: /opt/listerine/deploy/webhooker
+  hostname_template: pr-{pr_number}.listerine.example.com
+  project_name_prefix: listerine-pr
+
+image:
+  registry: ghcr.io
+  repository: malaber/listerine
+  tag_template: sha-{pr_head_sha}
+
+preview:
+  base_dir: /srv/webhooker/reviews/listerine
+  data_dir_template: /srv/webhooker/reviews/listerine/pr-{pr_number}/data
+  sqlite_path_template: /srv/webhooker/reviews/listerine/pr-{pr_number}/data/listerine.db
+
+reconcile:
+  interval_seconds: 60
+  redeploy_on_config_change: true
+
+traefik:
+  router_name_prefix: listerine-pr
+  service_name_prefix: listerine-pr
+  certresolver: letsencrypt
+
+state:
+  path: /var/lib/webhooker/state/listerine-review.json
+
+wake:
+  path: /var/lib/webhooker/wake/listerine-review.wake
