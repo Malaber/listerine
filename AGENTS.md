@@ -22,8 +22,9 @@ Then run:
 - `nvm use` or otherwise switch to Node 24 LTS first
 - `npm install`
 - `npm run test:js`
-- `node scripts/capture_preview_screenshots.mjs` with the same preview env vars CI uses after starting the preview app locally
-- `node scripts/run_ui_e2e.mjs` with the same preview env vars CI uses after starting the preview app locally
+- `npm install --no-save playwright`
+- `npx playwright install chromium`
+- `node scripts/run_ui_e2e.mjs` with the same seeded real-auth env vars CI uses after starting the app locally
 
 ## Local testing workflow
 
@@ -46,26 +47,29 @@ Use this sequence for reliable local verification:
    - To check committed production JS changes against main: `git diff --name-only origin/main...HEAD -- 'app/web/static/*.js'`
    - To check local unstaged and staged production JS changes: `git diff --name-only -- 'app/web/static/*.js'` and `git diff --cached --name-only -- 'app/web/static/*.js'`
    - If any of those commands print a production JS path, add or update the corresponding Node unit tests and run `npm run test:js`
-6. For the preview screenshot flow, prefer a fresh temporary SQLite database instead of reusing
-   `preview.db`, because an old file may not match the current schema.
-7. Start the preview app locally with the CI-style env vars from the repo-local virtualenv.
-   This has been a reliable way to bring the app up for local command-driven checks:
-   - `PREVIEW_MODE=true PREVIEW_SEED_DATA=true DATABASE_URL=sqlite+aiosqlite:///./tmp-preview-check.db PYTHONPATH=. .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8010`
-8. In a separate shell, run:
-   - `PREVIEW_BASE_URL=http://127.0.0.1:8010 node scripts/capture_preview_screenshots.mjs`
-9. Stop the local preview server after the screenshots complete.
+6. For the seeded browser e2e flow, prefer a fresh temporary SQLite database instead of reusing an
+   old local file, because stale schema or stale seeded data can make the run misleading.
+7. Use the checked-in review seed fixture for browser e2e runs:
+   - `app/fixtures/review_seed.json`
+8. Local WebAuthn browser checks must use `localhost`, not `127.0.0.1`, for the browser-facing
+   URL and RP ID. Chromium rejects passkey auth on `127.0.0.1` with an invalid-domain security
+   error even if the server is bound there.
+9. Start the app locally with a dedicated temporary database and the seeded real-auth env vars:
+   - `SEED_DATA_PATH=app/fixtures/review_seed.json WEBAUTHN_RP_ID=localhost DATABASE_URL=sqlite+aiosqlite:///./tmp-ui-e2e-manual.db PYTHONPATH=. .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000`
+10. In a separate shell, switch to Node 24 and install the browser dependency if needed:
+   - `nvm use 24`
+   - `npm install --no-save playwright`
+   - `npx playwright install chromium`
+11. Run the browser e2e flow against the normal login and dashboard routes:
+   - `PREVIEW_BASE_URL=http://localhost:8000 WEBAUTHN_RP_ID=localhost node scripts/run_ui_e2e.mjs`
+12. The browser script reads the seeded account and passkey material from
+   `app/fixtures/review_seed.json`, installs those passkeys into Chromium's virtual authenticator,
+   and signs in through the normal `/login` page.
+13. If you want a completely fresh run, delete `tmp-ui-e2e-manual.db` before restarting the app.
+14. Stop the local app after the e2e run completes.
 
-For the seeded browser e2e flow, use a dedicated temporary database and the UI e2e seed flag:
-
-1. Start the preview app:
-   - `PREVIEW_MODE=true PREVIEW_SEED_DATA=true PREVIEW_UI_E2E_SEED_DATA=true DATABASE_URL=sqlite+aiosqlite:///./tmp-ui-e2e-manual.db PYTHONPATH=. .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000`
-2. In a separate shell, run:
-   - `PREVIEW_BASE_URL=http://127.0.0.1:8000 node scripts/run_ui_e2e.mjs`
-3. If you want a completely fresh run, delete `tmp-ui-e2e-manual.db` before restarting the server.
-4. Stop the preview server after the e2e run completes.
-
-This workflow is the preferred fallback whenever the default setup script or an old local preview
-database prevents the normal CI-like commands from succeeding.
+This workflow is the preferred fallback whenever the default setup script or an old local database
+prevents the normal CI-like commands from succeeding.
 
 
 ## Testing expectations
