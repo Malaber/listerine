@@ -9,9 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.security import create_preview_login_token
 from app.models import User
-from app.services.preview import PREVIEW_EMAIL, PREVIEW_INVITEE_EMAIL, fetch_preview_context
+from app.services.preview import fetch_preview_context
 
 router = APIRouter(tags=["web"])
 templates = Jinja2Templates(directory="app/web/templates")
@@ -137,17 +136,5 @@ async def preview_dashboard(request: Request, db: AsyncSession = Depends(get_db)
     if context is None:
         raise HTTPException(status_code=503, detail="Preview data has not been seeded")
 
-    context["preview_login_links"] = {
-        PREVIEW_EMAIL: str(
-            request.url_for(
-                "preview_login_redirect", token=create_preview_login_token(PREVIEW_EMAIL)
-            )
-        ),
-        PREVIEW_INVITEE_EMAIL: str(
-            request.url_for(
-                "preview_login_redirect", token=create_preview_login_token(PREVIEW_INVITEE_EMAIL)
-            )
-        ),
-    }
     context.update(_template_auth_context(await _get_session_user(request, db)))
     return templates.TemplateResponse(request, "preview.html", context)

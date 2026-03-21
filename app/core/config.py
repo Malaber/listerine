@@ -15,7 +15,6 @@ class Settings(BaseSettings):
     preview_mode: bool = False
     preview_seed_data: bool = False
     preview_ui_e2e_seed_data: bool = False
-    preview_login_token_expire_minutes: int = 60
     bootstrap_admin_email: EmailStr | None = None
 
 

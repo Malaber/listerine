@@ -290,35 +290,3 @@ def test_preview_login_accepts_seeded_invitee_and_rejects_unknown_email(monkeypa
         monkeypatch.setattr("app.main.settings.preview_ui_e2e_seed_data", False)
         monkeypatch.setattr("app.api.v1.routes.auth.settings.preview_mode", False)
         asyncio.run(dispose_db())
-
-
-def test_preview_login_link_bootstraps_session_and_preview_page_shows_links(monkeypatch) -> None:
-    monkeypatch.setattr("app.main.settings.preview_seed_data", True)
-    monkeypatch.setattr("app.main.settings.preview_ui_e2e_seed_data", True)
-    monkeypatch.setattr("app.web.routes.settings.preview_mode", True)
-    monkeypatch.setattr("app.api.v1.routes.auth.settings.preview_mode", True)
-    asyncio.run(reset_db())
-
-    try:
-        with TestClient(app) as client:
-            preview_response = client.get("/preview")
-            assert preview_response.status_code == 200
-            assert "Login as preview@example.com" in preview_response.text
-            assert "Login as preview-invitee@example.com" in preview_response.text
-
-            link_response = client.post("/api/v1/auth/preview/link", json={"email": PREVIEW_EMAIL})
-            assert link_response.status_code == 200
-            login_url = link_response.json()["login_url"]
-
-            login_response = client.get(login_url, follow_redirects=False)
-            assert login_response.status_code == 303
-            assert login_response.headers["location"] == "/"
-
-            dashboard_response = client.get("/")
-            assert dashboard_response.status_code == 200
-    finally:
-        monkeypatch.setattr("app.main.settings.preview_seed_data", False)
-        monkeypatch.setattr("app.main.settings.preview_ui_e2e_seed_data", False)
-        monkeypatch.setattr("app.web.routes.settings.preview_mode", False)
-        monkeypatch.setattr("app.api.v1.routes.auth.settings.preview_mode", False)
-        asyncio.run(dispose_db())

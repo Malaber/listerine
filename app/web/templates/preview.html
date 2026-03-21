@@ -14,11 +14,6 @@
         <div><dt>Auth</dt><dd>Preview-mode shortcut only</dd></div>
         <div><dt>List</dt><dd>{{ grocery_list.name }}</dd></div>
       </dl>
-      <ul class="preview-links">
-        {% for email, login_url in preview_login_links.items() %}
-        <li><a href="{{ login_url }}">Login as {{ email }}</a></li>
-        {% endfor %}
-      </ul>
     </div>
   </div>
 

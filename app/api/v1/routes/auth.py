@@ -2,7 +2,6 @@ import json
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from webauthn import (
@@ -23,11 +22,7 @@ from webauthn.helpers.structs import (
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.security import (
-    create_access_token,
-    create_preview_login_token,
-    verify_preview_login_token,
-)
+from app.core.security import create_access_token
 from app.models import User
 from app.schemas.auth import (
     PasskeyFinishRequest,
@@ -67,11 +62,6 @@ def _password_auth_disabled() -> HTTPException:
         status_code=400,
         detail="Password-based auth is disabled. Use the passkey registration and login endpoints.",
     )
-
-
-def _preview_login_url(request: Request, email: str) -> str:
-    token = create_preview_login_token(email)
-    return str(request.url_for("preview_login_redirect", token=token))
 
 
 async def _apply_bootstrap_admin_email(db: AsyncSession, user: User) -> User:
@@ -259,44 +249,6 @@ async def preview_login(
     token = create_access_token(user.id)
     request.session["access_token"] = token
     return TokenOut(access_token=token)
-
-
-@router.post("/preview/link", name="preview_login_link")
-async def preview_login_link_api(
-    request: Request,
-    payload: PreviewLoginRequest | None = None,
-) -> dict[str, str]:
-    if not settings.preview_mode:
-        raise HTTPException(status_code=404)
-
-    target_email = payload.email if payload and payload.email else PREVIEW_EMAIL
-    if target_email not in {PREVIEW_EMAIL, PREVIEW_INVITEE_EMAIL}:
-        raise HTTPException(status_code=404)
-
-    return {"login_url": _preview_login_url(request, target_email)}
-
-
-@router.get("/preview/login/{token}", name="preview_login_redirect", response_model=None)
-async def preview_login_link_redirect(
-    token: str,
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-) -> RedirectResponse:
-    if not settings.preview_mode:
-        raise HTTPException(status_code=404)
-
-    target_email = verify_preview_login_token(token)
-    if target_email not in {PREVIEW_EMAIL, PREVIEW_INVITEE_EMAIL}:
-        raise HTTPException(status_code=404)
-
-    result = await db.execute(select(User).where(User.email == target_email))
-    user = result.scalar_one_or_none()
-    if user is None:
-        raise HTTPException(status_code=503, detail="Preview data has not been seeded")
-
-    access_token = create_access_token(user.id)
-    request.session["access_token"] = access_token
-    return RedirectResponse(url="/", status_code=303)
 
 
 @router.post("/logout")

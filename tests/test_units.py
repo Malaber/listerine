@@ -14,13 +14,7 @@ from app.api.v1.routes.auth import (
     _rp_id_for_request,
 )
 from app.core.config import settings
-from app.core.security import (
-    create_access_token,
-    create_preview_login_token,
-    hash_password,
-    verify_password,
-    verify_preview_login_token,
-)
+from app.core.security import create_access_token, hash_password, verify_password
 from app.services.websocket_hub import WebSocketHub
 from app.web.routes import _get_session_user, _has_session_access_token
 
@@ -63,8 +57,6 @@ def test_security_helpers_round_trip() -> None:
     assert verify_password(password, password_hash)
     assert not verify_password("bad", password_hash)
     assert isinstance(create_access_token(uuid4()), str)
-    token = create_preview_login_token("preview@example.com")
-    assert verify_preview_login_token(token) == "preview@example.com"
 
 
 def test_websocket_hub_connect_broadcast_disconnect() -> None:
