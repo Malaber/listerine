@@ -14,7 +14,11 @@ from app.api.v1.routes.auth import (
     _rp_id_for_request,
 )
 from app.core.config import settings
-from app.core.security import create_access_token, hash_password, verify_password
+from app.core.security import (
+    create_access_token,
+    hash_password,
+    verify_password,
+)
 from app.services.websocket_hub import WebSocketHub
 from app.web.routes import _get_session_user, _has_session_access_token
 
@@ -225,3 +229,18 @@ def test_passkey_request_helpers() -> None:
         assert getattr(exc, "status_code", None) == 400
     else:  # pragma: no cover
         raise AssertionError("Expected hostless passkey request to fail")
+
+
+def test_passkey_request_helper_prefers_configured_rp_id(monkeypatch) -> None:
+    request = Request(
+        {
+            "type": "http",
+            "scheme": "https",
+            "path": "/login",
+            "server": ("pr-42.review.example.com", 443),
+            "headers": [(b"host", b"pr-42.review.example.com")],
+        }
+    )
+
+    monkeypatch.setattr("app.api.v1.routes.auth.settings.webauthn_rp_id", "review.example.com")
+    assert _rp_id_for_request(request) == "review.example.com"

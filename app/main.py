@@ -9,6 +9,7 @@ from app.admin import configure_admin
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.database import run_migrations
+from app.services.fixture_seed import ensure_seed_data
 from app.services.preview import ensure_preview_seed_data, ensure_ui_e2e_seed_data
 from app.web.routes import router as web_router
 
@@ -16,13 +17,16 @@ from app.web.routes import router as web_router
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await run_migrations()
-    if settings.preview_seed_data:
+    if settings.seed_data_path or settings.preview_seed_data:
         from app.core.database import AsyncSessionLocal
 
         async with AsyncSessionLocal() as session:
-            await ensure_preview_seed_data(session)
-            if settings.preview_ui_e2e_seed_data:
-                await ensure_ui_e2e_seed_data(session)
+            if settings.seed_data_path:
+                await ensure_seed_data(session, settings.seed_data_path)
+            if settings.preview_seed_data:
+                await ensure_preview_seed_data(session)
+                if settings.preview_ui_e2e_seed_data:
+                    await ensure_ui_e2e_seed_data(session)
     yield
 
 

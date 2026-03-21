@@ -611,6 +611,59 @@ def test_passkey_register_and_login_flow(client, monkeypatch) -> None:
     assert "access_token" in login_verify.json()
 
 
+def test_passkey_flow_uses_configured_webauthn_rp_id(client, monkeypatch) -> None:
+    captured_rp_ids: list[str] = []
+
+    def _capture_registration(**kwargs):
+        captured_rp_ids.append(kwargs["expected_rp_id"])
+        return _mock_verified_registration()
+
+    def _capture_authentication(**kwargs):
+        captured_rp_ids.append(kwargs["expected_rp_id"])
+        return _mock_verified_authentication()
+
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        _capture_registration,
+    )
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_authentication_response",
+        _capture_authentication,
+    )
+    monkeypatch.setattr("app.api.v1.routes.auth.settings.webauthn_rp_id", "review.example.com")
+
+    email = f"{uuid4()}@example.com"
+    register_options = client.post(
+        "/api/v1/auth/register/options",
+        json={"email": email, "display_name": "User"},
+        headers={"host": "pr-77.review.example.com"},
+    )
+    assert register_options.status_code == 200
+
+    register_verify = client.post(
+        "/api/v1/auth/register/verify",
+        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+        headers={"host": "pr-77.review.example.com"},
+    )
+    assert register_verify.status_code == 200
+
+    client.post("/api/v1/auth/logout")
+    login_options = client.post(
+        "/api/v1/auth/login/options",
+        json={"email": email},
+        headers={"host": "pr-77.review.example.com"},
+    )
+    assert login_options.status_code == 200
+
+    login_verify = client.post(
+        "/api/v1/auth/login/verify",
+        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+        headers={"host": "pr-77.review.example.com"},
+    )
+    assert login_verify.status_code == 200
+    assert captured_rp_ids == ["review.example.com", "review.example.com"]
+
+
 def test_bootstrap_admin_email_promotes_matching_user(client, monkeypatch) -> None:
     monkeypatch.setattr(
         "app.api.v1.routes.auth.verify_registration_response",

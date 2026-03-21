@@ -42,6 +42,8 @@ _LOGIN_SESSION_KEY = "passkey_login"
 
 
 def _rp_id_for_request(request: Request) -> str:
+    if settings.webauthn_rp_id:
+        return settings.webauthn_rp_id
     host = request.url.hostname
     if host is None:
         raise HTTPException(
