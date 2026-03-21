@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from jose import JWTError, jwt
@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.models import User
-from app.services.preview import fetch_preview_context
 
 router = APIRouter(tags=["web"])
 templates = Jinja2Templates(directory="app/web/templates")
@@ -125,16 +124,3 @@ async def invite_detail(
             **_template_auth_context(user),
         },
     )
-
-
-@router.get("/preview", response_class=HTMLResponse)
-async def preview_dashboard(request: Request, db: AsyncSession = Depends(get_db)) -> HTMLResponse:
-    if not settings.preview_mode:
-        raise HTTPException(status_code=404)
-
-    context = await fetch_preview_context(db)
-    if context is None:
-        raise HTTPException(status_code=503, detail="Preview data has not been seeded")
-
-    context.update(_template_auth_context(await _get_session_user(request, db)))
-    return templates.TemplateResponse(request, "preview.html", context)

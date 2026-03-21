@@ -5,11 +5,11 @@ This directory contains a standalone deployment bundle for running Listerine wit
 ## Included files
 
 - `compose.production.yml`: production Compose template for one long-lived deployment
-- `compose.review.yml`: preview Compose template reused for each pull request
+- `compose.review.yml`: review Compose template reused for each pull request
 - `env/production.common.env`: non-secret production runtime defaults
-- `env/review.common.env`: non-secret preview runtime defaults
+- `env/review.common.env`: non-secret review runtime defaults
 - `config/listerine-production.yaml`: `webhooker` project definition for production
-- `config/listerine-review.yaml`: `webhooker` project definition for preview deployments
+- `config/listerine-review.yaml`: `webhooker` project definition for review deployments
 
 ## Expected host layout
 
@@ -68,8 +68,8 @@ Keep the existing mount for the Listerine deployment bundle as well:
 
 ## Runtime behavior
 
-- Review deployments set `PREVIEW_MODE=true` and `PREVIEW_SEED_DATA=true`.
-- Production deployments keep preview mode disabled.
+- Review deployments seed deterministic real data from `/app/app/fixtures/review_seed.json`.
+- Review deployments set `WEBAUTHN_RP_ID=listerine.example.com` so the same passkey RP can work across PR subdomains.
 - Both modes use SQLite on the host via `DATABASE_URL=sqlite+aiosqlite:///${APP_SQLITE_PATH}`.
 - Both modes join the external Traefik network `system_traefik_external`.
 - CI publishes `sha-<full git sha>` tags for normal pushes.
@@ -86,7 +86,7 @@ Set these in the app repository so CI can wake `webhooker` after image publish:
 
 The secret value must match the webhook secret environment variable used by your `webhooker-api` and `webhooker-worker` services.
 
-Preview deployments from forked pull requests are not published automatically, because GitHub does not expose package-write credentials and deployment secrets to untrusted fork workflows.
+Review deployments from forked pull requests are not published automatically, because GitHub does not expose package-write credentials and deployment secrets to untrusted fork workflows.
 
 ## Secrets files
 

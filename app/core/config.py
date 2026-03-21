@@ -13,9 +13,6 @@ class Settings(BaseSettings):
     secure_cookies: bool = False
     webauthn_rp_id: str | None = None
     seed_data_path: str | None = None
-    preview_mode: bool = False
-    preview_seed_data: bool = False
-    preview_ui_e2e_seed_data: bool = False
     bootstrap_admin_email: EmailStr | None = None
 
 

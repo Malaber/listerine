@@ -985,5 +985,5 @@ def test_stale_web_session_redirects_to_login(client, monkeypatch) -> None:
     assert list_detail.headers["location"] == "/login"
 
 
-def test_preview_page_requires_flag(client) -> None:
+def test_preview_route_is_removed(client) -> None:
     assert client.get("/preview").status_code == 404

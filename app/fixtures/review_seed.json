@@ -1,0 +1,257 @@
+{
+  "metadata": {
+    "description": "Seed data for review deployments and browser e2e runs."
+  },
+  "e2e": {
+    "rp_id": "localhost",
+    "owner_email": "review-owner@example.com",
+    "invitee_email": "review-invitee@example.com",
+    "primary_household": "Review Household",
+    "primary_list": "Browser Test Shop"
+  },
+  "users": [
+    {
+      "email": "review-owner@example.com",
+      "display_name": "Review Owner",
+      "is_admin": true,
+      "passkey": {
+        "credential_id": "2BFE30Hm8RUrLQt6eM9BvA",
+        "public_key_b64": "pQECAyYgASFYIBKSsxZ4T75+fm2Ni8YlN1gWoqT+qysM+AQSQYVmxQY8Ilgg5/iiReXxiHuwmh8ELDnK214lFiTYiOG4E2/scHNjGtM=",
+        "sign_count": 0,
+        "private_key_pkcs8_b64": "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgE6Q6UMwzgw7FSi8oouyh5kdAok7/WxlPR1AKbL7a2vKhRANCAAQSkrMWeE++fn5tjYvGJTdYFqKk/qsrDPgEEkGFZsUGPOf4okXl8Yh7sJofBCw5ytteJRYk2IjhuBNv7HBzYxrT",
+        "user_handle_b64": "HuXIfs1kjAt+gJ2EBO6LqQ=="
+      }
+    },
+    {
+      "email": "review-invitee@example.com",
+      "display_name": "Review Invitee",
+      "is_admin": false,
+      "passkey": {
+        "credential_id": "wzGuB7Z9cAVSK5sKiqdYpQ",
+        "public_key_b64": "pQECAyYgASFYINF08nvAX9c4PN6hlc5MHT1fLc4o/BsGyj6s82xSGKJzIlggFLLzLccAAqIQXVj+5M9k7dIM+KzlQT601kCtKdGFKq0=",
+        "sign_count": 0,
+        "private_key_pkcs8_b64": "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgjtl5SDKoa03Ysn1z0wahf6X6ttq7V10JWzWvAkufYm2hRANCAATRdPJ7wF/XODzeoZXOTB09Xy3OKPwbBso+rPNsUhiicxSy8y3HAAKiEF1Y/uTPZO3SDPis5UE+tNZArSnRhSqt",
+        "user_handle_b64": "8mIs7d9nAju9saMpue8/bg=="
+      }
+    },
+    {
+      "email": "review-neighbor@example.com",
+      "display_name": "Review Neighbor",
+      "is_admin": false
+    }
+  ],
+  "categories": [
+    {
+      "name": "Konserven",
+      "color": "#94a3b8",
+      "aliases": ["Dose"]
+    },
+    {
+      "name": "Milch & Eier",
+      "color": "#d8b4e2",
+      "aliases": ["Molkerei"]
+    },
+    {
+      "name": "Nudeln",
+      "color": "#d6b08b",
+      "aliases": ["Pasta"]
+    },
+    {
+      "name": "Reinigung",
+      "color": "#c026a3",
+      "aliases": ["Putzen"]
+    },
+    {
+      "name": "Tiefkuehlkost",
+      "color": "#4dd0e1",
+      "aliases": ["TK"]
+    },
+    {
+      "name": "Vegan",
+      "color": "#00b512",
+      "aliases": ["Plant based"]
+    },
+    {
+      "name": "Backwaren",
+      "color": "#fb923c",
+      "aliases": ["Brot", "Broetchen", "Baeckerei"]
+    },
+    {
+      "name": "Backzutaten",
+      "color": "#ec4899",
+      "aliases": ["backen"]
+    },
+    {
+      "name": "Fleisch",
+      "color": "#ef4444",
+      "aliases": ["Metzger"]
+    },
+    {
+      "name": "Gemuese",
+      "color": "#7ed957",
+      "aliases": ["Gruenzeug"]
+    },
+    {
+      "name": "Haushalt",
+      "color": "#64748b",
+      "aliases": ["Home"]
+    },
+    {
+      "name": "Weekend chores",
+      "color": "#8b5cf6",
+      "aliases": ["Cabin"]
+    }
+  ],
+  "households": [
+    {
+      "name": "Review Household",
+      "owner_email": "review-owner@example.com",
+      "members": [
+        {
+          "email": "review-owner@example.com",
+          "role": "owner"
+        }
+      ],
+      "lists": [
+        {
+          "name": "Browser Test Shop",
+          "created_by_email": "review-owner@example.com",
+          "category_order": [
+            "Konserven",
+            "Milch & Eier",
+            "Nudeln",
+            "Reinigung",
+            "Tiefkuehlkost",
+            "Vegan",
+            "Backwaren",
+            "Backzutaten",
+            "Fleisch",
+            "Gemuese"
+          ],
+          "items": [
+            {
+              "name": "Loose item",
+              "quantity_text": "1",
+              "created_by_email": "review-owner@example.com"
+            },
+            {
+              "name": "Spaghetti",
+              "category": "Nudeln",
+              "quantity_text": "2 packs",
+              "created_by_email": "review-owner@example.com"
+            },
+            {
+              "name": "Brot",
+              "category": "Backwaren",
+              "note": "Seeded checked duplicate",
+              "checked": true,
+              "checked_by_email": "review-owner@example.com",
+              "created_by_email": "review-owner@example.com"
+            },
+            {
+              "name": "Tomaten",
+              "category": "Konserven",
+              "created_by_email": "review-owner@example.com"
+            },
+            {
+              "name": "Eier",
+              "category": "Milch & Eier",
+              "quantity_text": "10",
+              "created_by_email": "review-owner@example.com"
+            },
+            {
+              "name": "Putzmittel",
+              "category": "Reinigung",
+              "created_by_email": "review-owner@example.com"
+            },
+            {
+              "name": "Erbsen",
+              "category": "Tiefkuehlkost",
+              "created_by_email": "review-owner@example.com"
+            },
+            {
+              "name": "Tofu",
+              "category": "Vegan",
+              "created_by_email": "review-owner@example.com"
+            },
+            {
+              "name": "Mehl",
+              "category": "Backzutaten",
+              "created_by_email": "review-owner@example.com"
+            },
+            {
+              "name": "Hackfleisch",
+              "category": "Fleisch",
+              "created_by_email": "review-owner@example.com"
+            },
+            {
+              "name": "Paprika",
+              "category": "Gemuese",
+              "created_by_email": "review-owner@example.com"
+            }
+          ]
+        },
+        {
+          "name": "Hosting errands",
+          "created_by_email": "review-owner@example.com",
+          "category_order": ["Haushalt", "Backwaren"],
+          "items": [
+            {
+              "name": "Dish soap",
+              "category": "Haushalt",
+              "created_by_email": "review-owner@example.com"
+            },
+            {
+              "name": "Napkins",
+              "category": "Haushalt",
+              "checked": true,
+              "checked_by_email": "review-owner@example.com",
+              "created_by_email": "review-owner@example.com"
+            },
+            {
+              "name": "Brioches",
+              "category": "Backwaren",
+              "created_by_email": "review-owner@example.com"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Cabin Coop",
+      "owner_email": "review-neighbor@example.com",
+      "members": [
+        {
+          "email": "review-neighbor@example.com",
+          "role": "owner"
+        },
+        {
+          "email": "review-owner@example.com",
+          "role": "member"
+        }
+      ],
+      "lists": [
+        {
+          "name": "Weekend reset",
+          "created_by_email": "review-neighbor@example.com",
+          "category_order": ["Weekend chores", "Haushalt"],
+          "items": [
+            {
+              "name": "Wood pellets",
+              "category": "Weekend chores",
+              "created_by_email": "review-neighbor@example.com"
+            },
+            {
+              "name": "Laundry pods",
+              "category": "Haushalt",
+              "checked": true,
+              "checked_by_email": "review-owner@example.com",
+              "created_by_email": "review-neighbor@example.com",
+              "updated_by_email": "review-owner@example.com"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
