@@ -1,19 +1,48 @@
 # Webhooker deployment
 
-Listerine includes a standalone webhooker deployment bundle for one production environment and per-PR review environments.
+Listerine ships the app-side bundle files needed for a `webhooker` deployment,
+while the reusable Ansible role now lives in the separate
+[`malaber.webhooker`](https://github.com/Malaber/webhooker) collection.
 
-## What lives in this repo
+Use this deployment path when you want:
 
-The deployment assets live under [`deploy/webhooker/`](../../deploy/webhooker/README.md):
+- one long-lived production deployment
+- isolated review deployments for pull requests
+- CI to publish images and wake `webhooker` automatically
 
-- Compose templates for production and review mode
-- non-secret env defaults
-- webhooker project definitions
-- bundle-specific host layout notes
+## What lives where
+
+This repository provides the Listerine-specific deployment bundle in
+[`deploy/webhooker/`](../../deploy/webhooker/README.md):
+
+- `compose.review.yml`
+- `compose.production.yml`
+- `env/review.common.env`
+- `env/production.common.env`
+- `config/listerine-review.yaml`
+- `config/listerine-production.yaml`
+
+The external `malaber.webhooker` collection provides the generic Ansible role
+that:
+
+- deploys `webhooker-api` and `webhooker-worker`
+- renders `/etc/webhooker/env/webhooker.env`
+- renders `/etc/webhooker/projects/*.yaml`
+- copies app bundle files to the target host
+- renders app secret env files
+- adds extra worker bind mounts
+
+No Listerine application code changes are needed for this integration. The work
+on the Listerine side is:
+
+- keep the bundle files in `deploy/webhooker/` current
+- configure the consuming infra repo to publish those files with
+  `malaber.webhooker.webhooker`
+- configure CI wake URLs and shared webhook secret
 
 ## CI behavior
 
-The CI workflow is wired for webhooker-managed deployments:
+The CI workflow is already wired for `webhooker`-managed deployments:
 
 - pushes publish `ghcr.io/<owner>/<repo>:sha-<full git sha>`
 - pull requests publish `ghcr.io/<owner>/<repo>:sha-<pr head sha>`
@@ -23,13 +52,14 @@ The CI workflow is wired for webhooker-managed deployments:
 
 ## GitHub Actions settings
 
-Configure these in the app repository:
+Configure these in the Listerine repository:
 
 - repository variable `WEBHOOKER_REVIEW_WAKE_URL`
 - repository variable `WEBHOOKER_PRODUCTION_WAKE_URL`
 - repository secret `WEBHOOKER_WEBHOOK_SECRET`
 
-The secret value must match the webhook secret configured for the `webhooker` API and worker services.
+The secret value must match the webhook secret configured for the `webhooker`
+API and worker services in the infra repo.
 
 ## Runtime behavior
 
@@ -38,6 +68,23 @@ The secret value must match the webhook secret configured for the `webhooker` AP
 - both modes use host-mounted SQLite
 - both modes join the external Traefik network `system_traefik_external`
 
+## Consuming From An Infra Repo
+
+The normal flow is:
+
+1. Install `malaber.webhooker` from a GitHub Release tarball in the infra repo.
+2. Copy the Listerine bundle files from `deploy/webhooker/` in this repo into the infra repo's `files/` tree.
+3. Create a playbook that includes `malaber.webhooker.webhooker`.
+4. Add one non-secret vars file with:
+   - `webhooker_env`
+   - `webhooker_projects`
+   - `webhooker_managed_files`
+   - `webhooker_worker_extra_mounts`
+5. Add one secret vars file, usually encrypted with Ansible Vault, for:
+   - `webhooker_secret_env_files`
+   - secret values referenced by `webhooker_env`
+6. Run the playbook against the host group that should run `webhooker`.
+
 ## Important limitations
 
 - review deployments from forked pull requests are skipped automatically because GitHub does not expose package-write credentials or deployment secrets to untrusted forks
@@ -45,4 +92,7 @@ The secret value must match the webhook secret configured for the `webhooker` AP
 
 ## Next step
 
-Follow the bundle-specific setup notes in [`deploy/webhooker/README.md`](../../deploy/webhooker/README.md) when you are ready to copy the files onto the deploy host.
+Follow the detailed Listerine-specific consumption guide in
+[`deploy/webhooker/README.md`](../../deploy/webhooker/README.md). It explains
+exactly which files to copy into an infra repo, which host paths must exist, and
+which `malaber.webhooker` variables need to be set.
