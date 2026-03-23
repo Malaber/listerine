@@ -23,8 +23,8 @@ image:
 
 preview:
   base_dir: /srv/webhooker/reviews/listerine
-  data_dir_template: /srv/webhooker/reviews/listerine/pr-{pr_number}/data
-  sqlite_path_template: /srv/webhooker/reviews/listerine/pr-{pr_number}/data/listerine.db
+  data_dir_template: ./data
+  sqlite_path_template: ./data/listerine.db
 
 reconcile:
   interval_seconds: 60

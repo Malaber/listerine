@@ -48,6 +48,9 @@ function dashboardHtml() {
         <input type="text" name="name" />
         <button type="submit">Create list</button>
       </form>
+      <button type="button" data-passkey-add>Add another passkey</button>
+      <div data-passkey-empty hidden></div>
+      <div data-passkey-list></div>
       <div data-dashboard-error hidden></div>
       <div data-dashboard-success hidden></div>
       <div data-dashboard-empty hidden></div>
@@ -333,16 +336,20 @@ test("dashboard helpers render household state and form status", async () => {
     app.setDashboardMessage(rootWithoutBanner, "error", "ignored");
 
     let fetchIndex = 0;
-    globalThis.fetch = async () => {
+    globalThis.fetch = async (url) => {
       fetchIndex += 1;
       if (fetchIndex === 1) {
         return createResponse({ jsonData: [{ id: "house-1", name: "Home" }] });
+      }
+      if (fetchIndex === 2) {
+        return createResponse({ jsonData: [{ id: "passkey-1", created_at: "2024-01-01T00:00:00Z", last_used_at: null }] });
       }
       return createResponse({ jsonData: [{ id: "list-1", name: "Weekly" }] });
     };
     env.dom.window.fetch = globalThis.fetch;
     await app.loadDashboardData(root);
     assert.match(root.querySelector("[data-household-list]").textContent, /Weekly/);
+    assert.match(root.querySelector("[data-passkey-list]").textContent, /Passkey 1/);
   } finally {
     env.restore();
   }
@@ -371,6 +378,7 @@ test("helper guard clauses and alternate render paths are covered", async () => 
 
     app.updateHouseholdOptions(document.createElement("div"), []);
     app.renderHouseholds(document.createElement("div"), [], new Map());
+    app.renderPasskeys(document.createElement("div"), []);
     app.hideUndoToast(document.createElement("div"), { undoTimerId: null, undoAction: null });
     app.showUndoToast(document.createElement("div"), { undoTimerId: null, undoAction: null }, "x", async () => {});
     app.setItemPanelOpen(document.createElement("div"), true);
@@ -399,6 +407,8 @@ test("helper guard clauses and alternate render paths are covered", async () => 
     buttonHost.innerHTML = `<button type="button">A</button><button type="button">B</button>`;
     app.toggleButtons(buttonHost, true);
     buttonHost.querySelectorAll("button").forEach((button) => assert.equal(button.disabled, true));
+
+    assert.equal(app.formatPasskeyDate(null), "Never used yet");
 
     app.setMessage(document.querySelector("[data-passkey-auth]"), "error", "Broken");
     assert.equal(document.querySelector("[data-auth-error]").textContent, "Broken");
@@ -511,11 +521,24 @@ test("helper guard clauses and alternate render paths are covered", async () => 
 
 test("initDashboard handles refresh, household creation, list creation, and errors", async () => {
   const fetchLog = [];
+  let passkeyFetches = 0;
   const env = installDom(dashboardHtml(), {
     fetch: async (url, options = {}) => {
       fetchLog.push([url, options.method || "GET"]);
       if (url === "/api/v1/households" && (!options.method || options.method === "GET")) {
         return createResponse({ jsonData: [{ id: "house-1", name: "Home" }] });
+      }
+      if (url === "/api/v1/auth/passkeys" && (!options.method || options.method === "GET")) {
+        passkeyFetches += 1;
+        return createResponse({
+          jsonData:
+            passkeyFetches < 3
+              ? [{ id: "passkey-1", created_at: "2024-01-01T00:00:00Z", last_used_at: null }]
+              : [
+                  { id: "passkey-1", created_at: "2024-01-01T00:00:00Z", last_used_at: null },
+                  { id: "passkey-2", created_at: "2024-01-02T00:00:00Z", last_used_at: null },
+                ],
+        });
       }
       if (url === "/api/v1/households/house-1/lists" && (!options.method || options.method === "GET")) {
         return createResponse({ jsonData: [{ id: "list-1", name: "Weekly" }] });
@@ -526,12 +549,37 @@ test("initDashboard handles refresh, household creation, list creation, and erro
       if (url === "/api/v1/households/house-1/lists" && options.method === "POST") {
         return createResponse({ jsonData: { id: "list-2", name: "Costco" } });
       }
+      if (url === "/api/v1/auth/passkeys/register/options" && options.method === "POST") {
+        return createResponse({ jsonData: { challenge: "AQID", user: { id: "BAUG" } } });
+      }
+      if (url === "/api/v1/auth/passkeys/register/verify" && options.method === "POST") {
+        return createResponse({ jsonData: { id: "passkey-2" } });
+      }
+      if (url === "/api/v1/auth/passkeys/passkey-1/delete/options" && options.method === "POST") {
+        return createResponse({ jsonData: { challenge: "AQID", allowCredentials: [{ id: "BwgJ" }] } });
+      }
+      if (url === "/api/v1/auth/passkeys/passkey-1/delete/verify" && options.method === "POST") {
+        return createResponse({ jsonData: { message: "passkey deleted" } });
+      }
       return createResponse({ jsonData: {} });
     },
   });
 
   try {
     const app = await loadApp();
+    globalThis.window.PublicKeyCredential = class {};
+    globalThis.navigator.credentials = {
+      create: async () => ({
+        id: "cred-created",
+        rawId: new Uint8Array([1, 2, 3]).buffer,
+        response: { clientDataJSON: new Uint8Array([4, 5, 6]) },
+      }),
+      get: async () => ({
+        id: "cred-verified",
+        rawId: new Uint8Array([1, 2, 3]).buffer,
+        response: { authenticatorData: new Uint8Array([4, 5, 6]) },
+      }),
+    };
     await app.initDashboard();
 
     const root = document.querySelector("[data-dashboard]");
@@ -547,6 +595,17 @@ test("initDashboard handles refresh, household creation, list creation, and erro
     listForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     await new Promise((resolve) => setTimeout(resolve, 0));
     assert.deepEqual(env.assigned, ["/lists/list-2"]);
+
+    root.querySelector("[data-passkey-add]").click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(root.querySelector("[data-dashboard-success]").textContent, "Another passkey is ready to use.");
+
+    root.querySelector('[data-passkey-delete="passkey-1"]').click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(
+      root.querySelector("[data-dashboard-success]").textContent,
+      "Passkey deleted after confirming another one worked.",
+    );
 
     globalThis.fetch = async () => createResponse({ ok: false, status: 500, jsonData: { detail: "Failed load" } });
     env.dom.window.fetch = globalThis.fetch;

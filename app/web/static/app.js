@@ -285,6 +285,49 @@ function renderHouseholds(root, households, listsByHousehold) {
   });
 }
 
+function formatPasskeyDate(value) {
+  if (!value) {
+    return "Never used yet";
+  }
+
+  return new Date(value).toLocaleString([], {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
+function renderPasskeys(root, passkeys) {
+  const container = root.querySelector("[data-passkey-list]");
+  const emptyState = root.querySelector("[data-passkey-empty]");
+  if (!container || !emptyState) {
+    return;
+  }
+
+  container.innerHTML = "";
+  emptyState.hidden = passkeys.length > 0;
+
+  passkeys.forEach((passkey, index) => {
+    const row = document.createElement("article");
+    row.className = "passkey-row";
+    row.innerHTML = `
+      <div class="passkey-copy">
+        <strong>Passkey ${index + 1}</strong>
+        <span>Added ${formatPasskeyDate(passkey.created_at)}</span>
+        <span>Last used ${formatPasskeyDate(passkey.last_used_at)}</span>
+      </div>
+      <button
+        type="button"
+        class="danger-button"
+        data-passkey-delete="${passkey.id}"
+        ${passkeys.length <= 1 ? "disabled" : ""}
+      >
+        Delete
+      </button>
+    `;
+    container.appendChild(row);
+  });
+}
+
 async function copyText(value) {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(value);
@@ -304,6 +347,7 @@ async function copyText(value) {
 
 async function loadDashboardData(root) {
   const households = await fetchJson("/api/v1/households");
+  const passkeys = await fetchJson("/api/v1/auth/passkeys");
   const listResponses = await Promise.all(
     households.map(async (household) => ({
       householdId: household.id,
@@ -316,6 +360,27 @@ async function loadDashboardData(root) {
 
   updateHouseholdOptions(root, households);
   renderHouseholds(root, households, listsByHousehold);
+  renderPasskeys(root, passkeys);
+}
+
+async function addPasskey(root) {
+  const options = await postJson("/api/v1/auth/passkeys/register/options", {});
+  const credential = await navigator.credentials.create({
+    publicKey: publicKeyFromJSON(options),
+  });
+  await postJson("/api/v1/auth/passkeys/register/verify", {
+    credential: credentialToJSON(credential),
+  });
+}
+
+async function deletePasskey(root, passkeyId) {
+  const options = await postJson(`/api/v1/auth/passkeys/${passkeyId}/delete/options`, {});
+  const credential = await navigator.credentials.get({
+    publicKey: publicKeyFromJSON(options),
+  });
+  await postJson(`/api/v1/auth/passkeys/${passkeyId}/delete/verify`, {
+    credential: credentialToJSON(credential),
+  });
 }
 
 async function initDashboard() {
@@ -351,6 +416,55 @@ async function initDashboard() {
           root,
           "error",
           error instanceof Error ? error.message : "Could not create the invite link."
+        );
+      } finally {
+        toggleDashboardForms(root, false);
+      }
+      return;
+    }
+
+    const addPasskeyButton = event.target.closest("[data-passkey-add]");
+    if (addPasskeyButton) {
+      if (!window.PublicKeyCredential || !navigator.credentials) {
+        setDashboardMessage(root, "error", "This browser does not support passkeys.");
+        return;
+      }
+
+      toggleDashboardForms(root, true);
+      try {
+        await addPasskey(root);
+        await refresh();
+        setDashboardMessage(root, "success", "Another passkey is ready to use.");
+      } catch (error) {
+        setDashboardMessage(
+          root,
+          "error",
+          error instanceof Error ? error.message : "Could not add another passkey."
+        );
+      } finally {
+        toggleDashboardForms(root, false);
+      }
+      return;
+    }
+
+    const deletePasskeyButton = event.target.closest("[data-passkey-delete]");
+    if (deletePasskeyButton) {
+      if (!window.PublicKeyCredential || !navigator.credentials) {
+        setDashboardMessage(root, "error", "This browser does not support passkeys.");
+        return;
+      }
+
+      const passkeyId = deletePasskeyButton.getAttribute("data-passkey-delete");
+      toggleDashboardForms(root, true);
+      try {
+        await deletePasskey(root, passkeyId);
+        await refresh();
+        setDashboardMessage(root, "success", "Passkey deleted after confirming another one worked.");
+      } catch (error) {
+        setDashboardMessage(
+          root,
+          "error",
+          error instanceof Error ? error.message : "Could not delete that passkey."
         );
       } finally {
         toggleDashboardForms(root, false);
@@ -1968,6 +2082,10 @@ export {
   updateHouseholdOptions,
   renderHouseholds,
   loadDashboardData,
+  formatPasskeyDate,
+  renderPasskeys,
+  addPasskey,
+  deletePasskey,
   initDashboard,
   setListMessage,
   setListSyncStatus,

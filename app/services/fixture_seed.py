@@ -13,6 +13,7 @@ from app.models import (
     Household,
     HouseholdMember,
     ListCategoryOrder,
+    Passkey,
     User,
 )
 
@@ -27,6 +28,23 @@ def _load_fixture(path: str) -> dict[str, object]:
     if not isinstance(loaded, dict):
         raise ValueError("Seed fixture must be a JSON object")
     return loaded
+
+
+def _passkey_payloads(payload: dict[str, object], email: str) -> list[dict[str, object]] | None:
+    passkeys = payload.get("passkeys")
+    if passkeys is not None:
+        if not isinstance(passkeys, list):
+            raise ValueError(f"Passkeys fixture for {email} must be a list")
+        if not all(isinstance(entry, dict) for entry in passkeys):
+            raise ValueError(f"Each passkey fixture for {email} must be an object")
+        return list(passkeys)
+
+    passkey = payload.get("passkey")
+    if passkey is None:
+        return None
+    if not isinstance(passkey, dict):
+        raise ValueError(f"Passkey fixture for {email} must be an object")
+    return [passkey]
 
 
 async def _ensure_user(db: AsyncSession, payload: dict[str, object]) -> User:
@@ -46,13 +64,27 @@ async def _ensure_user(db: AsyncSession, payload: dict[str, object]) -> User:
     user.is_admin = bool(payload.get("is_admin", False))
     user.is_active = bool(payload.get("is_active", True))
 
-    passkey = payload.get("passkey")
-    if passkey is not None:
-        if not isinstance(passkey, dict):
-            raise ValueError(f"Passkey fixture for {email} must be an object")
-        user.passkey_credential_id = str(passkey["credential_id"])
-        user.passkey_public_key = _decode_public_key(str(passkey["public_key_b64"]))
-        user.passkey_sign_count = int(passkey.get("sign_count", 0))
+    passkeys = _passkey_payloads(payload, email)
+    if passkeys is not None:
+        existing_passkeys = (
+            (await db.execute(select(Passkey).where(Passkey.user_id == user.id))).scalars().all()
+        )
+        by_credential_id = {passkey.credential_id: passkey for passkey in existing_passkeys}
+        fixture_credential_ids = {str(passkey["credential_id"]) for passkey in passkeys}
+
+        for existing_passkey in existing_passkeys:
+            if existing_passkey.credential_id not in fixture_credential_ids:
+                await db.delete(existing_passkey)
+
+        for passkey_payload in passkeys:
+            credential_id = str(passkey_payload["credential_id"])
+            passkey = by_credential_id.get(credential_id)
+            if passkey is None:
+                passkey = Passkey(user_id=user.id, credential_id=credential_id)
+                db.add(passkey)
+
+            passkey.public_key = _decode_public_key(str(passkey_payload["public_key_b64"]))
+            passkey.sign_count = int(passkey_payload.get("sign_count", 0))
 
     return user
 
