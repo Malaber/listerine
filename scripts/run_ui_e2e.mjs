@@ -8,6 +8,10 @@ const artifactDir = process.env.PREVIEW_ARTIFACT_DIR ?? "e2e-artifacts/ui-e2e";
 const videoDir = path.join(artifactDir, "videos");
 const seedPath = process.env.E2E_SEED_PATH ?? "app/fixtures/review_seed.json";
 
+function logStep(message) {
+  console.log(`[ui-e2e] ${message}`);
+}
+
 async function resetDir(dir) {
   await fs.rm(dir, { recursive: true, force: true });
   await fs.mkdir(dir, { recursive: true });
@@ -138,6 +142,7 @@ async function passkeysFromSession(requestContext) {
 }
 
 async function runPasskeyManagementFlow(page, context, owner, rpId, authenticator) {
+  logStep("Opening dashboard passkey management");
   await expectVisible(
     page.getByRole("heading", { name: "Your passkeys" }),
     "Expected passkey management section",
@@ -152,6 +157,7 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
 
   const secondAuthenticator = await createVirtualAuthenticator(page);
 
+  logStep("Adding a second passkey through the dashboard");
   await page.getByRole("button", { name: "Add another passkey" }).click();
   await expectVisible(
     page.locator("[data-dashboard-success]", { hasText: "Another passkey is ready to use." }),
@@ -186,6 +192,7 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
     "Expected the second authenticator credential to be the newly added passkey",
   );
 
+  logStep("Logging out and confirming the new passkey can log back in");
   await page.getByRole("button", { name: "Logout" }).click();
   await page.waitForURL(/\/login(\?|$)/);
   await loginFromLoginPage(page, owner, new URL("/", baseUrl).toString());
@@ -194,6 +201,7 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
     "Expected login with the second passkey to succeed",
   );
 
+  logStep("Deleting the original passkey using the second passkey as confirmation");
   await page.locator(".passkey-row").nth(0).getByRole("button", { name: "Delete" }).click();
   await expectVisible(
     page.locator("[data-dashboard-success]", {
@@ -214,6 +222,7 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
   });
 
   await screenshot(page, "passkey-management");
+  logStep("Passkey management checks passed");
 }
 
 async function loginFromLoginPage(page, user, expectedUrlPattern) {
@@ -285,6 +294,7 @@ function extractInviteToken(inviteUrl) {
 }
 
 async function runInviteFlow(ownerPage, browser, scenario, seed, rpId) {
+  logStep("Creating and accepting a household invite");
   await ownerPage.goto(new URL("/", baseUrl).toString(), { waitUntil: "networkidle" });
   await expectVisible(
     ownerPage.getByRole("heading", { name: "Households and Lists" }),
@@ -362,9 +372,11 @@ async function runInviteFlow(ownerPage, browser, scenario, seed, rpId) {
 }
 
 async function main() {
+  logStep(`Preparing artifacts in ${artifactDir}`);
   await resetDir(artifactDir);
   await ensureDir(videoDir);
 
+  logStep(`Loading seed fixture from ${seedPath}`);
   const seed = await loadSeed();
   const rpId = process.env.WEBAUTHN_RP_ID ?? seed.e2e.rp_id ?? new URL(baseUrl).hostname;
   const owner = fixtureUser(seed, seed.e2e.owner_email);
@@ -384,12 +396,15 @@ async function main() {
   const page = await context.newPage();
 
   try {
+    logStep(`Launching browser flow against ${baseUrl}`);
     const authenticator = await createVirtualAuthenticator(page);
     await installSeededPasskey(authenticator, owner, rpId);
+    logStep("Signing in with the seeded owner passkey");
     await loginFromRoot(page, owner, "Households and Lists");
     await runPasskeyManagementFlow(page, context, owner, rpId, authenticator);
 
     const scenario = await scenarioFromSeed(seed, context.request);
+    logStep(`Resetting seeded list state for ${scenario.listName}`);
     await resetFixtureItems(context.request, scenario.listId, expectedChecked);
     const listUrl = new URL(`/lists/${scenario.listId}`, baseUrl).toString();
 
@@ -413,6 +428,7 @@ async function main() {
     const addForm = page.locator("[data-item-form]");
     const editForm = page.locator("[data-item-edit-form]");
 
+    logStep("Running main list interaction flow");
     await expectVisible(page.getByRole("button", { name: "Add item" }), "Expected floating add button");
 
     await page.keyboard.press("Enter");
@@ -595,7 +611,9 @@ async function main() {
 
     await screenshot(page, "ui-e2e-final");
     await screenshot(pageTwo, "ui-e2e-second-client");
+    logStep("Browser UI e2e completed successfully");
   } catch (error) {
+    logStep(`Browser UI e2e failed: ${error instanceof Error ? error.message : String(error)}`);
     await screenshot(page, "ui-e2e-failure-main").catch(() => {});
     throw error;
   } finally {
