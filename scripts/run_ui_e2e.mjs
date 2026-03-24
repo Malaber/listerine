@@ -69,7 +69,7 @@ async function screenshot(page, name) {
   await page.screenshot({ path: path.join(artifactDir, `${name}.png`), fullPage: true });
 }
 
-async function installSeededPasskey(page, user, rpId) {
+async function createVirtualAuthenticator(page) {
   const client = await page.context().newCDPSession(page);
   await client.send("WebAuthn.enable", { enableUI: false });
   const { authenticatorId } = await client.send("WebAuthn.addVirtualAuthenticator", {
@@ -91,8 +91,32 @@ async function installSeededPasskey(page, user, rpId) {
     authenticatorId,
     isUserVerified: true,
   });
-  await client.send("WebAuthn.addCredential", {
-    authenticatorId,
+  return { client, authenticatorId };
+}
+
+async function authenticatorCredentials(authenticator) {
+  const { credentials } = await authenticator.client.send("WebAuthn.getCredentials", {
+    authenticatorId: authenticator.authenticatorId,
+  });
+  return credentials;
+}
+
+async function removeCredential(authenticator, credentialId) {
+  await authenticator.client.send("WebAuthn.removeCredential", {
+    authenticatorId: authenticator.authenticatorId,
+    credentialId,
+  });
+}
+
+async function removeAuthenticator(authenticator) {
+  await authenticator.client.send("WebAuthn.removeVirtualAuthenticator", {
+    authenticatorId: authenticator.authenticatorId,
+  });
+}
+
+async function installSeededPasskey(authenticator, user, rpId) {
+  await authenticator.client.send("WebAuthn.addCredential", {
+    authenticatorId: authenticator.authenticatorId,
     credential: {
       credentialId: toBase64(user.passkey.credential_id),
       isResidentCredential: true,
@@ -104,9 +128,92 @@ async function installSeededPasskey(page, user, rpId) {
       userDisplayName: user.display_name,
     },
   });
-  const { credentials } = await client.send("WebAuthn.getCredentials", { authenticatorId });
+  const credentials = await authenticatorCredentials(authenticator);
   assert.equal(credentials.length, 1, `Expected seeded credential for ${user.email}`);
-  return client;
+  return credentials[0];
+}
+
+async function passkeysFromSession(requestContext) {
+  return apiJson(requestContext, "/api/v1/auth/passkeys");
+}
+
+async function runPasskeyManagementFlow(page, context, owner, rpId, authenticator) {
+  await expectVisible(
+    page.getByRole("heading", { name: "Your passkeys" }),
+    "Expected passkey management section",
+  );
+
+  const originalPasskeys = await passkeysFromSession(context.request);
+  assert.equal(originalPasskeys.length, 1, "Expected one seeded passkey before adding another");
+
+  const seededCredential = (await authenticatorCredentials(authenticator))[0];
+  assert(seededCredential, "Expected seeded credential in the virtual authenticator");
+  await removeAuthenticator(authenticator);
+
+  const secondAuthenticator = await createVirtualAuthenticator(page);
+
+  await page.getByRole("button", { name: "Add another passkey" }).click();
+  await expectVisible(
+    page.locator("[data-dashboard-success]", { hasText: "Another passkey is ready to use." }),
+    "Expected passkey add success message",
+  );
+  await expectVisible(
+    page.locator(".passkey-row").nth(1),
+    "Expected a second passkey row after enrollment",
+  );
+
+  const passkeysAfterAdd = await passkeysFromSession(context.request);
+  assert.equal(passkeysAfterAdd.length, 2, "Expected backend to store the second passkey");
+
+  const credentialsAfterAdd = await authenticatorCredentials(secondAuthenticator);
+  assert.equal(
+    credentialsAfterAdd.length,
+    1,
+    "Expected one credential on the second authenticator after enrollment",
+  );
+  const addedCredential = credentialsAfterAdd[0];
+  assert(addedCredential, "Expected a newly enrolled passkey credential");
+
+  const remainingAuthenticatorCredentials = await authenticatorCredentials(secondAuthenticator);
+  assert.equal(
+    remainingAuthenticatorCredentials.length,
+    1,
+    "Expected only the newly added passkey on the second authenticator",
+  );
+  assert.equal(
+    remainingAuthenticatorCredentials[0].credentialId,
+    addedCredential.credentialId,
+    "Expected the second authenticator credential to be the newly added passkey",
+  );
+
+  await page.getByRole("button", { name: "Logout" }).click();
+  await page.waitForURL(/\/login(\?|$)/);
+  await loginFromLoginPage(page, owner, new URL("/", baseUrl).toString());
+  await expectVisible(
+    page.getByRole("heading", { name: "Households and Lists" }),
+    "Expected login with the second passkey to succeed",
+  );
+
+  await page.locator(".passkey-row").nth(0).getByRole("button", { name: "Delete" }).click();
+  await expectVisible(
+    page.locator("[data-dashboard-success]", {
+      hasText: "Passkey deleted after confirming another one worked.",
+    }),
+    "Expected passkey delete success message",
+  );
+
+  const passkeysAfterDelete = await passkeysFromSession(context.request);
+  assert.equal(passkeysAfterDelete.length, 1, "Expected one passkey to remain after deletion");
+  await page.waitForFunction(() => {
+    const rows = [...document.querySelectorAll(".passkey-row")];
+    if (rows.length !== 1) {
+      return false;
+    }
+    const button = rows[0].querySelector("button");
+    return Boolean(button?.disabled);
+  });
+
+  await screenshot(page, "passkey-management");
 }
 
 async function loginFromLoginPage(page, user, expectedUrlPattern) {
@@ -210,7 +317,8 @@ async function runInviteFlow(ownerPage, browser, scenario, seed, rpId) {
   const invitee = fixtureUser(seed, seed.e2e.invitee_email);
 
   try {
-    await installSeededPasskey(inviteePage, invitee, rpId);
+    const inviteeAuthenticator = await createVirtualAuthenticator(inviteePage);
+    await installSeededPasskey(inviteeAuthenticator, invitee, rpId);
     await inviteePage.goto(new URL("/", baseUrl).toString(), { waitUntil: "networkidle" });
     await inviteePage.waitForURL(/\/login(\?|$)/);
     await loginFromLoginPage(inviteePage, invitee, new URL("/", baseUrl).toString());
@@ -276,8 +384,10 @@ async function main() {
   const page = await context.newPage();
 
   try {
-    await installSeededPasskey(page, owner, rpId);
+    const authenticator = await createVirtualAuthenticator(page);
+    await installSeededPasskey(authenticator, owner, rpId);
     await loginFromRoot(page, owner, "Households and Lists");
+    await runPasskeyManagementFlow(page, context, owner, rpId, authenticator);
 
     const scenario = await scenarioFromSeed(seed, context.request);
     await resetFixtureItems(context.request, scenario.listId, expectedChecked);
@@ -495,7 +605,7 @@ async function main() {
   const summary = [
     "## UI E2E",
     "",
-    "Browser UI flow passed using seeded real database data and passkey auth for route rendering, login gating, add/edit flows, duplicate suggestions, undo toasts, category alias search, admin navigation, websocket updates, and household invite acceptance.",
+    "Browser UI flow passed using seeded real database data and passkey auth for route rendering, login gating, multi-passkey enrollment and deletion, add/edit flows, duplicate suggestions, undo toasts, category alias search, admin navigation, websocket updates, and household invite acceptance.",
     "",
   ].join("\n");
   await fs.writeFile(path.join(artifactDir, "summary.md"), summary);

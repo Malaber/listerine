@@ -191,7 +191,8 @@ function toggleDashboardForms(root, disabled) {
   root
     .querySelectorAll("[data-dashboard] button, [data-dashboard] input, [data-dashboard] select")
     .forEach((node) => {
-      node.disabled = disabled;
+      const locked = node.getAttribute("data-passkey-locked") === "true";
+      node.disabled = disabled || locked;
     });
 }
 
@@ -319,6 +320,7 @@ function renderPasskeys(root, passkeys) {
         type="button"
         class="danger-button"
         data-passkey-delete="${passkey.id}"
+        data-passkey-locked="${passkeys.length <= 1 ? "true" : "false"}"
         ${passkeys.length <= 1 ? "disabled" : ""}
       >
         Delete
