@@ -312,7 +312,7 @@ function renderPasskeys(root, passkeys) {
     row.className = "passkey-row";
     row.innerHTML = `
       <div class="passkey-copy">
-        <strong>Passkey ${index + 1}</strong>
+        <strong>${passkey.name}</strong>
         <span>Added ${formatPasskeyDate(passkey.created_at)}</span>
         <span>Last used ${formatPasskeyDate(passkey.last_used_at)}</span>
       </div>
@@ -328,6 +328,20 @@ function renderPasskeys(root, passkeys) {
     `;
     container.appendChild(row);
   });
+}
+
+function requestPasskeyName(root) {
+  const suggestedName = `Passkey ${root.querySelectorAll(".passkey-row").length + 1}`;
+  const rawName = window.prompt("Name this passkey", suggestedName);
+  if (rawName === null) {
+    return null;
+  }
+
+  const name = rawName.trim();
+  if (!name) {
+    throw new Error("Passkey name is required.");
+  }
+  return name;
 }
 
 async function copyText(value) {
@@ -365,8 +379,8 @@ async function loadDashboardData(root) {
   renderPasskeys(root, passkeys);
 }
 
-async function addPasskey(root) {
-  const options = await postJson("/api/v1/auth/passkeys/register/options", {});
+async function addPasskey(root, name) {
+  const options = await postJson("/api/v1/auth/passkeys/register/options", { name });
   const credential = await navigator.credentials.create({
     publicKey: publicKeyFromJSON(options),
   });
@@ -432,9 +446,24 @@ async function initDashboard() {
         return;
       }
 
+      let passkeyName;
+      try {
+        passkeyName = requestPasskeyName(root);
+      } catch (error) {
+        setDashboardMessage(
+          root,
+          "error",
+          error instanceof Error ? error.message : "Passkey name is required."
+        );
+        return;
+      }
+      if (passkeyName === null) {
+        return;
+      }
+
       toggleDashboardForms(root, true);
       try {
-        await addPasskey(root);
+        await addPasskey(root, passkeyName);
         await refresh();
         setDashboardMessage(root, "success", "Another passkey is ready to use.");
       } catch (error) {
@@ -2086,6 +2115,7 @@ export {
   loadDashboardData,
   formatPasskeyDate,
   renderPasskeys,
+  requestPasskeyName,
   addPasskey,
   deletePasskey,
   initDashboard,

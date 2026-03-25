@@ -158,7 +158,14 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
   const secondAuthenticator = await createVirtualAuthenticator(page);
 
   logStep("Adding a second passkey through the dashboard");
-  await page.getByRole("button", { name: "Add another passkey" }).click();
+  const secondPasskeyName = "Laptop passkey";
+  page.once("dialog", async (prompt) => {
+    assert.equal(prompt.message(), "Name this passkey");
+    await prompt.accept(secondPasskeyName);
+  });
+  await page.locator("[data-passkey-add]").evaluate((button) => {
+    button.click();
+  });
   await expectVisible(
     page.locator("[data-dashboard-success]", { hasText: "Another passkey is ready to use." }),
     "Expected passkey add success message",
@@ -170,6 +177,11 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
 
   const passkeysAfterAdd = await passkeysFromSession(context.request);
   assert.equal(passkeysAfterAdd.length, 2, "Expected backend to store the second passkey");
+  assert.equal(passkeysAfterAdd[1].name, secondPasskeyName, "Expected backend to store the chosen passkey name");
+  await expectVisible(
+    page.locator(".passkey-row", { hasText: secondPasskeyName }),
+    "Expected the dashboard to show the chosen passkey name",
+  );
 
   const credentialsAfterAdd = await authenticatorCredentials(secondAuthenticator);
   assert.equal(

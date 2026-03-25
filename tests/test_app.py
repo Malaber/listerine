@@ -34,8 +34,13 @@ async def _create_user(
                 bytes_to_base64url(f"cred-{uuid4()}".encode())
             ]
             user.passkeys = [
-                Passkey(credential_id=credential_id, public_key=b"public-key", sign_count=1)
-                for credential_id in credential_ids
+                Passkey(
+                    name=f"Passkey {index + 1}",
+                    credential_id=credential_id,
+                    public_key=b"public-key",
+                    sign_count=1,
+                )
+                for index, credential_id in enumerate(credential_ids)
             ]
         session.add(user)
         await session.commit()
@@ -830,6 +835,7 @@ def test_user_can_add_multiple_passkeys_and_delete_one_after_confirming_another(
 
     list_before = client.get("/api/v1/auth/passkeys")
     assert list_before.status_code == 200
+    assert list_before.json()[0]["name"] == "Passkey 1"
     original_passkey_id = list_before.json()[0]["id"]
 
     monkeypatch.setattr(
@@ -840,7 +846,10 @@ def test_user_can_add_multiple_passkeys_and_delete_one_after_confirming_another(
             sign_count=4,
         ),
     )
-    add_options = client.post("/api/v1/auth/passkeys/register/options")
+    add_options = client.post(
+        "/api/v1/auth/passkeys/register/options",
+        json={"name": "Laptop"},
+    )
     assert add_options.status_code == 200
     assert len(add_options.json()["excludeCredentials"]) == 1
 
@@ -849,10 +858,12 @@ def test_user_can_add_multiple_passkeys_and_delete_one_after_confirming_another(
         json=_passkey_finish_payload(SECOND_CREDENTIAL_ID),
     )
     assert add_verify.status_code == 200
+    assert add_verify.json()["name"] == "Laptop"
 
     passkeys = client.get("/api/v1/auth/passkeys")
     assert passkeys.status_code == 200
     assert len(passkeys.json()) == 2
+    assert [passkey["name"] for passkey in passkeys.json()] == ["Passkey 1", "Laptop"]
 
     delete_options = client.post(f"/api/v1/auth/passkeys/{original_passkey_id}/delete/options")
     assert delete_options.status_code == 200
@@ -910,8 +921,29 @@ def test_passkey_management_error_paths(client, monkeypatch) -> None:
 
     monkeypatch.setattr(auth_routes, "_load_user_with_passkeys", _missing_user)
     assert client.get("/api/v1/auth/passkeys", headers=headers).status_code == 404
-    assert client.post("/api/v1/auth/passkeys/register/options", headers=headers).status_code == 404
+    assert (
+        client.post(
+            "/api/v1/auth/passkeys/register/options",
+            headers=headers,
+            json={"name": "Backup key"},
+        ).status_code
+        == 404
+    )
     monkeypatch.setattr(auth_routes, "_load_user_with_passkeys", original_loader)
+
+    blank_name = client.post(
+        "/api/v1/auth/passkeys/register/options",
+        headers=headers,
+        json={"name": "   "},
+    )
+    assert blank_name.status_code == 400
+
+    too_long_name = client.post(
+        "/api/v1/auth/passkeys/register/options",
+        headers=headers,
+        json={"name": "x" * 121},
+    )
+    assert too_long_name.status_code == 400
 
     add_without_session = client.post(
         "/api/v1/auth/passkeys/register/verify",
@@ -922,7 +954,14 @@ def test_passkey_management_error_paths(client, monkeypatch) -> None:
 
     other_user_id = asyncio.run(_create_user(f"{uuid4()}@example.com"))
     other_headers = {"Authorization": f"Bearer {create_access_token(other_user_id)}"}
-    assert client.post("/api/v1/auth/passkeys/register/options", headers=headers).status_code == 200
+    assert (
+        client.post(
+            "/api/v1/auth/passkeys/register/options",
+            headers=headers,
+            json={"name": "Backup key"},
+        ).status_code
+        == 200
+    )
     mismatched_user = client.post(
         "/api/v1/auth/passkeys/register/verify",
         headers=other_headers,
@@ -938,7 +977,14 @@ def test_passkey_management_error_paths(client, monkeypatch) -> None:
             sign_count=3,
         ),
     )
-    assert client.post("/api/v1/auth/passkeys/register/options", headers=headers).status_code == 200
+    assert (
+        client.post(
+            "/api/v1/auth/passkeys/register/options",
+            headers=headers,
+            json={"name": "First passkey copy"},
+        ).status_code
+        == 200
+    )
     duplicate_add = client.post(
         "/api/v1/auth/passkeys/register/verify",
         headers=headers,

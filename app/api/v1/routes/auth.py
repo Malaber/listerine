@@ -30,6 +30,7 @@ from app.schemas.auth import (
     PasskeyFinishRequest,
     PasskeyLoginStartRequest,
     PasskeyOut,
+    PasskeyRegisterLabelRequest,
     PasskeyRegisterStartRequest,
     PasswordAuthRequest,
     TokenOut,
@@ -42,6 +43,7 @@ _REGISTER_SESSION_KEY = "passkey_register"
 _LOGIN_SESSION_KEY = "passkey_login"
 _PASSKEY_ADD_SESSION_KEY = "passkey_add"
 _PASSKEY_DELETE_SESSION_KEY = "passkey_delete"
+_DEFAULT_INITIAL_PASSKEY_NAME = "Passkey 1"
 
 
 def _rp_id_for_request(request: Request) -> str:
@@ -90,6 +92,15 @@ async def _load_user_with_passkeys_by_email(db: AsyncSession, email: str) -> Use
 
 def _passkey_descriptor(passkey: Passkey) -> PublicKeyCredentialDescriptor:
     return PublicKeyCredentialDescriptor(id=base64url_to_bytes(passkey.credential_id))
+
+
+def _validated_passkey_name(raw_name: str) -> str:
+    name = raw_name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Passkey name is required")
+    if len(name) > 120:
+        raise HTTPException(status_code=400, detail="Passkey name must be 120 characters or fewer")
+    return name
 
 
 async def _apply_bootstrap_admin_email(db: AsyncSession, user: User) -> User:
@@ -176,6 +187,7 @@ async def finish_passkey_registration(
     )
     user.passkeys.append(
         Passkey(
+            name=_DEFAULT_INITIAL_PASSKEY_NAME,
             credential_id=credential_id,
             public_key=verified.credential_public_key,
             sign_count=verified.sign_count,
@@ -286,6 +298,7 @@ async def list_passkeys(
 
 @router.post("/passkeys/register/options")
 async def begin_add_passkey(
+    payload: PasskeyRegisterLabelRequest,
     request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -293,6 +306,7 @@ async def begin_add_passkey(
     refreshed = await _load_user_with_passkeys(db, user.id)
     if refreshed is None:
         raise HTTPException(status_code=404, detail="User not found")
+    passkey_name = _validated_passkey_name(payload.name)
 
     options = generate_registration_options(
         rp_id=_rp_id_for_request(request),
@@ -311,6 +325,7 @@ async def begin_add_passkey(
         "origin": _origin_for_request(request),
         "rp_id": _rp_id_for_request(request),
         "user_id": str(refreshed.id),
+        "name": passkey_name,
     }
     return json.loads(options_to_json(options))
 
@@ -348,6 +363,7 @@ async def finish_add_passkey(
 
     passkey = Passkey(
         user_id=user.id,
+        name=pending["name"],
         credential_id=credential_id,
         public_key=verified.credential_public_key,
         sign_count=verified.sign_count,

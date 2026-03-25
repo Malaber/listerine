@@ -163,6 +163,7 @@ function installDom(html, options = {}) {
     btoa: (value) => Buffer.from(value, "binary").toString("base64"),
     fetch: options.fetch ?? (async () => createResponse()),
     WebSocket: options.WebSocket ?? class {},
+    prompt: options.prompt ?? (() => "Passkey 2"),
     __appNavigateTo: (url) => {
       assigned.push(url);
     },
@@ -179,6 +180,7 @@ function installDom(html, options = {}) {
 
   dom.window.fetch = globalThis.fetch;
   dom.window.WebSocket = globalThis.WebSocket;
+  dom.window.prompt = globalThis.prompt;
   dom.window.HTMLElement.prototype.scrollIntoView = () => {};
 
   const timerFns = options.timers ?? {};
@@ -342,14 +344,26 @@ test("dashboard helpers render household state and form status", async () => {
         return createResponse({ jsonData: [{ id: "house-1", name: "Home" }] });
       }
       if (fetchIndex === 2) {
-        return createResponse({ jsonData: [{ id: "passkey-1", created_at: "2024-01-01T00:00:00Z", last_used_at: null }] });
+        return createResponse({
+          jsonData: [{ id: "passkey-1", name: "Laptop", created_at: "2024-01-01T00:00:00Z", last_used_at: null }],
+        });
       }
       return createResponse({ jsonData: [{ id: "list-1", name: "Weekly" }] });
     };
     env.dom.window.fetch = globalThis.fetch;
     await app.loadDashboardData(root);
     assert.match(root.querySelector("[data-household-list]").textContent, /Weekly/);
-    assert.match(root.querySelector("[data-passkey-list]").textContent, /Passkey 1/);
+    assert.match(root.querySelector("[data-passkey-list]").textContent, /Laptop/);
+
+    globalThis.prompt = () => "  Office key  ";
+    env.dom.window.prompt = globalThis.prompt;
+    assert.equal(app.requestPasskeyName(root), "Office key");
+    globalThis.prompt = () => null;
+    env.dom.window.prompt = globalThis.prompt;
+    assert.equal(app.requestPasskeyName(root), null);
+    globalThis.prompt = () => "   ";
+    env.dom.window.prompt = globalThis.prompt;
+    assert.throws(() => app.requestPasskeyName(root), /Passkey name is required/);
   } finally {
     env.restore();
   }
@@ -533,10 +547,10 @@ test("initDashboard handles refresh, household creation, list creation, and erro
         return createResponse({
           jsonData:
             passkeyFetches < 3
-              ? [{ id: "passkey-1", created_at: "2024-01-01T00:00:00Z", last_used_at: null }]
+              ? [{ id: "passkey-1", name: "Phone", created_at: "2024-01-01T00:00:00Z", last_used_at: null }]
               : [
-                  { id: "passkey-1", created_at: "2024-01-01T00:00:00Z", last_used_at: null },
-                  { id: "passkey-2", created_at: "2024-01-02T00:00:00Z", last_used_at: null },
+                  { id: "passkey-1", name: "Phone", created_at: "2024-01-01T00:00:00Z", last_used_at: null },
+                  { id: "passkey-2", name: "Laptop", created_at: "2024-01-02T00:00:00Z", last_used_at: null },
                 ],
         });
       }
@@ -550,10 +564,11 @@ test("initDashboard handles refresh, household creation, list creation, and erro
         return createResponse({ jsonData: { id: "list-2", name: "Costco" } });
       }
       if (url === "/api/v1/auth/passkeys/register/options" && options.method === "POST") {
+        assert.equal(options.body, JSON.stringify({ name: "Laptop" }));
         return createResponse({ jsonData: { challenge: "AQID", user: { id: "BAUG" } } });
       }
       if (url === "/api/v1/auth/passkeys/register/verify" && options.method === "POST") {
-        return createResponse({ jsonData: { id: "passkey-2" } });
+        return createResponse({ jsonData: { id: "passkey-2", name: "Laptop" } });
       }
       if (url === "/api/v1/auth/passkeys/passkey-1/delete/options" && options.method === "POST") {
         return createResponse({ jsonData: { challenge: "AQID", allowCredentials: [{ id: "BwgJ" }] } });
@@ -563,6 +578,7 @@ test("initDashboard handles refresh, household creation, list creation, and erro
       }
       return createResponse({ jsonData: {} });
     },
+    prompt: () => "Laptop",
   });
 
   try {
@@ -599,6 +615,7 @@ test("initDashboard handles refresh, household creation, list creation, and erro
     root.querySelector("[data-passkey-add]").click();
     await new Promise((resolve) => setTimeout(resolve, 0));
     assert.equal(root.querySelector("[data-dashboard-success]").textContent, "Another passkey is ready to use.");
+    assert.match(root.querySelector("[data-passkey-list]").textContent, /Laptop/);
 
     root.querySelector('[data-passkey-delete="passkey-1"]').click();
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -629,6 +646,55 @@ test("initDashboard handles refresh, household creation, list creation, and erro
     await new Promise((resolve) => setTimeout(resolve, 0));
     assert.equal(root.querySelector("[data-dashboard-error]").textContent, "Please enter a list name.");
     assert.ok(fetchLog.length > 0);
+  } finally {
+    env.restore();
+  }
+});
+
+test("initDashboard handles passkey name prompt cancel and blank input", async () => {
+  const fetchLog = [];
+  const env = installDom(dashboardHtml(), {
+    fetch: async (url, options = {}) => {
+      fetchLog.push([url, options.method || "GET"]);
+      if (url === "/api/v1/households" && (!options.method || options.method === "GET")) {
+        return createResponse({ jsonData: [] });
+      }
+      if (url === "/api/v1/auth/passkeys" && (!options.method || options.method === "GET")) {
+        return createResponse({ jsonData: [{ id: "passkey-1", name: "Phone", created_at: "2024-01-01T00:00:00Z", last_used_at: null }] });
+      }
+      throw new Error(`Unexpected fetch ${url}`);
+    },
+    prompt: () => null,
+  });
+
+  try {
+    const app = await loadApp();
+    globalThis.window.PublicKeyCredential = class {};
+    globalThis.navigator.credentials = {
+      create: async () => {
+        throw new Error("should not create");
+      },
+    };
+    await app.initDashboard();
+
+    const root = document.querySelector("[data-dashboard]");
+    root.querySelector("[data-passkey-add]").click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(root.querySelector("[data-dashboard-success]").textContent, "");
+    assert.deepEqual(
+      fetchLog.filter(([url]) => url === "/api/v1/auth/passkeys/register/options"),
+      [],
+    );
+
+    globalThis.prompt = () => "   ";
+    env.dom.window.prompt = globalThis.prompt;
+    root.querySelector("[data-passkey-add]").click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(root.querySelector("[data-dashboard-error]").textContent, "Passkey name is required.");
+    assert.deepEqual(
+      fetchLog.filter(([url]) => url === "/api/v1/auth/passkeys/register/options"),
+      [],
+    );
   } finally {
     env.restore();
   }
