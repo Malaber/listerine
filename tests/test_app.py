@@ -1102,7 +1102,9 @@ def test_passkey_management_error_paths(client, monkeypatch) -> None:
         )
     )
     replacement_headers = {"Authorization": f"Bearer {create_access_token(replacement_user_id)}"}
-    replacement_passkey_id = client.get("/api/v1/auth/passkeys", headers=replacement_headers).json()[0]["id"]
+    replacement_passkey_id = client.get(
+        "/api/v1/auth/passkeys", headers=replacement_headers
+    ).json()[0]["id"]
     assert (
         client.post(
             f"/api/v1/auth/passkeys/{replacement_passkey_id}/rename/options",
