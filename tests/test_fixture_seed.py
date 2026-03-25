@@ -124,6 +124,7 @@ def test_seed_data_populates_real_database_and_passkeys(tmp_path) -> None:
                 .all()
             )
             assert len(owner_passkeys) == 1
+            assert owner_passkeys[0].name == "Passkey 1"
             assert owner_passkeys[0].credential_id == "owner-credential-id"
             assert owner_passkeys[0].public_key == b"owner-public-key"
             assert owner_passkeys[0].sign_count == 7
@@ -308,6 +309,7 @@ def test_seed_data_updates_existing_rows_and_removes_stale_items(tmp_path) -> No
                 .all()
             )
             assert len(member_passkeys) == 1
+            assert member_passkeys[0].name == "Passkey 1"
             assert member_passkeys[0].credential_id == "member-credential-id-updated"
             assert member_passkeys[0].public_key == b"member-updated-public-key"
             assert member_passkeys[0].sign_count == 0
@@ -400,6 +402,7 @@ def test_seed_data_supports_multiple_passkeys_array(tmp_path) -> None:
                         "display_name": "Owner",
                         "passkeys": [
                             {
+                                "name": "Owner laptop",
                                 "credential_id": "owner-passkey-1",
                                 "public_key_b64": base64.b64encode(b"owner-key-1").decode("ascii"),
                                 "sign_count": 2,
@@ -441,6 +444,7 @@ def test_seed_data_supports_multiple_passkeys_array(tmp_path) -> None:
                 "owner-passkey-1",
                 "owner-passkey-2",
             ]
+            assert [passkey.name for passkey in passkeys] == ["Owner laptop", "Passkey 2"]
 
     try:
         asyncio.run(_assert_seeded())

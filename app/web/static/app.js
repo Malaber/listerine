@@ -191,7 +191,8 @@ function toggleDashboardForms(root, disabled) {
   root
     .querySelectorAll("[data-dashboard] button, [data-dashboard] input, [data-dashboard] select")
     .forEach((node) => {
-      node.disabled = disabled;
+      const locked = node.getAttribute("data-passkey-locked") === "true";
+      node.disabled = disabled || locked;
     });
 }
 
@@ -410,21 +411,77 @@ function renderPasskeys(root, passkeys) {
     row.className = "passkey-row";
     row.innerHTML = `
       <div class="passkey-copy">
-        <strong>Passkey ${index + 1}</strong>
+        <strong>${passkey.name}</strong>
         <span>Added ${formatPasskeyDate(passkey.created_at)}</span>
         <span>Last used ${formatPasskeyDate(passkey.last_used_at)}</span>
       </div>
-      <button
-        type="button"
-        class="danger-button"
-        data-passkey-delete="${passkey.id}"
-        ${passkeys.length <= 1 ? "disabled" : ""}
-      >
-        Delete
-      </button>
+      <div class="passkey-actions">
+        <button
+          type="button"
+          class="secondary-button"
+          data-passkey-rename="${passkey.id}"
+          data-passkey-current-name="${passkey.name}"
+        >
+          Rename
+        </button>
+        <button
+          type="button"
+          class="danger-button"
+          data-passkey-delete="${passkey.id}"
+          data-passkey-locked="${passkeys.length <= 1 ? "true" : "false"}"
+          ${passkeys.length <= 1 ? "disabled" : ""}
+        >
+          Delete
+        </button>
+      </div>
     `;
     container.appendChild(row);
   });
+}
+
+function suggestedPasskeyName(root) {
+  return `Passkey ${root.querySelectorAll(".passkey-row").length + 1}`;
+}
+
+function setPasskeyNameFormState(root, state) {
+  const form = root.querySelector("[data-passkey-name-form]");
+  const input = root.querySelector("[data-passkey-name-input]");
+  const addButton = root.querySelector("[data-passkey-add]");
+  const title = root.querySelector("[data-passkey-name-title]");
+  const submitButton = root.querySelector("[data-passkey-name-submit]");
+  if (
+    !(form instanceof HTMLFormElement)
+    || !(input instanceof HTMLInputElement)
+    || !(title instanceof HTMLElement)
+    || !(submitButton instanceof HTMLButtonElement)
+  ) {
+    return;
+  }
+
+  const isOpen = Boolean(state);
+  form.hidden = !isOpen;
+  if (addButton instanceof HTMLButtonElement) {
+    addButton.hidden = isOpen;
+  }
+
+  if (!isOpen) {
+    form.dataset.mode = "";
+    form.dataset.passkeyId = "";
+    title.textContent = "Name this passkey";
+    submitButton.textContent = "Continue";
+    form.reset();
+    return;
+  }
+
+  form.dataset.mode = state.mode;
+  form.dataset.passkeyId = state.passkeyId || "";
+  title.textContent = state.title;
+  submitButton.textContent = state.submitLabel;
+  input.value = state.name;
+  window.setTimeout(() => {
+    input.focus();
+    input.select();
+  }, 0);
 }
 
 async function copyText(value) {
@@ -463,12 +520,22 @@ async function loadDashboardData(root) {
   renderPasskeys(root, passkeys);
 }
 
-async function addPasskey(root) {
-  const options = await postJson("/api/v1/auth/passkeys/register/options", {});
+async function addPasskey(root, name) {
+  const options = await postJson("/api/v1/auth/passkeys/register/options", { name });
   const credential = await navigator.credentials.create({
     publicKey: publicKeyFromJSON(options),
   });
   await postJson("/api/v1/auth/passkeys/register/verify", {
+    credential: credentialToJSON(credential),
+  });
+}
+
+async function renamePasskey(root, passkeyId, name) {
+  const options = await postJson(`/api/v1/auth/passkeys/${passkeyId}/rename/options`, { name });
+  const credential = await navigator.credentials.get({
+    publicKey: publicKeyFromJSON(options),
+  });
+  await postJson(`/api/v1/auth/passkeys/${passkeyId}/rename/verify`, {
     credential: credentialToJSON(credential),
   });
 }
@@ -492,6 +559,7 @@ async function initDashboard() {
   const householdForm = root.querySelector("[data-household-form]");
   const listForm = root.querySelector("[data-list-form]");
   const itemForm = root.querySelector("[data-dashboard-item-form]");
+  const passkeyNameForm = root.querySelector("[data-passkey-name-form]");
 
   const refresh = async () => {
     setDashboardMessage(root, "", "");
@@ -530,21 +598,41 @@ async function initDashboard() {
         setDashboardMessage(root, "error", "This browser does not support passkeys.");
         return;
       }
+      setDashboardMessage(root, "", "");
+      setPasskeyNameFormState(root, {
+        mode: "add",
+        passkeyId: "",
+        title: "Name this passkey",
+        submitLabel: "Continue",
+        name: suggestedPasskeyName(root),
+      });
+      return;
+    }
 
-      toggleDashboardForms(root, true);
-      try {
-        await addPasskey(root);
-        await refresh();
-        setDashboardMessage(root, "success", "Another passkey is ready to use.");
-      } catch (error) {
-        setDashboardMessage(
-          root,
-          "error",
-          error instanceof Error ? error.message : "Could not add another passkey."
-        );
-      } finally {
-        toggleDashboardForms(root, false);
+    const cancelPasskeyNameButton = event.target.closest("[data-passkey-name-cancel]");
+    if (cancelPasskeyNameButton) {
+      setDashboardMessage(root, "", "");
+      setPasskeyNameFormState(root, null);
+      return;
+    }
+
+    const renamePasskeyButton = event.target.closest("[data-passkey-rename]");
+    if (renamePasskeyButton) {
+      if (!window.PublicKeyCredential || !navigator.credentials) {
+        setDashboardMessage(root, "error", "This browser does not support passkeys.");
+        return;
       }
+
+      const passkeyId = renamePasskeyButton.getAttribute("data-passkey-rename");
+      const currentName = renamePasskeyButton.getAttribute("data-passkey-current-name") || "";
+      setDashboardMessage(root, "", "");
+      setPasskeyNameFormState(root, {
+        mode: "rename",
+        passkeyId,
+        title: "Rename this passkey",
+        submitLabel: "Save and verify",
+        name: currentName,
+      });
       return;
     }
 
@@ -559,6 +647,7 @@ async function initDashboard() {
       toggleDashboardForms(root, true);
       try {
         await deletePasskey(root, passkeyId);
+        setPasskeyNameFormState(root, null);
         await refresh();
         setDashboardMessage(root, "success", "Passkey deleted after confirming another one worked.");
       } catch (error) {
@@ -713,6 +802,57 @@ async function initDashboard() {
     setDashboardPanelOpen(root, "item", false);
     navigateTo(`/lists/${listId}`);
   });
+
+  if (passkeyNameForm instanceof HTMLFormElement) {
+    passkeyNameForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const formData = new FormData(passkeyNameForm);
+      const passkeyName = String(formData.get("name") || "").trim();
+      const mode = passkeyNameForm.dataset.mode;
+      const passkeyId = passkeyNameForm.dataset.passkeyId;
+      if (!passkeyName) {
+        setDashboardMessage(root, "error", "Passkey name is required.");
+        const input = root.querySelector("[data-passkey-name-input]");
+        if (input instanceof HTMLInputElement) {
+          input.focus();
+        }
+        return;
+      }
+
+      toggleDashboardForms(root, true);
+      try {
+        if (mode === "rename") {
+          if (!passkeyId) {
+            throw new Error("Choose a passkey to rename first.");
+          }
+          await renamePasskey(root, passkeyId, passkeyName);
+        } else {
+          await addPasskey(root, passkeyName);
+        }
+        setPasskeyNameFormState(root, null);
+        await refresh();
+        setDashboardMessage(
+          root,
+          "success",
+          mode === "rename"
+            ? "Passkey renamed after confirming it still works."
+            : "Another passkey is ready to use."
+        );
+      } catch (error) {
+        setDashboardMessage(
+          root,
+          "error",
+          error instanceof Error
+            ? error.message
+            : mode === "rename"
+              ? "Could not rename that passkey."
+              : "Could not add another passkey."
+        );
+      } finally {
+        toggleDashboardForms(root, false);
+      }
+    });
+  }
 
   try {
     await refresh();
@@ -2257,7 +2397,10 @@ export {
   loadDashboardData,
   formatPasskeyDate,
   renderPasskeys,
+  suggestedPasskeyName,
+  setPasskeyNameFormState,
   addPasskey,
+  renamePasskey,
   deletePasskey,
   initDashboard,
   setListMessage,

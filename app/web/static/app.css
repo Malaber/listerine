@@ -1411,6 +1411,27 @@ main {
   gap: 0.9rem;
 }
 
+.passkey-name-form {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 0.25rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid #dbe4f0;
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 250, 242, 0.98), rgba(255, 255, 255, 0.96));
+}
+
+.passkey-name-form[hidden] {
+  display: none;
+}
+
+.passkey-name-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
 .passkey-row {
   align-items: center;
   background: #f8fafc;
@@ -1420,6 +1441,13 @@ main {
   gap: 1rem;
   justify-content: space-between;
   padding: 1rem 1.1rem;
+}
+
+.passkey-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .passkey-copy {
@@ -1455,6 +1483,14 @@ main {
 
   .passkey-row {
     align-items: stretch;
+    flex-direction: column;
+  }
+
+  .passkey-actions {
+    justify-content: stretch;
+  }
+
+  .passkey-name-actions {
     flex-direction: column;
   }
 }

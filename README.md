@@ -17,7 +17,7 @@ Listerine is a self-hostable grocery-list backend and fallback browser UI built 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e .[dev]
+pip install -e ".[dev]"
 cp .env.example .env
 uvicorn app.main:app --reload
 ```

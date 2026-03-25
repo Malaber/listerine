@@ -38,6 +38,22 @@
       You can register as many passkeys as you want. To delete one, you’ll first need to prove one
       of your other passkeys still works.
     </p>
+    <form class="passkey-name-form" data-passkey-name-form hidden>
+      <label class="dashboard-field">
+        <span data-passkey-name-title>Name this passkey</span>
+        <input
+          type="text"
+          name="name"
+          maxlength="120"
+          placeholder="Laptop passkey"
+          data-passkey-name-input
+        />
+      </label>
+      <div class="passkey-name-actions">
+        <button type="submit" class="primary-button" data-passkey-name-submit>Continue</button>
+        <button type="button" class="secondary-button" data-passkey-name-cancel>Cancel</button>
+      </div>
+    </form>
     <div class="dashboard-empty" data-passkey-empty hidden>
       <h3>No passkeys loaded</h3>
       <p>Refresh the page or add a passkey to load this list.</p>

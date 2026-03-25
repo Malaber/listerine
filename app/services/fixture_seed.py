@@ -47,6 +47,13 @@ def _passkey_payloads(payload: dict[str, object], email: str) -> list[dict[str, 
     return [passkey]
 
 
+def _fixture_passkey_name(payload: dict[str, object], index: int) -> str:
+    raw_name = payload.get("name")
+    if isinstance(raw_name, str) and raw_name.strip():
+        return raw_name.strip()
+    return f"Passkey {index + 1}"
+
+
 async def _ensure_user(db: AsyncSession, payload: dict[str, object]) -> User:
     email = str(payload["email"])
     result = await db.execute(select(User).where(User.email == email))
@@ -76,13 +83,18 @@ async def _ensure_user(db: AsyncSession, payload: dict[str, object]) -> User:
             if existing_passkey.credential_id not in fixture_credential_ids:
                 await db.delete(existing_passkey)
 
-        for passkey_payload in passkeys:
+        for index, passkey_payload in enumerate(passkeys):
             credential_id = str(passkey_payload["credential_id"])
             passkey = by_credential_id.get(credential_id)
             if passkey is None:
-                passkey = Passkey(user_id=user.id, credential_id=credential_id)
+                passkey = Passkey(
+                    user_id=user.id,
+                    name=_fixture_passkey_name(passkey_payload, index),
+                    credential_id=credential_id,
+                )
                 db.add(passkey)
 
+            passkey.name = _fixture_passkey_name(passkey_payload, index)
             passkey.public_key = _decode_public_key(str(passkey_payload["public_key_b64"]))
             passkey.sign_count = int(passkey_payload.get("sign_count", 0))
 
