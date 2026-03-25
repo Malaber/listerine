@@ -330,18 +330,33 @@ function renderPasskeys(root, passkeys) {
   });
 }
 
-function requestPasskeyName(root) {
-  const suggestedName = `Passkey ${root.querySelectorAll(".passkey-row").length + 1}`;
-  const rawName = window.prompt("Name this passkey", suggestedName);
-  if (rawName === null) {
-    return null;
+function suggestedPasskeyName(root) {
+  return `Passkey ${root.querySelectorAll(".passkey-row").length + 1}`;
+}
+
+function setPasskeyNameFormOpen(root, isOpen) {
+  const form = root.querySelector("[data-passkey-name-form]");
+  const input = root.querySelector("[data-passkey-name-input]");
+  const addButton = root.querySelector("[data-passkey-add]");
+  if (!(form instanceof HTMLFormElement) || !(input instanceof HTMLInputElement)) {
+    return;
   }
 
-  const name = rawName.trim();
-  if (!name) {
-    throw new Error("Passkey name is required.");
+  form.hidden = !isOpen;
+  if (addButton instanceof HTMLButtonElement) {
+    addButton.hidden = isOpen;
   }
-  return name;
+
+  if (isOpen) {
+    input.value = suggestedPasskeyName(root);
+    window.setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 0);
+    return;
+  }
+
+  form.reset();
 }
 
 async function copyText(value) {
@@ -407,6 +422,7 @@ async function initDashboard() {
 
   const householdForm = root.querySelector("[data-household-form]");
   const listForm = root.querySelector("[data-list-form]");
+  const passkeyNameForm = root.querySelector("[data-passkey-name-form]");
 
   const refresh = async () => {
     setDashboardMessage(root, "", "");
@@ -445,36 +461,15 @@ async function initDashboard() {
         setDashboardMessage(root, "error", "This browser does not support passkeys.");
         return;
       }
+      setDashboardMessage(root, "", "");
+      setPasskeyNameFormOpen(root, true);
+      return;
+    }
 
-      let passkeyName;
-      try {
-        passkeyName = requestPasskeyName(root);
-      } catch (error) {
-        setDashboardMessage(
-          root,
-          "error",
-          error instanceof Error ? error.message : "Passkey name is required."
-        );
-        return;
-      }
-      if (passkeyName === null) {
-        return;
-      }
-
-      toggleDashboardForms(root, true);
-      try {
-        await addPasskey(root, passkeyName);
-        await refresh();
-        setDashboardMessage(root, "success", "Another passkey is ready to use.");
-      } catch (error) {
-        setDashboardMessage(
-          root,
-          "error",
-          error instanceof Error ? error.message : "Could not add another passkey."
-        );
-      } finally {
-        toggleDashboardForms(root, false);
-      }
+    const cancelPasskeyNameButton = event.target.closest("[data-passkey-name-cancel]");
+    if (cancelPasskeyNameButton) {
+      setDashboardMessage(root, "", "");
+      setPasskeyNameFormOpen(root, false);
       return;
     }
 
@@ -574,6 +569,38 @@ async function initDashboard() {
       toggleDashboardForms(root, false);
     }
   });
+
+  if (passkeyNameForm instanceof HTMLFormElement) {
+    passkeyNameForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const formData = new FormData(passkeyNameForm);
+      const passkeyName = String(formData.get("name") || "").trim();
+      if (!passkeyName) {
+        setDashboardMessage(root, "error", "Passkey name is required.");
+        const input = root.querySelector("[data-passkey-name-input]");
+        if (input instanceof HTMLInputElement) {
+          input.focus();
+        }
+        return;
+      }
+
+      toggleDashboardForms(root, true);
+      try {
+        await addPasskey(root, passkeyName);
+        setPasskeyNameFormOpen(root, false);
+        await refresh();
+        setDashboardMessage(root, "success", "Another passkey is ready to use.");
+      } catch (error) {
+        setDashboardMessage(
+          root,
+          "error",
+          error instanceof Error ? error.message : "Could not add another passkey."
+        );
+      } finally {
+        toggleDashboardForms(root, false);
+      }
+    });
+  }
 
   try {
     await refresh();
@@ -2115,7 +2142,8 @@ export {
   loadDashboardData,
   formatPasskeyDate,
   renderPasskeys,
-  requestPasskeyName,
+  suggestedPasskeyName,
+  setPasskeyNameFormOpen,
   addPasskey,
   deletePasskey,
   initDashboard,

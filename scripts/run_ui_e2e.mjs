@@ -159,13 +159,9 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
 
   logStep("Adding a second passkey through the dashboard");
   const secondPasskeyName = "Laptop passkey";
-  page.once("dialog", async (prompt) => {
-    assert.equal(prompt.message(), "Name this passkey");
-    await prompt.accept(secondPasskeyName);
-  });
-  await page.locator("[data-passkey-add]").evaluate((button) => {
-    button.click();
-  });
+  await page.getByRole("button", { name: "Add another passkey" }).click();
+  await page.getByLabel("Name this passkey").fill(secondPasskeyName);
+  await page.getByRole("button", { name: "Continue" }).click();
   await expectVisible(
     page.locator("[data-dashboard-success]", { hasText: "Another passkey is ready to use." }),
     "Expected passkey add success message",

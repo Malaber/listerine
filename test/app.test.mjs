@@ -49,6 +49,11 @@ function dashboardHtml() {
         <button type="submit">Create list</button>
       </form>
       <button type="button" data-passkey-add>Add another passkey</button>
+      <form data-passkey-name-form hidden>
+        <input type="text" name="name" data-passkey-name-input />
+        <button type="submit">Continue</button>
+        <button type="button" data-passkey-name-cancel>Cancel</button>
+      </form>
       <div data-passkey-empty hidden></div>
       <div data-passkey-list></div>
       <div data-dashboard-error hidden></div>
@@ -145,6 +150,7 @@ function installDom(html, options = {}) {
     document: dom.window.document,
     navigator: dom.window.navigator,
     HTMLElement: dom.window.HTMLElement,
+    HTMLButtonElement: dom.window.HTMLButtonElement,
     HTMLInputElement: dom.window.HTMLInputElement,
     HTMLFormElement: dom.window.HTMLFormElement,
     HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
@@ -163,7 +169,6 @@ function installDom(html, options = {}) {
     btoa: (value) => Buffer.from(value, "binary").toString("base64"),
     fetch: options.fetch ?? (async () => createResponse()),
     WebSocket: options.WebSocket ?? class {},
-    prompt: options.prompt ?? (() => "Passkey 2"),
     __appNavigateTo: (url) => {
       assigned.push(url);
     },
@@ -180,7 +185,6 @@ function installDom(html, options = {}) {
 
   dom.window.fetch = globalThis.fetch;
   dom.window.WebSocket = globalThis.WebSocket;
-  dom.window.prompt = globalThis.prompt;
   dom.window.HTMLElement.prototype.scrollIntoView = () => {};
 
   const timerFns = options.timers ?? {};
@@ -354,16 +358,14 @@ test("dashboard helpers render household state and form status", async () => {
     await app.loadDashboardData(root);
     assert.match(root.querySelector("[data-household-list]").textContent, /Weekly/);
     assert.match(root.querySelector("[data-passkey-list]").textContent, /Laptop/);
-
-    globalThis.prompt = () => "  Office key  ";
-    env.dom.window.prompt = globalThis.prompt;
-    assert.equal(app.requestPasskeyName(root), "Office key");
-    globalThis.prompt = () => null;
-    env.dom.window.prompt = globalThis.prompt;
-    assert.equal(app.requestPasskeyName(root), null);
-    globalThis.prompt = () => "   ";
-    env.dom.window.prompt = globalThis.prompt;
-    assert.throws(() => app.requestPasskeyName(root), /Passkey name is required/);
+    assert.equal(app.suggestedPasskeyName(root), "Passkey 2");
+    app.setPasskeyNameFormOpen(root, true);
+    assert.equal(root.querySelector("[data-passkey-name-form]").hidden, false);
+    assert.equal(root.querySelector("[data-passkey-add]").hidden, true);
+    assert.equal(root.querySelector("[data-passkey-name-input]").value, "Passkey 2");
+    app.setPasskeyNameFormOpen(root, false);
+    assert.equal(root.querySelector("[data-passkey-name-form]").hidden, true);
+    assert.equal(root.querySelector("[data-passkey-add]").hidden, false);
   } finally {
     env.restore();
   }
@@ -578,7 +580,6 @@ test("initDashboard handles refresh, household creation, list creation, and erro
       }
       return createResponse({ jsonData: {} });
     },
-    prompt: () => "Laptop",
   });
 
   try {
@@ -613,9 +614,14 @@ test("initDashboard handles refresh, household creation, list creation, and erro
     assert.deepEqual(env.assigned, ["/lists/list-2"]);
 
     root.querySelector("[data-passkey-add]").click();
+    root.querySelector("[data-passkey-name-input]").value = "Laptop";
+    root.querySelector("[data-passkey-name-form]").dispatchEvent(
+      new Event("submit", { bubbles: true, cancelable: true }),
+    );
     await new Promise((resolve) => setTimeout(resolve, 0));
     assert.equal(root.querySelector("[data-dashboard-success]").textContent, "Another passkey is ready to use.");
     assert.match(root.querySelector("[data-passkey-list]").textContent, /Laptop/);
+    assert.equal(root.querySelector("[data-passkey-name-form]").hidden, true);
 
     root.querySelector('[data-passkey-delete="passkey-1"]').click();
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -651,7 +657,7 @@ test("initDashboard handles refresh, household creation, list creation, and erro
   }
 });
 
-test("initDashboard handles passkey name prompt cancel and blank input", async () => {
+test("initDashboard handles passkey naming form cancel and blank input", async () => {
   const fetchLog = [];
   const env = installDom(dashboardHtml(), {
     fetch: async (url, options = {}) => {
@@ -664,7 +670,6 @@ test("initDashboard handles passkey name prompt cancel and blank input", async (
       }
       throw new Error(`Unexpected fetch ${url}`);
     },
-    prompt: () => null,
   });
 
   try {
@@ -679,16 +684,21 @@ test("initDashboard handles passkey name prompt cancel and blank input", async (
 
     const root = document.querySelector("[data-dashboard]");
     root.querySelector("[data-passkey-add]").click();
+    assert.equal(root.querySelector("[data-passkey-name-form]").hidden, false);
+    root.querySelector("[data-passkey-name-cancel]").click();
     await new Promise((resolve) => setTimeout(resolve, 0));
     assert.equal(root.querySelector("[data-dashboard-success]").textContent, "");
+    assert.equal(root.querySelector("[data-passkey-name-form]").hidden, true);
     assert.deepEqual(
       fetchLog.filter(([url]) => url === "/api/v1/auth/passkeys/register/options"),
       [],
     );
 
-    globalThis.prompt = () => "   ";
-    env.dom.window.prompt = globalThis.prompt;
     root.querySelector("[data-passkey-add]").click();
+    root.querySelector("[data-passkey-name-input]").value = "   ";
+    root.querySelector("[data-passkey-name-form]").dispatchEvent(
+      new Event("submit", { bubbles: true, cancelable: true }),
+    );
     await new Promise((resolve) => setTimeout(resolve, 0));
     assert.equal(root.querySelector("[data-dashboard-error]").textContent, "Passkey name is required.");
     assert.deepEqual(
