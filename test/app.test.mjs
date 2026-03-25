@@ -94,7 +94,6 @@ function loginHtml() {
       <p data-auth-error hidden></p>
       <p data-auth-success hidden></p>
       <form data-passkey-login>
-        <input type="email" name="email" value="login@example.com" />
         <button type="button" data-passkey-login-button>Login</button>
       </form>
       <form data-passkey-register>

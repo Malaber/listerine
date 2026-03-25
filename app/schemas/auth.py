@@ -13,7 +13,7 @@ class PasskeyRegisterStartRequest(BaseModel):
 
 
 class PasskeyLoginStartRequest(BaseModel):
-    email: EmailStr
+    email: EmailStr | None = None
 
 
 class PasskeyNameRequest(BaseModel):

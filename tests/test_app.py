@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from webauthn.helpers import bytes_to_base64url
 
 from app.api.v1.routes.households import _as_utc
@@ -235,10 +236,10 @@ def test_auth_and_access_error_paths(client) -> None:
         "/api/v1/auth/register/options",
         json={"email": email, "display_name": "User"},
     )
-    assert duplicate.status_code == 400
+    assert duplicate.status_code == 200
 
-    bad_login = client.post("/api/v1/auth/login/options", json={"email": f"{uuid4()}@example.com"})
-    assert bad_login.status_code == 404
+    bad_login = client.post("/api/v1/auth/login/options", json={})
+    assert bad_login.status_code == 200
 
     assert client.get("/api/v1/auth/me").status_code == 401
     assert (
@@ -619,7 +620,7 @@ def test_passkey_register_and_login_flow(client, monkeypatch) -> None:
 
     client.post("/api/v1/auth/logout")
 
-    login_options = client.post("/api/v1/auth/login/options", json={"email": email})
+    login_options = client.post("/api/v1/auth/login/options", json={})
     assert login_options.status_code == 200
     assert "challenge" in login_options.json()
 
@@ -670,7 +671,7 @@ def test_passkey_flow_uses_configured_webauthn_rp_id(client, monkeypatch) -> Non
     client.post("/api/v1/auth/logout")
     login_options = client.post(
         "/api/v1/auth/login/options",
-        json={"email": email},
+        json={},
         headers={"host": "pr-77.review.example.com"},
     )
     assert login_options.status_code == 200
@@ -771,19 +772,23 @@ def test_passkey_auth_error_paths(client, monkeypatch) -> None:
         json=_passkey_finish_payload(),
     )
     assert duplicate_verify.status_code == 400
+    assert duplicate_verify.json()["detail"] == (
+        "Could not create that account. Try signing in with an existing "
+        "passkey or use a different email."
+    )
 
     asyncio.run(_create_user(f"{uuid4()}@example.com"))
-    login_options = client.post("/api/v1/auth/login/options", json={"email": email})
-    assert login_options.status_code == 404
+    login_options = client.post("/api/v1/auth/login/options", json={})
+    assert login_options.status_code == 200
 
     email_with_passkey = f"{uuid4()}@example.com"
     existing_credential_id = bytes_to_base64url(b"existing-credential-id")
     user_id = asyncio.run(
         _create_user(email_with_passkey, passkey_credential_ids=[existing_credential_id])
     )
-    login_options = client.post("/api/v1/auth/login/options", json={"email": email_with_passkey})
+    login_options = client.post("/api/v1/auth/login/options", json={})
     assert login_options.status_code == 200
-    assert len(login_options.json()["allowCredentials"]) == 1
+    assert login_options.json()["allowCredentials"] == []
 
     monkeypatch.setattr(
         "app.api.v1.routes.auth.verify_authentication_response",
@@ -795,7 +800,7 @@ def test_passkey_auth_error_paths(client, monkeypatch) -> None:
     )
     assert bad_login.status_code == 401
 
-    client.post("/api/v1/auth/login/options", json={"email": email_with_passkey})
+    client.post("/api/v1/auth/login/options", json={})
 
     async def _remove_passkey() -> None:
         async with AsyncSessionLocal() as session:
@@ -814,6 +819,64 @@ def test_passkey_auth_error_paths(client, monkeypatch) -> None:
         json=_passkey_finish_payload(existing_credential_id),
     )
     assert missing_user_login.status_code == 404
+
+
+def test_passkey_registration_surfaces_generic_error_when_commit_conflicts(
+    client, monkeypatch
+) -> None:
+    from app.api.v1.routes import auth as auth_routes
+
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: _mock_verified_registration(),
+    )
+
+    email = f"{uuid4()}@example.com"
+    client.post("/api/v1/auth/register/options", json={"email": email, "display_name": "User"})
+
+    async def _raise_integrity_error(*args, **kwargs):
+        raise IntegrityError("insert", {}, ValueError("duplicate"))
+
+    monkeypatch.setattr(auth_routes.AsyncSession, "commit", _raise_integrity_error)
+
+    verify = client.post(
+        "/api/v1/auth/register/verify",
+        json=_passkey_finish_payload(),
+    )
+
+    assert verify.status_code == 400
+    assert verify.json()["detail"] == (
+        "Could not create that account. Try signing in with an existing "
+        "passkey or use a different email."
+    )
+
+
+def test_passkey_login_reports_missing_user_for_registered_credential(client) -> None:
+    from app.api.v1.routes import auth as auth_routes
+
+    client.post("/api/v1/auth/login/options", json={})
+
+    async def _missing_user_passkey(*args, **kwargs):
+        return SimpleNamespace(
+            credential_id=REGISTERED_CREDENTIAL_ID,
+            public_key=b"credential-public-key",
+            sign_count=1,
+            user=None,
+        )
+
+    auth_loader = auth_routes._load_passkey_with_user_by_credential_id
+
+    try:
+        auth_routes._load_passkey_with_user_by_credential_id = _missing_user_passkey
+        verify = client.post(
+            "/api/v1/auth/login/verify",
+            json=_passkey_finish_payload(),
+        )
+    finally:
+        auth_routes._load_passkey_with_user_by_credential_id = auth_loader
+
+    assert verify.status_code == 404
+    assert verify.json()["detail"] == "No user found for that passkey"
 
 
 def test_user_can_add_multiple_passkeys_and_delete_one_after_confirming_another(
@@ -916,7 +979,7 @@ def test_passkey_management_error_paths(client, monkeypatch) -> None:
     initial_passkeys = client.get("/api/v1/auth/passkeys", headers=headers).json()
     first_passkey_id = initial_passkeys[0]["id"]
 
-    login_options = client.post("/api/v1/auth/login/options", json={"email": email})
+    login_options = client.post("/api/v1/auth/login/options", json={})
     assert login_options.status_code == 200
     missing_credential = client.post(
         "/api/v1/auth/login/verify",
@@ -924,7 +987,7 @@ def test_passkey_management_error_paths(client, monkeypatch) -> None:
     )
     assert missing_credential.status_code == 400
 
-    client.post("/api/v1/auth/login/options", json={"email": email})
+    client.post("/api/v1/auth/login/options", json={})
     wrong_credential = client.post(
         "/api/v1/auth/login/verify",
         json=_passkey_finish_payload(bytes_to_base64url(b"missing-passkey")),
@@ -1299,8 +1362,8 @@ def test_web_pages_require_login(client) -> None:
     response = client.get("/login")
     assert response.status_code == 200
     assert "Sign in with passkey" in response.text
-    assert "Create passkey" in response.text
-    assert "Password signup and password login are disabled." in response.text
+    assert "Create account" in response.text
+    assert "Sign-in is account-discovery free" in response.text
     assert "Logout" not in response.text
     assert client.get("/", follow_redirects=False).status_code == 303
     assert client.get("/lists/abc", follow_redirects=False).status_code == 303

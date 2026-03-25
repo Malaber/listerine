@@ -221,7 +221,7 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
   logStep("Logging out and confirming the new passkey can log back in");
   await page.getByRole("button", { name: "Logout" }).click();
   await page.waitForURL(/\/login(\?|$)/);
-  await loginFromLoginPage(page, owner, new URL("/", baseUrl).toString());
+  await loginFromLoginPage(page, new URL("/", baseUrl).toString());
   await expectVisible(
     page.getByRole("heading", { name: "Households and Lists" }),
     "Expected login with the second passkey to succeed",
@@ -251,8 +251,7 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
   logStep("Passkey management checks passed");
 }
 
-async function loginFromLoginPage(page, user, expectedUrlPattern) {
-  await page.locator('[data-passkey-login] input[name="email"]').fill(user.email);
+async function loginFromLoginPage(page, expectedUrlPattern) {
   await page.getByRole("button", { name: "Sign in with passkey" }).click();
   await page.waitForURL(expectedUrlPattern);
 }
@@ -261,7 +260,7 @@ async function loginFromRoot(page, user, expectedHeading) {
   await page.goto(new URL("/", baseUrl).toString(), { waitUntil: "networkidle" });
   await page.waitForURL(/\/login(\?|$)/);
   await screenshot(page, "redirect-login");
-  await loginFromLoginPage(page, user, new URL("/", baseUrl).toString());
+  await loginFromLoginPage(page, new URL("/", baseUrl).toString());
   await expectVisible(
     page.getByRole("heading", { name: expectedHeading }),
     `Expected heading ${expectedHeading}`,
@@ -357,7 +356,7 @@ async function runInviteFlow(ownerPage, browser, scenario, seed, rpId) {
     await installSeededPasskey(inviteeAuthenticator, invitee, rpId);
     await inviteePage.goto(new URL("/", baseUrl).toString(), { waitUntil: "networkidle" });
     await inviteePage.waitForURL(/\/login(\?|$)/);
-    await loginFromLoginPage(inviteePage, invitee, new URL("/", baseUrl).toString());
+    await loginFromLoginPage(inviteePage, new URL("/", baseUrl).toString());
     await expectVisible(
       inviteePage.getByRole("heading", { name: "No households yet" }),
       "Invitee should not see any household before accepting an invite",
@@ -368,7 +367,7 @@ async function runInviteFlow(ownerPage, browser, scenario, seed, rpId) {
     await inviteePage.waitForURL(/\/login\?next=%2Finvite%2F|\/login\?next=\/invite\//);
     await screenshot(inviteePage, "invite-redirect-login");
 
-    await loginFromLoginPage(inviteePage, invitee, /\/invite\//);
+    await loginFromLoginPage(inviteePage, /\/invite\//);
     await expectVisible(
       inviteePage.getByRole("heading", { name: "Join a shared grocery space" }),
       "Expected invite details page after passkey login",

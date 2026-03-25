@@ -2258,10 +2258,7 @@ async function registerWithPasskey(root, form) {
 }
 
 async function loginWithPasskey(root, form) {
-  const formData = new FormData(form);
-  const options = await postJson("/api/v1/auth/login/options", {
-    email: formData.get("email"),
-  });
+  const options = await postJson("/api/v1/auth/login/options", {});
   const credential = await navigator.credentials.get({
     publicKey: publicKeyFromJSON(options),
   });
