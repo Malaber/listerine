@@ -16,7 +16,7 @@ class PasskeyLoginStartRequest(BaseModel):
     email: EmailStr
 
 
-class PasskeyRegisterLabelRequest(BaseModel):
+class PasskeyNameRequest(BaseModel):
     name: str = Field(min_length=1)
 
 

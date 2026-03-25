@@ -50,8 +50,9 @@ function dashboardHtml() {
       </form>
       <button type="button" data-passkey-add>Add another passkey</button>
       <form data-passkey-name-form hidden>
+        <span data-passkey-name-title>Name this passkey</span>
         <input type="text" name="name" data-passkey-name-input />
-        <button type="submit">Continue</button>
+        <button type="submit" data-passkey-name-submit>Continue</button>
         <button type="button" data-passkey-name-cancel>Cancel</button>
       </form>
       <div data-passkey-empty hidden></div>
@@ -359,11 +360,27 @@ test("dashboard helpers render household state and form status", async () => {
     assert.match(root.querySelector("[data-household-list]").textContent, /Weekly/);
     assert.match(root.querySelector("[data-passkey-list]").textContent, /Laptop/);
     assert.equal(app.suggestedPasskeyName(root), "Passkey 2");
-    app.setPasskeyNameFormOpen(root, true);
+    app.setPasskeyNameFormState(root, {
+      mode: "add",
+      passkeyId: "",
+      title: "Name this passkey",
+      submitLabel: "Continue",
+      name: "Passkey 2",
+    });
     assert.equal(root.querySelector("[data-passkey-name-form]").hidden, false);
     assert.equal(root.querySelector("[data-passkey-add]").hidden, true);
     assert.equal(root.querySelector("[data-passkey-name-input]").value, "Passkey 2");
-    app.setPasskeyNameFormOpen(root, false);
+    assert.equal(root.querySelector("[data-passkey-name-submit]").textContent, "Continue");
+    app.setPasskeyNameFormState(root, {
+      mode: "rename",
+      passkeyId: "passkey-1",
+      title: "Rename this passkey",
+      submitLabel: "Save and verify",
+      name: "Laptop",
+    });
+    assert.equal(root.querySelector("[data-passkey-name-title]").textContent, "Rename this passkey");
+    assert.equal(root.querySelector("[data-passkey-name-submit]").textContent, "Save and verify");
+    app.setPasskeyNameFormState(root, null);
     assert.equal(root.querySelector("[data-passkey-name-form]").hidden, true);
     assert.equal(root.querySelector("[data-passkey-add]").hidden, false);
   } finally {
@@ -572,6 +589,13 @@ test("initDashboard handles refresh, household creation, list creation, and erro
       if (url === "/api/v1/auth/passkeys/register/verify" && options.method === "POST") {
         return createResponse({ jsonData: { id: "passkey-2", name: "Laptop" } });
       }
+      if (url === "/api/v1/auth/passkeys/passkey-2/rename/options" && options.method === "POST") {
+        assert.equal(options.body, JSON.stringify({ name: "Travel key" }));
+        return createResponse({ jsonData: { challenge: "AQID", allowCredentials: [{ id: "BwgJ" }] } });
+      }
+      if (url === "/api/v1/auth/passkeys/passkey-2/rename/verify" && options.method === "POST") {
+        return createResponse({ jsonData: { id: "passkey-2", name: "Travel key" } });
+      }
       if (url === "/api/v1/auth/passkeys/passkey-1/delete/options" && options.method === "POST") {
         return createResponse({ jsonData: { challenge: "AQID", allowCredentials: [{ id: "BwgJ" }] } });
       }
@@ -622,6 +646,17 @@ test("initDashboard handles refresh, household creation, list creation, and erro
     assert.equal(root.querySelector("[data-dashboard-success]").textContent, "Another passkey is ready to use.");
     assert.match(root.querySelector("[data-passkey-list]").textContent, /Laptop/);
     assert.equal(root.querySelector("[data-passkey-name-form]").hidden, true);
+
+    root.querySelector('[data-passkey-rename="passkey-2"]').click();
+    root.querySelector("[data-passkey-name-input]").value = "Travel key";
+    root.querySelector("[data-passkey-name-form]").dispatchEvent(
+      new Event("submit", { bubbles: true, cancelable: true }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(
+      root.querySelector("[data-dashboard-success]").textContent,
+      "Passkey renamed after confirming it still works.",
+    );
 
     root.querySelector('[data-passkey-delete="passkey-1"]').click();
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -705,6 +740,10 @@ test("initDashboard handles passkey naming form cancel and blank input", async (
       fetchLog.filter(([url]) => url === "/api/v1/auth/passkeys/register/options"),
       [],
     );
+
+    root.querySelector('[data-passkey-rename="passkey-1"]').click();
+    assert.equal(root.querySelector("[data-passkey-name-title]").textContent, "Rename this passkey");
+    assert.equal(root.querySelector("[data-passkey-name-submit]").textContent, "Save and verify");
   } finally {
     env.restore();
   }

@@ -29,8 +29,8 @@ from app.models import Passkey, User
 from app.schemas.auth import (
     PasskeyFinishRequest,
     PasskeyLoginStartRequest,
+    PasskeyNameRequest,
     PasskeyOut,
-    PasskeyRegisterLabelRequest,
     PasskeyRegisterStartRequest,
     PasswordAuthRequest,
     TokenOut,
@@ -43,6 +43,7 @@ _REGISTER_SESSION_KEY = "passkey_register"
 _LOGIN_SESSION_KEY = "passkey_login"
 _PASSKEY_ADD_SESSION_KEY = "passkey_add"
 _PASSKEY_DELETE_SESSION_KEY = "passkey_delete"
+_PASSKEY_RENAME_SESSION_KEY = "passkey_rename"
 _DEFAULT_INITIAL_PASSKEY_NAME = "Passkey 1"
 
 
@@ -298,7 +299,7 @@ async def list_passkeys(
 
 @router.post("/passkeys/register/options")
 async def begin_add_passkey(
-    payload: PasskeyRegisterLabelRequest,
+    payload: PasskeyNameRequest,
     request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -373,6 +374,94 @@ async def finish_add_passkey(
     await db.refresh(passkey)
     request.session.pop(_PASSKEY_ADD_SESSION_KEY, None)
     return passkey
+
+
+@router.post("/passkeys/{passkey_id}/rename/options")
+async def begin_rename_passkey(
+    passkey_id: UUID,
+    payload: PasskeyNameRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    refreshed = await _load_user_with_passkeys(db, user.id)
+    if refreshed is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    target = next((entry for entry in refreshed.passkeys if entry.id == passkey_id), None)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Passkey not found")
+
+    options = generate_authentication_options(
+        rp_id=_rp_id_for_request(request),
+        user_verification=UserVerificationRequirement.REQUIRED,
+        allow_credentials=[_passkey_descriptor(target)],
+    )
+    request.session[_PASSKEY_RENAME_SESSION_KEY] = {
+        "challenge": bytes_to_base64url(options.challenge),
+        "origin": _origin_for_request(request),
+        "rp_id": _rp_id_for_request(request),
+        "user_id": str(user.id),
+        "passkey_id": str(passkey_id),
+        "name": _validated_passkey_name(payload.name),
+    }
+    return json.loads(options_to_json(options))
+
+
+@router.post("/passkeys/{passkey_id}/rename/verify", response_model=PasskeyOut)
+async def finish_rename_passkey(
+    passkey_id: UUID,
+    payload: PasskeyFinishRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Passkey:
+    pending = request.session.get(_PASSKEY_RENAME_SESSION_KEY)
+    if (
+        pending is None
+        or pending["user_id"] != str(user.id)
+        or pending["passkey_id"] != str(passkey_id)
+    ):
+        raise HTTPException(status_code=400, detail="Passkey rename session expired")
+
+    refreshed = await _load_user_with_passkeys(db, user.id)
+    if refreshed is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    target = next((entry for entry in refreshed.passkeys if entry.id == passkey_id), None)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Passkey not found")
+
+    credential_id = payload.credential.get("id")
+    if credential_id != target.credential_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Confirm the rename with the passkey you are renaming",
+        )
+
+    try:
+        verified = verify_authentication_response(
+            credential=payload.credential,
+            expected_challenge=base64url_to_bytes(pending["challenge"]),
+            expected_rp_id=pending["rp_id"],
+            expected_origin=pending["origin"],
+            credential_public_key=target.public_key,
+            credential_current_sign_count=target.sign_count,
+            require_user_verification=True,
+        )
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not verify that passkey before renaming",
+        ) from exc
+
+    target.name = pending["name"]
+    target.sign_count = verified.new_sign_count
+    target.last_used_at = datetime.now(UTC)
+    await db.commit()
+    await db.refresh(target)
+    request.session.pop(_PASSKEY_RENAME_SESSION_KEY, None)
+    return target
 
 
 @router.post("/passkeys/{passkey_id}/delete/options")

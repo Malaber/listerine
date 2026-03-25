@@ -1395,6 +1395,13 @@ main {
   padding: 1rem 1.1rem;
 }
 
+.passkey-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .passkey-copy {
   display: grid;
   gap: 0.2rem;
@@ -1429,6 +1436,10 @@ main {
   .passkey-row {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .passkey-actions {
+    justify-content: stretch;
   }
 
   .passkey-name-actions {

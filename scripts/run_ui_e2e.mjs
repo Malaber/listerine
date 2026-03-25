@@ -179,6 +179,24 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
     "Expected the dashboard to show the chosen passkey name",
   );
 
+  logStep("Renaming the new passkey after confirming it still works");
+  const renamedPasskeyName = "Travel passkey";
+  await page.locator(".passkey-row").nth(1).getByRole("button", { name: "Rename" }).click();
+  await page.getByLabel("Rename this passkey").fill(renamedPasskeyName);
+  await page.getByRole("button", { name: "Save and verify" }).click();
+  await expectVisible(
+    page.locator("[data-dashboard-success]", {
+      hasText: "Passkey renamed after confirming it still works.",
+    }),
+    "Expected passkey rename success message",
+  );
+  const passkeysAfterRename = await passkeysFromSession(context.request);
+  assert.equal(passkeysAfterRename[1].name, renamedPasskeyName, "Expected backend to store the renamed passkey label");
+  await expectVisible(
+    page.locator(".passkey-row", { hasText: renamedPasskeyName }),
+    "Expected the dashboard to show the renamed passkey label",
+  );
+
   const credentialsAfterAdd = await authenticatorCredentials(secondAuthenticator);
   assert.equal(
     credentialsAfterAdd.length,
@@ -225,8 +243,8 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
     if (rows.length !== 1) {
       return false;
     }
-    const button = rows[0].querySelector("button");
-    return Boolean(button?.disabled);
+    const deleteButton = rows[0].querySelector("[data-passkey-delete]");
+    return Boolean(deleteButton?.disabled);
   });
 
   await screenshot(page, "passkey-management");
