@@ -195,6 +195,67 @@ function toggleDashboardForms(root, disabled) {
     });
 }
 
+function syncDashboardModalState(root) {
+  const overlays = [
+    root.querySelector("[data-dashboard-add-overlay]"),
+    root.querySelector("[data-dashboard-household-overlay]"),
+    root.querySelector("[data-dashboard-list-overlay]"),
+    root.querySelector("[data-dashboard-item-overlay]"),
+  ];
+  const hasModalOpen = overlays.some((overlay) => overlay instanceof HTMLElement && !overlay.hidden);
+  document.body.classList.toggle("has-list-modal-open", hasModalOpen);
+}
+
+function setDashboardPanelOpen(root, panelName, isOpen) {
+  const panels = {
+    add: {
+      overlay: root.querySelector("[data-dashboard-add-overlay]"),
+      panel: root.querySelector("[data-dashboard-add-panel]"),
+    },
+    household: {
+      overlay: root.querySelector("[data-dashboard-household-overlay]"),
+      panel: root.querySelector("[data-dashboard-household-panel]"),
+      focus: root.querySelector("[data-household-name-input]"),
+    },
+    list: {
+      overlay: root.querySelector("[data-dashboard-list-overlay]"),
+      panel: root.querySelector("[data-dashboard-list-panel]"),
+      focus: root.querySelector("[data-list-name-input]"),
+    },
+    item: {
+      overlay: root.querySelector("[data-dashboard-item-overlay]"),
+      panel: root.querySelector("[data-dashboard-item-panel]"),
+      focus: root.querySelector("[data-dashboard-list-select]"),
+    },
+  };
+  const toggle = root.querySelector("[data-dashboard-add-toggle]");
+
+  Object.entries(panels).forEach(([name, nodes]) => {
+    const shouldOpen = isOpen && name === panelName;
+    if (nodes.overlay instanceof HTMLElement) {
+      nodes.overlay.hidden = !shouldOpen;
+    }
+    if (nodes.panel instanceof HTMLElement) {
+      nodes.panel.hidden = !shouldOpen;
+    }
+  });
+
+  if (toggle instanceof HTMLElement) {
+    toggle.setAttribute("aria-expanded", String(isOpen));
+  }
+
+  syncDashboardModalState(root);
+
+  if (isOpen) {
+    const activePanel = panels[panelName];
+    if (activePanel?.focus instanceof HTMLElement) {
+      window.setTimeout(() => {
+        activePanel.focus.focus();
+      }, 0);
+    }
+  }
+}
+
 function updateHouseholdOptions(root, households) {
   const select = root.querySelector("[data-household-select]");
   if (!select) {
@@ -220,6 +281,44 @@ function updateHouseholdOptions(root, households) {
     select.value = currentValue;
   } else if (households.length === 1) {
     select.value = households[0].id;
+  }
+}
+
+function updateDashboardListOptions(root, households, listsByHousehold) {
+  const select = root.querySelector("[data-dashboard-list-select]");
+  if (!select) {
+    return;
+  }
+
+  const currentValue = select.value;
+  const listOptions = households.flatMap((household) =>
+    (listsByHousehold.get(household.id) || []).map((list) => ({
+      householdName: household.name,
+      id: list.id,
+      name: list.name,
+    }))
+  );
+
+  select.innerHTML = "";
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = listOptions.length
+    ? "Select a list"
+    : "Create a household and list first";
+  select.appendChild(placeholder);
+
+  listOptions.forEach((list) => {
+    const option = document.createElement("option");
+    option.value = list.id;
+    option.textContent = `${list.householdName} / ${list.name}`;
+    select.appendChild(option);
+  });
+
+  if (listOptions.some((list) => list.id === currentValue)) {
+    select.value = currentValue;
+  } else if (listOptions.length === 1) {
+    select.value = listOptions[0].id;
   }
 }
 
@@ -359,6 +458,7 @@ async function loadDashboardData(root) {
   );
 
   updateHouseholdOptions(root, households);
+  updateDashboardListOptions(root, households, listsByHousehold);
   renderHouseholds(root, households, listsByHousehold);
   renderPasskeys(root, passkeys);
 }
@@ -391,6 +491,7 @@ async function initDashboard() {
 
   const householdForm = root.querySelector("[data-household-form]");
   const listForm = root.querySelector("[data-list-form]");
+  const itemForm = root.querySelector("[data-dashboard-item-form]");
 
   const refresh = async () => {
     setDashboardMessage(root, "", "");
@@ -492,6 +593,60 @@ async function initDashboard() {
     }
   });
 
+  root.querySelector("[data-dashboard-add-toggle]")?.addEventListener("click", () => {
+    const panel = root.querySelector("[data-dashboard-add-panel]");
+    setDashboardPanelOpen(root, "add", panel?.hidden ?? true);
+  });
+
+  root.querySelectorAll("[data-dashboard-add-close]").forEach((node) => {
+    node.addEventListener("click", () => {
+      setDashboardPanelOpen(root, "add", false);
+    });
+  });
+
+  root.querySelectorAll("[data-dashboard-household-close]").forEach((node) => {
+    node.addEventListener("click", () => {
+      setDashboardPanelOpen(root, "household", false);
+    });
+  });
+
+  root.querySelectorAll("[data-dashboard-list-close]").forEach((node) => {
+    node.addEventListener("click", () => {
+      setDashboardPanelOpen(root, "list", false);
+    });
+  });
+
+  root.querySelectorAll("[data-dashboard-item-close]").forEach((node) => {
+    node.addEventListener("click", () => {
+      setDashboardPanelOpen(root, "item", false);
+    });
+  });
+
+  root.querySelectorAll("[data-dashboard-add-option]").forEach((node) => {
+    node.addEventListener("click", () => {
+      const panelName = node.getAttribute("data-dashboard-add-option");
+      if (panelName === "household" || panelName === "list" || panelName === "item") {
+        setDashboardPanelOpen(root, panelName, true);
+      }
+    });
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") {
+      return;
+    }
+
+    const panelNames = ["household", "list", "item", "add"];
+    const openPanelName = panelNames.find((name) => {
+      const panel = root.querySelector(`[data-dashboard-${name}-panel]`);
+      return panel instanceof HTMLElement && !panel.hidden;
+    });
+
+    if (openPanelName) {
+      setDashboardPanelOpen(root, openPanelName, false);
+    }
+  });
+
   householdForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const formData = new FormData(householdForm);
@@ -504,6 +659,7 @@ async function initDashboard() {
       await postJson("/api/v1/households", { name });
       householdForm.reset();
       await refresh();
+      setDashboardPanelOpen(root, "household", false);
       setDashboardMessage(root, "success", "Household created. You can add a list now.");
     } catch (error) {
       setDashboardMessage(
@@ -532,6 +688,7 @@ async function initDashboard() {
       const groceryList = await postJson(`/api/v1/households/${householdId}/lists`, { name });
       listForm.reset();
       await refresh();
+      setDashboardPanelOpen(root, "list", false);
       navigateTo(`/lists/${groceryList.id}`);
     } catch (error) {
       setDashboardMessage(
@@ -542,6 +699,19 @@ async function initDashboard() {
     } finally {
       toggleDashboardForms(root, false);
     }
+  });
+
+  itemForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const formData = new FormData(itemForm);
+    const listId = String(formData.get("list_id") || "");
+    if (!listId) {
+      setDashboardMessage(root, "error", "Create or choose a list before adding an item.");
+      return;
+    }
+
+    setDashboardPanelOpen(root, "item", false);
+    navigateTo(`/lists/${listId}`);
   });
 
   try {
@@ -2079,7 +2249,10 @@ export {
   toggleButtons,
   setDashboardMessage,
   toggleDashboardForms,
+  syncDashboardModalState,
+  setDashboardPanelOpen,
   updateHouseholdOptions,
+  updateDashboardListOptions,
   renderHouseholds,
   loadDashboardData,
   formatPasskeyDate,

@@ -37,17 +37,6 @@ function createJsonRejectingResponse({ ok = true, status = 200, statusText = "OK
 function dashboardHtml() {
   return `
     <section class="dashboard-shell" data-dashboard>
-      <form class="dashboard-form" data-household-form>
-        <input type="text" name="name" />
-        <button type="submit">Create household</button>
-      </form>
-      <form class="dashboard-form" data-list-form>
-        <select name="household_id" data-household-select>
-          <option value="">Create a household first</option>
-        </select>
-        <input type="text" name="name" />
-        <button type="submit">Create list</button>
-      </form>
       <button type="button" data-passkey-add>Add another passkey</button>
       <div data-passkey-empty hidden></div>
       <div data-passkey-list></div>
@@ -55,6 +44,47 @@ function dashboardHtml() {
       <div data-dashboard-success hidden></div>
       <div data-dashboard-empty hidden></div>
       <div data-household-list></div>
+      <button type="button" aria-expanded="false" data-dashboard-add-toggle>+</button>
+      <div data-dashboard-add-overlay hidden>
+        <button type="button" data-dashboard-add-close>Close add</button>
+        <section data-dashboard-add-panel hidden>
+          <button type="button" data-dashboard-add-option="household">Household</button>
+          <button type="button" data-dashboard-add-option="list">List</button>
+          <button type="button" data-dashboard-add-option="item">Item</button>
+        </section>
+      </div>
+      <div data-dashboard-household-overlay hidden>
+        <button type="button" data-dashboard-household-close>Close household</button>
+        <section data-dashboard-household-panel hidden>
+          <form class="dashboard-form" data-household-form>
+            <input type="text" name="name" data-household-name-input />
+            <button type="submit">Create household</button>
+          </form>
+        </section>
+      </div>
+      <div data-dashboard-list-overlay hidden>
+        <button type="button" data-dashboard-list-close>Close list</button>
+        <section data-dashboard-list-panel hidden>
+          <form class="dashboard-form" data-list-form>
+            <select name="household_id" data-household-select>
+              <option value="">Create a household first</option>
+            </select>
+            <input type="text" name="name" data-list-name-input />
+            <button type="submit">Create list</button>
+          </form>
+        </section>
+      </div>
+      <div data-dashboard-item-overlay hidden>
+        <button type="button" data-dashboard-item-close>Close item</button>
+        <section data-dashboard-item-panel hidden>
+          <form class="dashboard-form" data-dashboard-item-form>
+            <select name="list_id" data-dashboard-list-select>
+              <option value="">Create a household and list first</option>
+            </select>
+            <button type="submit">Open list</button>
+          </form>
+        </section>
+      </div>
     </section>
   `;
 }
@@ -318,6 +348,31 @@ test("dashboard helpers render household state and form status", async () => {
     assert.equal(select.options.length, 3);
     assert.equal(select.options[0].textContent, "Select a household");
 
+    const addToggle = root.querySelector("[data-dashboard-add-toggle]");
+    app.setDashboardPanelOpen(root, "add", true);
+    assert.equal(root.querySelector("[data-dashboard-add-panel]").hidden, false);
+    assert.equal(addToggle.getAttribute("aria-expanded"), "true");
+    assert.equal(document.body.classList.contains("has-list-modal-open"), true);
+
+    app.setDashboardPanelOpen(root, "household", true);
+    assert.equal(root.querySelector("[data-dashboard-household-panel]").hidden, false);
+    assert.equal(root.querySelector("[data-dashboard-add-panel]").hidden, true);
+
+    app.setDashboardPanelOpen(root, "household", false);
+    assert.equal(document.body.classList.contains("has-list-modal-open"), false);
+
+    app.updateDashboardListOptions(
+      root,
+      households,
+      new Map([
+        ["house-1", [{ id: "list-1", name: "Weekly" }]],
+        ["house-2", [{ id: "list-2", name: "Supplies" }]],
+      ]),
+    );
+    const listSelect = root.querySelector("[data-dashboard-list-select]");
+    assert.equal(listSelect.options[0].textContent, "Select a list");
+    assert.equal(listSelect.options[1].textContent, "Home / Weekly");
+
     app.renderHouseholds(
       root,
       households,
@@ -350,6 +405,7 @@ test("dashboard helpers render household state and form status", async () => {
     await app.loadDashboardData(root);
     assert.match(root.querySelector("[data-household-list]").textContent, /Weekly/);
     assert.match(root.querySelector("[data-passkey-list]").textContent, /Passkey 1/);
+    assert.match(root.querySelector("[data-dashboard-list-select]").textContent, /Home \/ Weekly/);
   } finally {
     env.restore();
   }
@@ -585,16 +641,33 @@ test("initDashboard handles refresh, household creation, list creation, and erro
     const root = document.querySelector("[data-dashboard]");
     const householdForm = root.querySelector("[data-household-form]");
     const listForm = root.querySelector("[data-list-form]");
+    const itemForm = root.querySelector("[data-dashboard-item-form]");
+
+    root.querySelector("[data-dashboard-add-toggle]").click();
+    assert.equal(root.querySelector("[data-dashboard-add-panel]").hidden, false);
+
+    root.querySelector('[data-dashboard-add-option="household"]').click();
+    assert.equal(root.querySelector("[data-dashboard-household-panel]").hidden, false);
+
     householdForm.querySelector('input[name="name"]').value = "Family";
     householdForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     await new Promise((resolve) => setTimeout(resolve, 0));
     assert.equal(root.querySelector("[data-dashboard-success]").textContent, "Household created. You can add a list now.");
+    assert.equal(root.querySelector("[data-dashboard-household-panel]").hidden, true);
 
+    root.querySelector("[data-dashboard-add-toggle]").click();
+    root.querySelector('[data-dashboard-add-option="list"]').click();
     listForm.querySelector('select[name="household_id"]').value = "house-1";
     listForm.querySelector('input[name="name"]').value = "Costco";
     listForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     await new Promise((resolve) => setTimeout(resolve, 0));
     assert.deepEqual(env.assigned, ["/lists/list-2"]);
+
+    root.querySelector("[data-dashboard-add-toggle]").click();
+    root.querySelector('[data-dashboard-add-option="item"]').click();
+    itemForm.querySelector('select[name="list_id"]').value = "list-1";
+    itemForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    assert.deepEqual(env.assigned, ["/lists/list-2", "/lists/list-1"]);
 
     root.querySelector("[data-passkey-add]").click();
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -628,6 +701,10 @@ test("initDashboard handles refresh, household creation, list creation, and erro
     listForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     await new Promise((resolve) => setTimeout(resolve, 0));
     assert.equal(root.querySelector("[data-dashboard-error]").textContent, "Please enter a list name.");
+
+    itemForm.querySelector('select[name="list_id"]').value = "";
+    itemForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    assert.equal(root.querySelector("[data-dashboard-error]").textContent, "Create or choose a list before adding an item.");
     assert.ok(fetchLog.length > 0);
   } finally {
     env.restore();
