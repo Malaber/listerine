@@ -10,22 +10,38 @@ from webauthn.helpers import bytes_to_base64url
 from app.api.v1.routes.households import _as_utc
 from app.core.database import AsyncSessionLocal
 from app.core.security import create_access_token
-from app.models import HouseholdInvite, HouseholdMember, User
+from app.models import HouseholdInvite, HouseholdMember, Passkey, User
+
+REGISTERED_CREDENTIAL_ID = bytes_to_base64url(b"credential-id")
+SECOND_CREDENTIAL_ID = bytes_to_base64url(b"second-credential-id")
 
 
-async def _create_user(email: str, with_passkey: bool = True, is_admin: bool = False) -> UUID:
+async def _create_user(
+    email: str,
+    with_passkey: bool = True,
+    is_admin: bool = False,
+    passkey_credential_ids: list[str] | None = None,
+) -> UUID:
     async with AsyncSessionLocal() as session:
         user = User(
             email=email,
             password_hash="",
             display_name="User",
-            passkey_credential_id=(
-                bytes_to_base64url(f"cred-{uuid4()}".encode()) if with_passkey else None
-            ),
-            passkey_public_key=b"public-key" if with_passkey else None,
-            passkey_sign_count=1 if with_passkey else 0,
             is_admin=is_admin,
         )
+        if with_passkey:
+            credential_ids = passkey_credential_ids or [
+                bytes_to_base64url(f"cred-{uuid4()}".encode())
+            ]
+            user.passkeys = [
+                Passkey(
+                    name=f"Passkey {index + 1}",
+                    credential_id=credential_id,
+                    public_key=b"public-key",
+                    sign_count=1,
+                )
+                for index, credential_id in enumerate(credential_ids)
+            ]
         session.add(user)
         await session.commit()
         await session.refresh(user)
@@ -64,6 +80,10 @@ def _mock_verified_authentication() -> SimpleNamespace:
     return SimpleNamespace(new_sign_count=2)
 
 
+def _passkey_finish_payload(credential_id: str = REGISTERED_CREDENTIAL_ID) -> dict[str, object]:
+    return {"credential": {"id": credential_id, "type": "public-key", "response": {}}}
+
+
 def _register_session_user(client, monkeypatch, email: str) -> None:
     monkeypatch.setattr(
         "app.api.v1.routes.auth.verify_registration_response",
@@ -75,7 +95,7 @@ def _register_session_user(client, monkeypatch, email: str) -> None:
     )
     response = client.post(
         "/api/v1/auth/register/verify",
-        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+        json=_passkey_finish_payload(),
     )
     assert response.status_code == 200
 
@@ -591,7 +611,7 @@ def test_passkey_register_and_login_flow(client, monkeypatch) -> None:
 
     register_verify = client.post(
         "/api/v1/auth/register/verify",
-        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+        json=_passkey_finish_payload(),
     )
     assert register_verify.status_code == 200
     assert register_verify.json()["email"] == email
@@ -605,7 +625,7 @@ def test_passkey_register_and_login_flow(client, monkeypatch) -> None:
 
     login_verify = client.post(
         "/api/v1/auth/login/verify",
-        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+        json=_passkey_finish_payload(),
     )
     assert login_verify.status_code == 200
     assert "access_token" in login_verify.json()
@@ -642,7 +662,7 @@ def test_passkey_flow_uses_configured_webauthn_rp_id(client, monkeypatch) -> Non
 
     register_verify = client.post(
         "/api/v1/auth/register/verify",
-        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+        json=_passkey_finish_payload(),
         headers={"host": "pr-77.review.example.com"},
     )
     assert register_verify.status_code == 200
@@ -657,7 +677,7 @@ def test_passkey_flow_uses_configured_webauthn_rp_id(client, monkeypatch) -> Non
 
     login_verify = client.post(
         "/api/v1/auth/login/verify",
-        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+        json=_passkey_finish_payload(),
         headers={"host": "pr-77.review.example.com"},
     )
     assert login_verify.status_code == 200
@@ -677,7 +697,7 @@ def test_bootstrap_admin_email_promotes_matching_user(client, monkeypatch) -> No
     client.post("/api/v1/auth/register/options", json={"email": email, "display_name": "User"})
     verify = client.post(
         "/api/v1/auth/register/verify",
-        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+        json=_passkey_finish_payload(),
     )
     assert verify.status_code == 200
     assert verify.json()["is_admin"] is True
@@ -696,7 +716,7 @@ def test_bootstrap_admin_email_does_not_promote_other_users(client, monkeypatch)
     client.post("/api/v1/auth/register/options", json={"email": email, "display_name": "User"})
     verify = client.post(
         "/api/v1/auth/register/verify",
-        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+        json=_passkey_finish_payload(),
     )
     assert verify.status_code == 200
     assert verify.json()["is_admin"] is False
@@ -708,14 +728,14 @@ def test_passkey_auth_error_paths(client, monkeypatch) -> None:
     assert (
         client.post(
             "/api/v1/auth/register/verify",
-            json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+            json=_passkey_finish_payload(),
         ).status_code
         == 400
     )
     assert (
         client.post(
             "/api/v1/auth/login/verify",
-            json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+            json=_passkey_finish_payload(),
         ).status_code
         == 400
     )
@@ -732,7 +752,7 @@ def test_passkey_auth_error_paths(client, monkeypatch) -> None:
     )
     bad_register = client.post(
         "/api/v1/auth/register/verify",
-        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+        json=_passkey_finish_payload(),
     )
     assert bad_register.status_code == 400
 
@@ -748,7 +768,7 @@ def test_passkey_auth_error_paths(client, monkeypatch) -> None:
     asyncio.run(_create_user(email_taken))
     duplicate_verify = client.post(
         "/api/v1/auth/register/verify",
-        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+        json=_passkey_finish_payload(),
     )
     assert duplicate_verify.status_code == 400
 
@@ -757,9 +777,13 @@ def test_passkey_auth_error_paths(client, monkeypatch) -> None:
     assert login_options.status_code == 404
 
     email_with_passkey = f"{uuid4()}@example.com"
-    user_id = asyncio.run(_create_user(email_with_passkey))
+    existing_credential_id = bytes_to_base64url(b"existing-credential-id")
+    user_id = asyncio.run(
+        _create_user(email_with_passkey, passkey_credential_ids=[existing_credential_id])
+    )
     login_options = client.post("/api/v1/auth/login/options", json={"email": email_with_passkey})
     assert login_options.status_code == 200
+    assert len(login_options.json()["allowCredentials"]) == 1
 
     monkeypatch.setattr(
         "app.api.v1.routes.auth.verify_authentication_response",
@@ -767,7 +791,7 @@ def test_passkey_auth_error_paths(client, monkeypatch) -> None:
     )
     bad_login = client.post(
         "/api/v1/auth/login/verify",
-        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+        json=_passkey_finish_payload(existing_credential_id),
     )
     assert bad_login.status_code == 401
 
@@ -775,17 +799,486 @@ def test_passkey_auth_error_paths(client, monkeypatch) -> None:
 
     async def _remove_passkey() -> None:
         async with AsyncSessionLocal() as session:
-            user = await session.get(User, user_id)
-            assert user is not None
-            user.passkey_public_key = None
+            passkeys = (
+                (await session.execute(select(Passkey).where(Passkey.user_id == user_id)))
+                .scalars()
+                .all()
+            )
+            for passkey in passkeys:
+                await session.delete(passkey)
             await session.commit()
 
     asyncio.run(_remove_passkey())
     missing_user_login = client.post(
         "/api/v1/auth/login/verify",
-        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+        json=_passkey_finish_payload(existing_credential_id),
     )
     assert missing_user_login.status_code == 404
+
+
+def test_user_can_add_multiple_passkeys_and_delete_one_after_confirming_another(
+    client, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: _mock_verified_registration(),
+    )
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_authentication_response",
+        lambda **_: _mock_verified_authentication(),
+    )
+
+    email = f"{uuid4()}@example.com"
+    client.post("/api/v1/auth/register/options", json={"email": email, "display_name": "User"})
+    verify = client.post("/api/v1/auth/register/verify", json=_passkey_finish_payload())
+    assert verify.status_code == 200
+
+    list_before = client.get("/api/v1/auth/passkeys")
+    assert list_before.status_code == 200
+    assert list_before.json()[0]["name"] == "Passkey 1"
+    original_passkey_id = list_before.json()[0]["id"]
+
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: SimpleNamespace(
+            credential_id=b"second-credential-id",
+            credential_public_key=b"second-public-key",
+            sign_count=4,
+        ),
+    )
+    add_options = client.post(
+        "/api/v1/auth/passkeys/register/options",
+        json={"name": "Laptop"},
+    )
+    assert add_options.status_code == 200
+    assert len(add_options.json()["excludeCredentials"]) == 1
+
+    add_verify = client.post(
+        "/api/v1/auth/passkeys/register/verify",
+        json=_passkey_finish_payload(SECOND_CREDENTIAL_ID),
+    )
+    assert add_verify.status_code == 200
+    assert add_verify.json()["name"] == "Laptop"
+    added_passkey_id = add_verify.json()["id"]
+
+    passkeys = client.get("/api/v1/auth/passkeys")
+    assert passkeys.status_code == 200
+    assert len(passkeys.json()) == 2
+    assert [passkey["name"] for passkey in passkeys.json()] == ["Passkey 1", "Laptop"]
+
+    rename_options = client.post(
+        f"/api/v1/auth/passkeys/{added_passkey_id}/rename/options",
+        json={"name": "Travel key"},
+    )
+    assert rename_options.status_code == 200
+    assert len(rename_options.json()["allowCredentials"]) == 1
+
+    rename_verify = client.post(
+        f"/api/v1/auth/passkeys/{added_passkey_id}/rename/verify",
+        json=_passkey_finish_payload(SECOND_CREDENTIAL_ID),
+    )
+    assert rename_verify.status_code == 200
+    assert rename_verify.json()["name"] == "Travel key"
+
+    delete_options = client.post(f"/api/v1/auth/passkeys/{original_passkey_id}/delete/options")
+    assert delete_options.status_code == 200
+    assert len(delete_options.json()["allowCredentials"]) == 1
+
+    delete_verify = client.post(
+        f"/api/v1/auth/passkeys/{original_passkey_id}/delete/verify",
+        json=_passkey_finish_payload(SECOND_CREDENTIAL_ID),
+    )
+    assert delete_verify.status_code == 200
+
+    final_passkeys = client.get("/api/v1/auth/passkeys")
+    assert final_passkeys.status_code == 200
+    assert len(final_passkeys.json()) == 1
+
+    cannot_delete_last = client.post(
+        f"/api/v1/auth/passkeys/{final_passkeys.json()[0]['id']}/delete/options"
+    )
+    assert cannot_delete_last.status_code == 400
+
+
+def test_passkey_management_error_paths(client, monkeypatch) -> None:
+    from app.api.v1.routes import auth as auth_routes
+
+    first_credential_id = bytes_to_base64url(b"first-passkey")
+    second_credential_id = bytes_to_base64url(b"second-passkey")
+    email = f"{uuid4()}@example.com"
+    user_id = asyncio.run(
+        _create_user(
+            email,
+            passkey_credential_ids=[first_credential_id, second_credential_id],
+        )
+    )
+    headers = {"Authorization": f"Bearer {create_access_token(user_id)}"}
+    initial_passkeys = client.get("/api/v1/auth/passkeys", headers=headers).json()
+    first_passkey_id = initial_passkeys[0]["id"]
+
+    login_options = client.post("/api/v1/auth/login/options", json={"email": email})
+    assert login_options.status_code == 200
+    missing_credential = client.post(
+        "/api/v1/auth/login/verify",
+        json={"credential": {"type": "public-key", "response": {}}},
+    )
+    assert missing_credential.status_code == 400
+
+    client.post("/api/v1/auth/login/options", json={"email": email})
+    wrong_credential = client.post(
+        "/api/v1/auth/login/verify",
+        json=_passkey_finish_payload(bytes_to_base64url(b"missing-passkey")),
+    )
+    assert wrong_credential.status_code == 404
+
+    original_loader = auth_routes._load_user_with_passkeys
+
+    async def _missing_user(*args, **kwargs):
+        return None
+
+    async def _delete_passkey(passkey_id: str) -> None:
+        async with AsyncSessionLocal() as session:
+            passkey = await session.get(Passkey, UUID(passkey_id))
+            assert passkey is not None
+            await session.delete(passkey)
+            await session.commit()
+
+    monkeypatch.setattr(auth_routes, "_load_user_with_passkeys", _missing_user)
+    assert client.get("/api/v1/auth/passkeys", headers=headers).status_code == 404
+    assert (
+        client.post(
+            "/api/v1/auth/passkeys/register/options",
+            headers=headers,
+            json={"name": "Backup key"},
+        ).status_code
+        == 404
+    )
+    assert (
+        client.post(
+            f"/api/v1/auth/passkeys/{first_passkey_id}/rename/options",
+            headers=headers,
+            json={"name": "Renamed"},
+        ).status_code
+        == 404
+    )
+    monkeypatch.setattr(auth_routes, "_load_user_with_passkeys", original_loader)
+
+    blank_name = client.post(
+        "/api/v1/auth/passkeys/register/options",
+        headers=headers,
+        json={"name": "   "},
+    )
+    assert blank_name.status_code == 400
+
+    too_long_name = client.post(
+        "/api/v1/auth/passkeys/register/options",
+        headers=headers,
+        json={"name": "x" * 121},
+    )
+    assert too_long_name.status_code == 400
+
+    blank_rename = client.post(
+        f"/api/v1/auth/passkeys/{first_passkey_id}/rename/options",
+        headers=headers,
+        json={"name": "   "},
+    )
+    assert blank_rename.status_code == 400
+
+    add_without_session = client.post(
+        "/api/v1/auth/passkeys/register/verify",
+        headers=headers,
+        json=_passkey_finish_payload(),
+    )
+    assert add_without_session.status_code == 400
+
+    rename_without_session = client.post(
+        f"/api/v1/auth/passkeys/{first_passkey_id}/rename/verify",
+        headers=headers,
+        json=_passkey_finish_payload(first_credential_id),
+    )
+    assert rename_without_session.status_code == 400
+
+    other_user_id = asyncio.run(_create_user(f"{uuid4()}@example.com"))
+    other_headers = {"Authorization": f"Bearer {create_access_token(other_user_id)}"}
+    assert (
+        client.post(
+            "/api/v1/auth/passkeys/register/options",
+            headers=headers,
+            json={"name": "Backup key"},
+        ).status_code
+        == 200
+    )
+    mismatched_user = client.post(
+        "/api/v1/auth/passkeys/register/verify",
+        headers=other_headers,
+        json=_passkey_finish_payload(),
+    )
+    assert mismatched_user.status_code == 400
+
+    assert (
+        client.post(
+            f"/api/v1/auth/passkeys/{first_passkey_id}/rename/options",
+            headers=headers,
+            json={"name": "Renamed"},
+        ).status_code
+        == 200
+    )
+    mismatched_rename_user = client.post(
+        f"/api/v1/auth/passkeys/{first_passkey_id}/rename/verify",
+        headers=other_headers,
+        json=_passkey_finish_payload(first_credential_id),
+    )
+    assert mismatched_rename_user.status_code == 400
+
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: SimpleNamespace(
+            credential_id=b"first-passkey",
+            credential_public_key=b"public-key",
+            sign_count=3,
+        ),
+    )
+    assert (
+        client.post(
+            "/api/v1/auth/passkeys/register/options",
+            headers=headers,
+            json={"name": "First passkey copy"},
+        ).status_code
+        == 200
+    )
+    duplicate_add = client.post(
+        "/api/v1/auth/passkeys/register/verify",
+        headers=headers,
+        json=_passkey_finish_payload(first_credential_id),
+    )
+    assert duplicate_add.status_code == 400
+
+    passkeys = client.get("/api/v1/auth/passkeys", headers=headers).json()
+    first_passkey_id = passkeys[0]["id"]
+
+    rename_missing_target = client.post(
+        f"/api/v1/auth/passkeys/{uuid4()}/rename/options",
+        headers=headers,
+        json={"name": "Renamed"},
+    )
+    assert rename_missing_target.status_code == 404
+
+    assert (
+        client.post(
+            f"/api/v1/auth/passkeys/{first_passkey_id}/rename/options",
+            headers=headers,
+            json={"name": "Renamed"},
+        ).status_code
+        == 200
+    )
+    wrong_rename_credential = client.post(
+        f"/api/v1/auth/passkeys/{first_passkey_id}/rename/verify",
+        headers=headers,
+        json=_passkey_finish_payload(second_credential_id),
+    )
+    assert wrong_rename_credential.status_code == 400
+
+    monkeypatch.setattr(auth_routes, "_load_user_with_passkeys", _missing_user)
+    missing_user_delete = client.post(
+        f"/api/v1/auth/passkeys/{first_passkey_id}/delete/options",
+        headers=headers,
+    )
+    assert missing_user_delete.status_code == 404
+    monkeypatch.setattr(auth_routes, "_load_user_with_passkeys", original_loader)
+
+    monkeypatch.setattr(auth_routes, "_load_user_with_passkeys", _missing_user)
+    missing_user_rename = client.post(
+        f"/api/v1/auth/passkeys/{first_passkey_id}/rename/verify",
+        headers=headers,
+        json=_passkey_finish_payload(first_credential_id),
+    )
+    assert missing_user_rename.status_code == 404
+    monkeypatch.setattr(auth_routes, "_load_user_with_passkeys", original_loader)
+
+    replacement_user_id = asyncio.run(
+        _create_user(
+            f"{uuid4()}@example.com",
+            passkey_credential_ids=[bytes_to_base64url(b"rename-first")],
+        )
+    )
+    replacement_headers = {"Authorization": f"Bearer {create_access_token(replacement_user_id)}"}
+    replacement_passkey_id = client.get(
+        "/api/v1/auth/passkeys", headers=replacement_headers
+    ).json()[0]["id"]
+    assert (
+        client.post(
+            f"/api/v1/auth/passkeys/{replacement_passkey_id}/rename/options",
+            headers=replacement_headers,
+            json={"name": "Renamed"},
+        ).status_code
+        == 200
+    )
+    asyncio.run(_delete_passkey(replacement_passkey_id))
+    missing_rename_target = client.post(
+        f"/api/v1/auth/passkeys/{replacement_passkey_id}/rename/verify",
+        headers=replacement_headers,
+        json=_passkey_finish_payload(bytes_to_base64url(b"rename-first")),
+    )
+    assert missing_rename_target.status_code == 404
+
+    missing_target = client.post(
+        f"/api/v1/auth/passkeys/{uuid4()}/delete/options",
+        headers=headers,
+    )
+    assert missing_target.status_code == 404
+
+    single_user_id = asyncio.run(
+        _create_user(
+            f"{uuid4()}@example.com",
+            passkey_credential_ids=[bytes_to_base64url(b"only-passkey")],
+        )
+    )
+    single_headers = {"Authorization": f"Bearer {create_access_token(single_user_id)}"}
+    single_passkey_id = client.get("/api/v1/auth/passkeys", headers=single_headers).json()[0]["id"]
+    assert (
+        client.post(
+            f"/api/v1/auth/passkeys/{single_passkey_id}/delete/options",
+            headers=single_headers,
+        ).status_code
+        == 400
+    )
+
+    expired_delete = client.post(
+        f"/api/v1/auth/passkeys/{first_passkey_id}/delete/verify",
+        headers=headers,
+        json=_passkey_finish_payload(second_credential_id),
+    )
+    assert expired_delete.status_code == 400
+
+    assert (
+        client.post(
+            f"/api/v1/auth/passkeys/{first_passkey_id}/delete/options",
+            headers=headers,
+        ).status_code
+        == 200
+    )
+    monkeypatch.setattr(auth_routes, "_load_user_with_passkeys", _missing_user)
+    missing_user_during_delete = client.post(
+        f"/api/v1/auth/passkeys/{first_passkey_id}/delete/verify",
+        headers=headers,
+        json=_passkey_finish_payload(second_credential_id),
+    )
+    assert missing_user_during_delete.status_code == 404
+    monkeypatch.setattr(auth_routes, "_load_user_with_passkeys", original_loader)
+
+
+def test_passkey_delete_verification_guards_and_duplicate_registration(client, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: _mock_verified_registration(),
+    )
+
+    existing_credential_user = asyncio.run(
+        _create_user(f"{uuid4()}@example.com", passkey_credential_ids=[REGISTERED_CREDENTIAL_ID])
+    )
+    assert existing_credential_user
+
+    duplicate_email = f"{uuid4()}@example.com"
+    client.post(
+        "/api/v1/auth/register/options",
+        json={"email": duplicate_email, "display_name": "User"},
+    )
+    duplicate_credential = client.post(
+        "/api/v1/auth/register/verify",
+        json=_passkey_finish_payload(),
+    )
+    assert duplicate_credential.status_code == 400
+
+    first_credential_id = bytes_to_base64url(b"delete-first")
+    second_credential_id = bytes_to_base64url(b"delete-second")
+    email = f"{uuid4()}@example.com"
+    user_id = asyncio.run(
+        _create_user(
+            email,
+            passkey_credential_ids=[first_credential_id, second_credential_id],
+        )
+    )
+    headers = {"Authorization": f"Bearer {create_access_token(user_id)}"}
+    passkeys = client.get("/api/v1/auth/passkeys", headers=headers).json()
+    target_passkey_id = passkeys[0]["id"]
+
+    async def _delete_passkey(passkey_id: str) -> None:
+        async with AsyncSessionLocal() as session:
+            passkey = await session.get(Passkey, UUID(passkey_id))
+            assert passkey is not None
+            await session.delete(passkey)
+            await session.commit()
+
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_authentication_response",
+        lambda **_: _mock_verified_authentication(),
+    )
+
+    assert (
+        client.post(
+            f"/api/v1/auth/passkeys/{target_passkey_id}/delete/options",
+            headers=headers,
+        ).status_code
+        == 200
+    )
+    asyncio.run(_delete_passkey(target_passkey_id))
+    missing_target = client.post(
+        f"/api/v1/auth/passkeys/{target_passkey_id}/delete/verify",
+        headers=headers,
+        json=_passkey_finish_payload(second_credential_id),
+    )
+    assert missing_target.status_code == 404
+
+    third_credential_id = bytes_to_base64url(b"delete-third")
+    fourth_credential_id = bytes_to_base64url(b"delete-fourth")
+    second_user_id = asyncio.run(
+        _create_user(
+            f"{uuid4()}@example.com",
+            passkey_credential_ids=[third_credential_id, fourth_credential_id],
+        )
+    )
+    second_headers = {"Authorization": f"Bearer {create_access_token(second_user_id)}"}
+    second_passkeys = client.get("/api/v1/auth/passkeys", headers=second_headers).json()
+    recreated_target_id = second_passkeys[0]["id"]
+    recreated_other_id = second_passkeys[1]["id"]
+    assert (
+        client.post(
+            f"/api/v1/auth/passkeys/{recreated_target_id}/delete/options",
+            headers=second_headers,
+        ).status_code
+        == 200
+    )
+    asyncio.run(_delete_passkey(recreated_other_id))
+    last_remaining = client.post(
+        f"/api/v1/auth/passkeys/{recreated_target_id}/delete/verify",
+        headers=second_headers,
+        json=_passkey_finish_payload(fourth_credential_id),
+    )
+    assert last_remaining.status_code == 400
+
+    fifth_credential_id = bytes_to_base64url(b"delete-fifth")
+    sixth_credential_id = bytes_to_base64url(b"delete-sixth")
+    user_id = asyncio.run(
+        _create_user(
+            f"{uuid4()}@example.com",
+            passkey_credential_ids=[fifth_credential_id, sixth_credential_id],
+        )
+    )
+    headers = {"Authorization": f"Bearer {create_access_token(user_id)}"}
+    target_passkey_id = client.get("/api/v1/auth/passkeys", headers=headers).json()[0]["id"]
+    assert (
+        client.post(
+            f"/api/v1/auth/passkeys/{target_passkey_id}/delete/options",
+            headers=headers,
+        ).status_code
+        == 200
+    )
+    same_passkey = client.post(
+        f"/api/v1/auth/passkeys/{target_passkey_id}/delete/verify",
+        headers=headers,
+        json=_passkey_finish_payload(fifth_credential_id),
+    )
+    assert same_passkey.status_code == 400
 
 
 def test_password_auth_endpoints_are_disabled(client) -> None:
@@ -828,7 +1321,7 @@ def test_login_page_redirects_for_logged_in_user(client, monkeypatch) -> None:
     client.post("/api/v1/auth/register/options", json={"email": email, "display_name": "User"})
     verify = client.post(
         "/api/v1/auth/register/verify",
-        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+        json=_passkey_finish_payload(),
     )
     assert verify.status_code == 200
 
@@ -847,7 +1340,7 @@ def test_web_pages_render_for_logged_in_user(client, monkeypatch) -> None:
     client.post("/api/v1/auth/register/options", json={"email": email, "display_name": "User"})
     verify = client.post(
         "/api/v1/auth/register/verify",
-        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+        json=_passkey_finish_payload(),
     )
     assert verify.status_code == 200
 
@@ -886,7 +1379,7 @@ def test_web_pages_show_admin_link_for_admin_user(client, monkeypatch) -> None:
     )
     verify = client.post(
         "/api/v1/auth/register/verify",
-        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+        json=_passkey_finish_payload(),
     )
     assert verify.status_code == 200
 
@@ -910,7 +1403,7 @@ def test_admin_page_shows_application_link_for_admin(client, monkeypatch) -> Non
     )
     verify = client.post(
         "/api/v1/auth/register/verify",
-        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+        json=_passkey_finish_payload(),
     )
     assert verify.status_code == 200
 
@@ -945,7 +1438,7 @@ def test_web_logout_redirects_to_login(client, monkeypatch) -> None:
     client.post("/api/v1/auth/register/options", json={"email": email, "display_name": "User"})
     verify = client.post(
         "/api/v1/auth/register/verify",
-        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+        json=_passkey_finish_payload(),
     )
     assert verify.status_code == 200
 
@@ -965,7 +1458,7 @@ def test_stale_web_session_redirects_to_login(client, monkeypatch) -> None:
     client.post("/api/v1/auth/register/options", json={"email": email, "display_name": "User"})
     verify = client.post(
         "/api/v1/auth/register/verify",
-        json={"credential": {"id": "credential-id", "type": "public-key", "response": {}}},
+        json=_passkey_finish_payload(),
     )
     assert verify.status_code == 200
     user_id = UUID(verify.json()["id"])

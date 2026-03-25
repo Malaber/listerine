@@ -23,9 +23,9 @@ image:
 
 production:
   branch: main
-  data_dir: /srv/webhooker/production/listerine/data
-  sqlite_path: /srv/webhooker/production/listerine/data/listerine.db
-  backup_dir: /srv/webhooker/production/listerine/backups
+  data_dir: ./data
+  sqlite_path: ./data/listerine.db
+  backup_dir: ./backups
   backup_keep: 3
 
 reconcile:

@@ -14,6 +14,7 @@ from app.models import (
     Household,
     HouseholdMember,
     ListCategoryOrder,
+    Passkey,
     User,
 )
 from app.services.fixture_seed import ensure_seed_data
@@ -117,9 +118,16 @@ def test_seed_data_populates_real_database_and_passkeys(tmp_path) -> None:
 
             users = (await session.execute(select(User).order_by(User.email.asc()))).scalars().all()
             assert [user.email for user in users] == ["member@example.com", "owner@example.com"]
-            assert users[1].passkey_credential_id == "owner-credential-id"
-            assert users[1].passkey_public_key == b"owner-public-key"
-            assert users[1].passkey_sign_count == 7
+            owner_passkeys = (
+                (await session.execute(select(Passkey).where(Passkey.user_id == users[1].id)))
+                .scalars()
+                .all()
+            )
+            assert len(owner_passkeys) == 1
+            assert owner_passkeys[0].name == "Passkey 1"
+            assert owner_passkeys[0].credential_id == "owner-credential-id"
+            assert owner_passkeys[0].public_key == b"owner-public-key"
+            assert owner_passkeys[0].sign_count == 7
 
             households = (
                 (await session.execute(select(Household).order_by(Household.name.asc())))
@@ -291,11 +299,20 @@ def test_seed_data_updates_existing_rows_and_removes_stale_items(tmp_path) -> No
             assert users["member@example.com"].display_name == "Member Updated"
             assert users["member@example.com"].is_admin is True
             assert users["member@example.com"].is_active is False
-            assert (
-                users["member@example.com"].passkey_credential_id == "member-credential-id-updated"
+            member_passkeys = (
+                (
+                    await session.execute(
+                        select(Passkey).where(Passkey.user_id == users["member@example.com"].id)
+                    )
+                )
+                .scalars()
+                .all()
             )
-            assert users["member@example.com"].passkey_public_key == b"member-updated-public-key"
-            assert users["member@example.com"].passkey_sign_count == 0
+            assert len(member_passkeys) == 1
+            assert member_passkeys[0].name == "Passkey 1"
+            assert member_passkeys[0].credential_id == "member-credential-id-updated"
+            assert member_passkeys[0].public_key == b"member-updated-public-key"
+            assert member_passkeys[0].sign_count == 0
 
             home = (
                 await session.execute(select(Household).where(Household.name == "Home"))
@@ -374,6 +391,67 @@ def test_seed_data_updates_existing_rows_and_removes_stale_items(tmp_path) -> No
         asyncio.run(dispose_db())
 
 
+def test_seed_data_supports_multiple_passkeys_array(tmp_path) -> None:
+    fixture_path = tmp_path / "seed-multi-passkeys.json"
+    fixture_path.write_text(
+        json.dumps(
+            {
+                "users": [
+                    {
+                        "email": "owner@example.com",
+                        "display_name": "Owner",
+                        "passkeys": [
+                            {
+                                "name": "Owner laptop",
+                                "credential_id": "owner-passkey-1",
+                                "public_key_b64": base64.b64encode(b"owner-key-1").decode("ascii"),
+                                "sign_count": 2,
+                            },
+                            {
+                                "credential_id": "owner-passkey-2",
+                                "public_key_b64": base64.b64encode(b"owner-key-2").decode("ascii"),
+                                "sign_count": 5,
+                            },
+                        ],
+                    }
+                ],
+                "households": [],
+                "categories": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    asyncio.run(reset_db())
+
+    async def _assert_seeded() -> None:
+        async with AsyncSessionLocal() as session:
+            await ensure_seed_data(session, str(fixture_path))
+            user = (
+                await session.execute(select(User).where(User.email == "owner@example.com"))
+            ).scalar_one()
+            passkeys = (
+                (
+                    await session.execute(
+                        select(Passkey)
+                        .where(Passkey.user_id == user.id)
+                        .order_by(Passkey.credential_id.asc())
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert [passkey.credential_id for passkey in passkeys] == [
+                "owner-passkey-1",
+                "owner-passkey-2",
+            ]
+            assert [passkey.name for passkey in passkeys] == ["Owner laptop", "Passkey 2"]
+
+    try:
+        asyncio.run(_assert_seeded())
+    finally:
+        asyncio.run(dispose_db())
+
+
 @pytest.mark.parametrize(
     ("payload", "message"),
     [
@@ -395,6 +473,30 @@ def test_seed_data_updates_existing_rows_and_removes_stale_items(tmp_path) -> No
                 ]
             },
             "Passkey fixture for owner@example.com must be an object",
+        ),
+        (
+            {
+                "users": [
+                    {
+                        "email": "owner@example.com",
+                        "display_name": "Owner",
+                        "passkeys": {},
+                    }
+                ]
+            },
+            "Passkeys fixture for owner@example.com must be a list",
+        ),
+        (
+            {
+                "users": [
+                    {
+                        "email": "owner@example.com",
+                        "display_name": "Owner",
+                        "passkeys": ["invalid"],
+                    }
+                ]
+            },
+            "Each passkey fixture for owner@example.com must be an object",
         ),
         (
             {

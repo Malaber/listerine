@@ -2,6 +2,9 @@
 .pytest_cache/
 .venv/
 
+/.env
+/coverage/tmp
+
 __pycache__/
 *.py[cod]
 

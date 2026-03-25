@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -15,8 +16,19 @@ class PasskeyLoginStartRequest(BaseModel):
     email: EmailStr
 
 
+class PasskeyNameRequest(BaseModel):
+    name: str = Field(min_length=1)
+
+
 class PasskeyFinishRequest(BaseModel):
     credential: dict[str, Any]
+
+
+class PasskeyOut(ORMModel):
+    id: UUID
+    name: str
+    created_at: datetime
+    last_used_at: datetime | None
 
 
 class PasswordAuthRequest(BaseModel):

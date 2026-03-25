@@ -8,6 +8,10 @@ const artifactDir = process.env.PREVIEW_ARTIFACT_DIR ?? "e2e-artifacts/ui-e2e";
 const videoDir = path.join(artifactDir, "videos");
 const seedPath = process.env.E2E_SEED_PATH ?? "app/fixtures/review_seed.json";
 
+function logStep(message) {
+  console.log(`[ui-e2e] ${message}`);
+}
+
 async function resetDir(dir) {
   await fs.rm(dir, { recursive: true, force: true });
   await fs.mkdir(dir, { recursive: true });
@@ -69,7 +73,7 @@ async function screenshot(page, name) {
   await page.screenshot({ path: path.join(artifactDir, `${name}.png`), fullPage: true });
 }
 
-async function installSeededPasskey(page, user, rpId) {
+async function createVirtualAuthenticator(page) {
   const client = await page.context().newCDPSession(page);
   await client.send("WebAuthn.enable", { enableUI: false });
   const { authenticatorId } = await client.send("WebAuthn.addVirtualAuthenticator", {
@@ -91,8 +95,32 @@ async function installSeededPasskey(page, user, rpId) {
     authenticatorId,
     isUserVerified: true,
   });
-  await client.send("WebAuthn.addCredential", {
-    authenticatorId,
+  return { client, authenticatorId };
+}
+
+async function authenticatorCredentials(authenticator) {
+  const { credentials } = await authenticator.client.send("WebAuthn.getCredentials", {
+    authenticatorId: authenticator.authenticatorId,
+  });
+  return credentials;
+}
+
+async function removeCredential(authenticator, credentialId) {
+  await authenticator.client.send("WebAuthn.removeCredential", {
+    authenticatorId: authenticator.authenticatorId,
+    credentialId,
+  });
+}
+
+async function removeAuthenticator(authenticator) {
+  await authenticator.client.send("WebAuthn.removeVirtualAuthenticator", {
+    authenticatorId: authenticator.authenticatorId,
+  });
+}
+
+async function installSeededPasskey(authenticator, user, rpId) {
+  await authenticator.client.send("WebAuthn.addCredential", {
+    authenticatorId: authenticator.authenticatorId,
     credential: {
       credentialId: toBase64(user.passkey.credential_id),
       isResidentCredential: true,
@@ -104,9 +132,123 @@ async function installSeededPasskey(page, user, rpId) {
       userDisplayName: user.display_name,
     },
   });
-  const { credentials } = await client.send("WebAuthn.getCredentials", { authenticatorId });
+  const credentials = await authenticatorCredentials(authenticator);
   assert.equal(credentials.length, 1, `Expected seeded credential for ${user.email}`);
-  return client;
+  return credentials[0];
+}
+
+async function passkeysFromSession(requestContext) {
+  return apiJson(requestContext, "/api/v1/auth/passkeys");
+}
+
+async function runPasskeyManagementFlow(page, context, owner, rpId, authenticator) {
+  logStep("Opening dashboard passkey management");
+  await expectVisible(
+    page.getByRole("heading", { name: "Your passkeys" }),
+    "Expected passkey management section",
+  );
+
+  const originalPasskeys = await passkeysFromSession(context.request);
+  assert.equal(originalPasskeys.length, 1, "Expected one seeded passkey before adding another");
+
+  const seededCredential = (await authenticatorCredentials(authenticator))[0];
+  assert(seededCredential, "Expected seeded credential in the virtual authenticator");
+  await removeAuthenticator(authenticator);
+
+  const secondAuthenticator = await createVirtualAuthenticator(page);
+
+  logStep("Adding a second passkey through the dashboard");
+  const secondPasskeyName = "Laptop passkey";
+  await page.getByRole("button", { name: "Add another passkey" }).click();
+  await page.getByLabel("Name this passkey").fill(secondPasskeyName);
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expectVisible(
+    page.locator("[data-dashboard-success]", { hasText: "Another passkey is ready to use." }),
+    "Expected passkey add success message",
+  );
+  await expectVisible(
+    page.locator(".passkey-row").nth(1),
+    "Expected a second passkey row after enrollment",
+  );
+
+  const passkeysAfterAdd = await passkeysFromSession(context.request);
+  assert.equal(passkeysAfterAdd.length, 2, "Expected backend to store the second passkey");
+  assert.equal(passkeysAfterAdd[1].name, secondPasskeyName, "Expected backend to store the chosen passkey name");
+  await expectVisible(
+    page.locator(".passkey-row", { hasText: secondPasskeyName }),
+    "Expected the dashboard to show the chosen passkey name",
+  );
+
+  logStep("Renaming the new passkey after confirming it still works");
+  const renamedPasskeyName = "Travel passkey";
+  await page.locator(".passkey-row").nth(1).getByRole("button", { name: "Rename" }).click();
+  await page.getByLabel("Rename this passkey").fill(renamedPasskeyName);
+  await page.getByRole("button", { name: "Save and verify" }).click();
+  await expectVisible(
+    page.locator("[data-dashboard-success]", {
+      hasText: "Passkey renamed after confirming it still works.",
+    }),
+    "Expected passkey rename success message",
+  );
+  const passkeysAfterRename = await passkeysFromSession(context.request);
+  assert.equal(passkeysAfterRename[1].name, renamedPasskeyName, "Expected backend to store the renamed passkey label");
+  await expectVisible(
+    page.locator(".passkey-row", { hasText: renamedPasskeyName }),
+    "Expected the dashboard to show the renamed passkey label",
+  );
+
+  const credentialsAfterAdd = await authenticatorCredentials(secondAuthenticator);
+  assert.equal(
+    credentialsAfterAdd.length,
+    1,
+    "Expected one credential on the second authenticator after enrollment",
+  );
+  const addedCredential = credentialsAfterAdd[0];
+  assert(addedCredential, "Expected a newly enrolled passkey credential");
+
+  const remainingAuthenticatorCredentials = await authenticatorCredentials(secondAuthenticator);
+  assert.equal(
+    remainingAuthenticatorCredentials.length,
+    1,
+    "Expected only the newly added passkey on the second authenticator",
+  );
+  assert.equal(
+    remainingAuthenticatorCredentials[0].credentialId,
+    addedCredential.credentialId,
+    "Expected the second authenticator credential to be the newly added passkey",
+  );
+
+  logStep("Logging out and confirming the new passkey can log back in");
+  await page.getByRole("button", { name: "Logout" }).click();
+  await page.waitForURL(/\/login(\?|$)/);
+  await loginFromLoginPage(page, owner, new URL("/", baseUrl).toString());
+  await expectVisible(
+    page.getByRole("heading", { name: "Households and Lists" }),
+    "Expected login with the second passkey to succeed",
+  );
+
+  logStep("Deleting the original passkey using the second passkey as confirmation");
+  await page.locator(".passkey-row").nth(0).getByRole("button", { name: "Delete" }).click();
+  await expectVisible(
+    page.locator("[data-dashboard-success]", {
+      hasText: "Passkey deleted after confirming another one worked.",
+    }),
+    "Expected passkey delete success message",
+  );
+
+  const passkeysAfterDelete = await passkeysFromSession(context.request);
+  assert.equal(passkeysAfterDelete.length, 1, "Expected one passkey to remain after deletion");
+  await page.waitForFunction(() => {
+    const rows = [...document.querySelectorAll(".passkey-row")];
+    if (rows.length !== 1) {
+      return false;
+    }
+    const deleteButton = rows[0].querySelector("[data-passkey-delete]");
+    return Boolean(deleteButton?.disabled);
+  });
+
+  await screenshot(page, "passkey-management");
+  logStep("Passkey management checks passed");
 }
 
 async function loginFromLoginPage(page, user, expectedUrlPattern) {
@@ -178,6 +320,7 @@ function extractInviteToken(inviteUrl) {
 }
 
 async function runInviteFlow(ownerPage, browser, scenario, seed, rpId) {
+  logStep("Creating and accepting a household invite");
   await ownerPage.goto(new URL("/", baseUrl).toString(), { waitUntil: "networkidle" });
   await expectVisible(
     ownerPage.getByRole("heading", { name: "Households and Lists" }),
@@ -210,7 +353,8 @@ async function runInviteFlow(ownerPage, browser, scenario, seed, rpId) {
   const invitee = fixtureUser(seed, seed.e2e.invitee_email);
 
   try {
-    await installSeededPasskey(inviteePage, invitee, rpId);
+    const inviteeAuthenticator = await createVirtualAuthenticator(inviteePage);
+    await installSeededPasskey(inviteeAuthenticator, invitee, rpId);
     await inviteePage.goto(new URL("/", baseUrl).toString(), { waitUntil: "networkidle" });
     await inviteePage.waitForURL(/\/login(\?|$)/);
     await loginFromLoginPage(inviteePage, invitee, new URL("/", baseUrl).toString());
@@ -254,9 +398,11 @@ async function runInviteFlow(ownerPage, browser, scenario, seed, rpId) {
 }
 
 async function main() {
+  logStep(`Preparing artifacts in ${artifactDir}`);
   await resetDir(artifactDir);
   await ensureDir(videoDir);
 
+  logStep(`Loading seed fixture from ${seedPath}`);
   const seed = await loadSeed();
   const rpId = process.env.WEBAUTHN_RP_ID ?? seed.e2e.rp_id ?? new URL(baseUrl).hostname;
   const owner = fixtureUser(seed, seed.e2e.owner_email);
@@ -276,10 +422,15 @@ async function main() {
   const page = await context.newPage();
 
   try {
-    await installSeededPasskey(page, owner, rpId);
+    logStep(`Launching browser flow against ${baseUrl}`);
+    const authenticator = await createVirtualAuthenticator(page);
+    await installSeededPasskey(authenticator, owner, rpId);
+    logStep("Signing in with the seeded owner passkey");
     await loginFromRoot(page, owner, "Households and Lists");
+    await runPasskeyManagementFlow(page, context, owner, rpId, authenticator);
 
     const scenario = await scenarioFromSeed(seed, context.request);
+    logStep(`Resetting seeded list state for ${scenario.listName}`);
     await resetFixtureItems(context.request, scenario.listId, expectedChecked);
     const listUrl = new URL(`/lists/${scenario.listId}`, baseUrl).toString();
 
@@ -303,6 +454,7 @@ async function main() {
     const addForm = page.locator("[data-item-form]");
     const editForm = page.locator("[data-item-edit-form]");
 
+    logStep("Running main list interaction flow");
     await expectVisible(page.getByRole("button", { name: "Add item" }), "Expected floating add button");
 
     await page.keyboard.press("Enter");
@@ -485,7 +637,9 @@ async function main() {
 
     await screenshot(page, "ui-e2e-final");
     await screenshot(pageTwo, "ui-e2e-second-client");
+    logStep("Browser UI e2e completed successfully");
   } catch (error) {
+    logStep(`Browser UI e2e failed: ${error instanceof Error ? error.message : String(error)}`);
     await screenshot(page, "ui-e2e-failure-main").catch(() => {});
     throw error;
   } finally {
@@ -495,7 +649,7 @@ async function main() {
   const summary = [
     "## UI E2E",
     "",
-    "Browser UI flow passed using seeded real database data and passkey auth for route rendering, login gating, add/edit flows, duplicate suggestions, undo toasts, category alias search, admin navigation, websocket updates, and household invite acceptance.",
+    "Browser UI flow passed using seeded real database data and passkey auth for route rendering, login gating, multi-passkey enrollment and deletion, add/edit flows, duplicate suggestions, undo toasts, category alias search, admin navigation, websocket updates, and household invite acceptance.",
     "",
   ].join("\n");
   await fs.writeFile(path.join(artifactDir, "summary.md"), summary);

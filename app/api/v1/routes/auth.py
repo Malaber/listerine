@@ -1,9 +1,11 @@
 import json
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from webauthn import (
     generate_authentication_options,
     generate_registration_options,
@@ -23,10 +25,12 @@ from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import create_access_token
-from app.models import User
+from app.models import Passkey, User
 from app.schemas.auth import (
     PasskeyFinishRequest,
     PasskeyLoginStartRequest,
+    PasskeyNameRequest,
+    PasskeyOut,
     PasskeyRegisterStartRequest,
     PasswordAuthRequest,
     TokenOut,
@@ -37,6 +41,10 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 _REGISTER_SESSION_KEY = "passkey_register"
 _LOGIN_SESSION_KEY = "passkey_login"
+_PASSKEY_ADD_SESSION_KEY = "passkey_add"
+_PASSKEY_DELETE_SESSION_KEY = "passkey_delete"
+_PASSKEY_RENAME_SESSION_KEY = "passkey_rename"
+_DEFAULT_INITIAL_PASSKEY_NAME = "Passkey 1"
 
 
 def _rp_id_for_request(request: Request) -> str:
@@ -62,6 +70,40 @@ def _password_auth_disabled() -> HTTPException:
     )
 
 
+def _credential_id_from_payload(payload: PasskeyFinishRequest) -> str:
+    credential_id = payload.credential.get("id")
+    if not isinstance(credential_id, str) or not credential_id:
+        raise HTTPException(status_code=400, detail="Credential id is required")
+    return credential_id
+
+
+async def _load_user_with_passkeys(db: AsyncSession, user_id: UUID) -> User | None:
+    result = await db.execute(
+        select(User).options(selectinload(User.passkeys)).where(User.id == user_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def _load_user_with_passkeys_by_email(db: AsyncSession, email: str) -> User | None:
+    result = await db.execute(
+        select(User).options(selectinload(User.passkeys)).where(User.email == email)
+    )
+    return result.scalar_one_or_none()
+
+
+def _passkey_descriptor(passkey: Passkey) -> PublicKeyCredentialDescriptor:
+    return PublicKeyCredentialDescriptor(id=base64url_to_bytes(passkey.credential_id))
+
+
+def _validated_passkey_name(raw_name: str) -> str:
+    name = raw_name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Passkey name is required")
+    if len(name) > 120:
+        raise HTTPException(status_code=400, detail="Passkey name must be 120 characters or fewer")
+    return name
+
+
 async def _apply_bootstrap_admin_email(db: AsyncSession, user: User) -> User:
     if settings.bootstrap_admin_email is None:
         return user
@@ -82,8 +124,8 @@ async def _apply_bootstrap_admin_email(db: AsyncSession, user: User) -> User:
 async def begin_passkey_registration(
     payload: PasskeyRegisterStartRequest, request: Request, db: AsyncSession = Depends(get_db)
 ) -> dict:
-    existing = await db.execute(select(User).where(User.email == payload.email))
-    if existing.scalar_one_or_none() is not None:
+    existing = await _load_user_with_passkeys_by_email(db, payload.email)
+    if existing is not None:
         raise HTTPException(status_code=400, detail="Email already exists")
 
     user_id = uuid4()
@@ -117,8 +159,8 @@ async def finish_passkey_registration(
     if pending is None:
         raise HTTPException(status_code=400, detail="Registration session expired")
 
-    existing = await db.execute(select(User).where(User.email == pending["email"]))
-    if existing.scalar_one_or_none() is not None:
+    existing = await _load_user_with_passkeys_by_email(db, pending["email"])
+    if existing is not None:
         raise HTTPException(status_code=400, detail="Email already exists")
 
     try:
@@ -132,14 +174,25 @@ async def finish_passkey_registration(
     except Exception as exc:  # pragma: no cover - exercised via API tests with monkeypatch
         raise HTTPException(status_code=400, detail="Passkey registration failed") from exc
 
+    credential_id = bytes_to_base64url(verified.credential_id)
+    if (
+        await db.execute(select(Passkey).where(Passkey.credential_id == credential_id))
+    ).scalar_one_or_none() is not None:
+        raise HTTPException(status_code=400, detail="That passkey is already registered")
+
     user = User(
         id=UUID(pending["user_id"]),
         email=pending["email"],
         password_hash="",
-        passkey_credential_id=bytes_to_base64url(verified.credential_id),
-        passkey_public_key=verified.credential_public_key,
-        passkey_sign_count=verified.sign_count,
         display_name=pending["display_name"],
+    )
+    user.passkeys.append(
+        Passkey(
+            name=_DEFAULT_INITIAL_PASSKEY_NAME,
+            credential_id=credential_id,
+            public_key=verified.credential_public_key,
+            sign_count=verified.sign_count,
+        )
     )
     db.add(user)
     await db.commit()
@@ -155,16 +208,13 @@ async def finish_passkey_registration(
 async def begin_passkey_login(
     payload: PasskeyLoginStartRequest, request: Request, db: AsyncSession = Depends(get_db)
 ) -> dict:
-    result = await db.execute(select(User).where(User.email == payload.email))
-    user = result.scalar_one_or_none()
-    if user is None or user.passkey_credential_id is None:
+    user = await _load_user_with_passkeys_by_email(db, payload.email)
+    if user is None or not user.passkeys:
         raise HTTPException(status_code=404, detail="No passkey found for that email")
 
     options = generate_authentication_options(
         rp_id=_rp_id_for_request(request),
-        allow_credentials=[
-            PublicKeyCredentialDescriptor(id=base64url_to_bytes(user.passkey_credential_id))
-        ],
+        allow_credentials=[_passkey_descriptor(passkey) for passkey in user.passkeys],
         user_verification=UserVerificationRequirement.REQUIRED,
     )
     request.session[_LOGIN_SESSION_KEY] = {
@@ -184,10 +234,14 @@ async def finish_passkey_login(
     if pending is None:
         raise HTTPException(status_code=400, detail="Login session expired")
 
-    result = await db.execute(select(User).where(User.id == UUID(pending["user_id"])))
-    user = result.scalar_one_or_none()
-    if user is None or user.passkey_public_key is None:
+    user = await _load_user_with_passkeys(db, UUID(pending["user_id"]))
+    if user is None or not user.passkeys:
         raise HTTPException(status_code=404, detail="No passkey found for that user")
+
+    credential_id = _credential_id_from_payload(payload)
+    passkey = next((entry for entry in user.passkeys if entry.credential_id == credential_id), None)
+    if passkey is None:
+        raise HTTPException(status_code=404, detail="No passkey found for that credential")
 
     try:
         verified = verify_authentication_response(
@@ -195,8 +249,8 @@ async def finish_passkey_login(
             expected_challenge=base64url_to_bytes(pending["challenge"]),
             expected_rp_id=pending["rp_id"],
             expected_origin=pending["origin"],
-            credential_public_key=user.passkey_public_key,
-            credential_current_sign_count=user.passkey_sign_count,
+            credential_public_key=passkey.public_key,
+            credential_current_sign_count=passkey.sign_count,
             require_user_verification=True,
         )
     except Exception as exc:  # pragma: no cover - exercised via API tests with monkeypatch
@@ -205,7 +259,8 @@ async def finish_passkey_login(
             detail="Invalid passkey",
         ) from exc
 
-    user.passkey_sign_count = verified.new_sign_count
+    passkey.sign_count = verified.new_sign_count
+    passkey.last_used_at = datetime.now(UTC)
     await db.commit()
     await db.refresh(user)
     user = await _apply_bootstrap_admin_email(db, user)
@@ -230,6 +285,282 @@ async def login_password_disabled(_: PasswordAuthRequest) -> None:
 async def logout(request: Request) -> dict[str, str]:
     request.session.clear()
     return {"message": "logged out"}
+
+
+@router.get("/passkeys", response_model=list[PasskeyOut])
+async def list_passkeys(
+    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> list[Passkey]:
+    refreshed = await _load_user_with_passkeys(db, user.id)
+    if refreshed is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return refreshed.passkeys
+
+
+@router.post("/passkeys/register/options")
+async def begin_add_passkey(
+    payload: PasskeyNameRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    refreshed = await _load_user_with_passkeys(db, user.id)
+    if refreshed is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    passkey_name = _validated_passkey_name(payload.name)
+
+    options = generate_registration_options(
+        rp_id=_rp_id_for_request(request),
+        rp_name=settings.app_name,
+        user_name=refreshed.email,
+        user_id=refreshed.id.bytes,
+        user_display_name=refreshed.display_name,
+        authenticator_selection=AuthenticatorSelectionCriteria(
+            resident_key=ResidentKeyRequirement.REQUIRED,
+            user_verification=UserVerificationRequirement.REQUIRED,
+        ),
+        exclude_credentials=[_passkey_descriptor(passkey) for passkey in refreshed.passkeys],
+    )
+    request.session[_PASSKEY_ADD_SESSION_KEY] = {
+        "challenge": bytes_to_base64url(options.challenge),
+        "origin": _origin_for_request(request),
+        "rp_id": _rp_id_for_request(request),
+        "user_id": str(refreshed.id),
+        "name": passkey_name,
+    }
+    return json.loads(options_to_json(options))
+
+
+@router.post("/passkeys/register/verify", response_model=PasskeyOut)
+async def finish_add_passkey(
+    payload: PasskeyFinishRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Passkey:
+    pending = request.session.get(_PASSKEY_ADD_SESSION_KEY)
+    if pending is None:
+        raise HTTPException(status_code=400, detail="Passkey registration session expired")
+    if pending["user_id"] != str(user.id):
+        request.session.pop(_PASSKEY_ADD_SESSION_KEY, None)
+        raise HTTPException(status_code=400, detail="Passkey registration session expired")
+
+    try:
+        verified = verify_registration_response(
+            credential=payload.credential,
+            expected_challenge=base64url_to_bytes(pending["challenge"]),
+            expected_rp_id=pending["rp_id"],
+            expected_origin=pending["origin"],
+            require_user_verification=True,
+        )
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=400, detail="Passkey registration failed") from exc
+
+    credential_id = bytes_to_base64url(verified.credential_id)
+    if (
+        await db.execute(select(Passkey).where(Passkey.credential_id == credential_id))
+    ).scalar_one_or_none() is not None:
+        raise HTTPException(status_code=400, detail="That passkey is already registered")
+
+    passkey = Passkey(
+        user_id=user.id,
+        name=pending["name"],
+        credential_id=credential_id,
+        public_key=verified.credential_public_key,
+        sign_count=verified.sign_count,
+    )
+    db.add(passkey)
+    await db.commit()
+    await db.refresh(passkey)
+    request.session.pop(_PASSKEY_ADD_SESSION_KEY, None)
+    return passkey
+
+
+@router.post("/passkeys/{passkey_id}/rename/options")
+async def begin_rename_passkey(
+    passkey_id: UUID,
+    payload: PasskeyNameRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    refreshed = await _load_user_with_passkeys(db, user.id)
+    if refreshed is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    target = next((entry for entry in refreshed.passkeys if entry.id == passkey_id), None)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Passkey not found")
+
+    options = generate_authentication_options(
+        rp_id=_rp_id_for_request(request),
+        user_verification=UserVerificationRequirement.REQUIRED,
+        allow_credentials=[_passkey_descriptor(target)],
+    )
+    request.session[_PASSKEY_RENAME_SESSION_KEY] = {
+        "challenge": bytes_to_base64url(options.challenge),
+        "origin": _origin_for_request(request),
+        "rp_id": _rp_id_for_request(request),
+        "user_id": str(user.id),
+        "passkey_id": str(passkey_id),
+        "name": _validated_passkey_name(payload.name),
+    }
+    return json.loads(options_to_json(options))
+
+
+@router.post("/passkeys/{passkey_id}/rename/verify", response_model=PasskeyOut)
+async def finish_rename_passkey(
+    passkey_id: UUID,
+    payload: PasskeyFinishRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Passkey:
+    pending = request.session.get(_PASSKEY_RENAME_SESSION_KEY)
+    if (
+        pending is None
+        or pending["user_id"] != str(user.id)
+        or pending["passkey_id"] != str(passkey_id)
+    ):
+        raise HTTPException(status_code=400, detail="Passkey rename session expired")
+
+    refreshed = await _load_user_with_passkeys(db, user.id)
+    if refreshed is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    target = next((entry for entry in refreshed.passkeys if entry.id == passkey_id), None)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Passkey not found")
+
+    credential_id = payload.credential.get("id")
+    if credential_id != target.credential_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Confirm the rename with the passkey you are renaming",
+        )
+
+    try:
+        verified = verify_authentication_response(
+            credential=payload.credential,
+            expected_challenge=base64url_to_bytes(pending["challenge"]),
+            expected_rp_id=pending["rp_id"],
+            expected_origin=pending["origin"],
+            credential_public_key=target.public_key,
+            credential_current_sign_count=target.sign_count,
+            require_user_verification=True,
+        )
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not verify that passkey before renaming",
+        ) from exc
+
+    target.name = pending["name"]
+    target.sign_count = verified.new_sign_count
+    target.last_used_at = datetime.now(UTC)
+    await db.commit()
+    await db.refresh(target)
+    request.session.pop(_PASSKEY_RENAME_SESSION_KEY, None)
+    return target
+
+
+@router.post("/passkeys/{passkey_id}/delete/options")
+async def begin_delete_passkey(
+    passkey_id: UUID,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    refreshed = await _load_user_with_passkeys(db, user.id)
+    if refreshed is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    target = next((entry for entry in refreshed.passkeys if entry.id == passkey_id), None)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Passkey not found")
+    if len(refreshed.passkeys) <= 1:
+        raise HTTPException(status_code=400, detail="You cannot delete your last passkey")
+
+    other_passkeys = [entry for entry in refreshed.passkeys if entry.id != passkey_id]
+    options = generate_authentication_options(
+        rp_id=_rp_id_for_request(request),
+        allow_credentials=[_passkey_descriptor(passkey) for passkey in other_passkeys],
+        user_verification=UserVerificationRequirement.REQUIRED,
+    )
+    request.session[_PASSKEY_DELETE_SESSION_KEY] = {
+        "challenge": bytes_to_base64url(options.challenge),
+        "origin": _origin_for_request(request),
+        "rp_id": _rp_id_for_request(request),
+        "user_id": str(user.id),
+        "passkey_id": str(passkey_id),
+    }
+    return json.loads(options_to_json(options))
+
+
+@router.post("/passkeys/{passkey_id}/delete/verify")
+async def finish_delete_passkey(
+    passkey_id: UUID,
+    payload: PasskeyFinishRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    pending = request.session.get(_PASSKEY_DELETE_SESSION_KEY)
+    if (
+        pending is None
+        or pending["user_id"] != str(user.id)
+        or pending["passkey_id"] != str(passkey_id)
+    ):
+        raise HTTPException(status_code=400, detail="Passkey deletion session expired")
+
+    refreshed = await _load_user_with_passkeys(db, user.id)
+    if refreshed is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    target = next((entry for entry in refreshed.passkeys if entry.id == passkey_id), None)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Passkey not found")
+    if len(refreshed.passkeys) <= 1:
+        raise HTTPException(status_code=400, detail="You cannot delete your last passkey")
+
+    credential_id = _credential_id_from_payload(payload)
+    confirming_passkey = next(
+        (
+            entry
+            for entry in refreshed.passkeys
+            if entry.credential_id == credential_id and entry.id != passkey_id
+        ),
+        None,
+    )
+    if confirming_passkey is None:
+        raise HTTPException(
+            status_code=400, detail="Confirm deletion with one of your other passkeys"
+        )
+
+    try:
+        verified = verify_authentication_response(
+            credential=payload.credential,
+            expected_challenge=base64url_to_bytes(pending["challenge"]),
+            expected_rp_id=pending["rp_id"],
+            expected_origin=pending["origin"],
+            credential_public_key=confirming_passkey.public_key,
+            credential_current_sign_count=confirming_passkey.sign_count,
+            require_user_verification=True,
+        )
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not verify another passkey before deletion",
+        ) from exc
+
+    confirming_passkey.sign_count = verified.new_sign_count
+    confirming_passkey.last_used_at = datetime.now(UTC)
+    await db.flush()
+
+    await db.execute(delete(Passkey).where(Passkey.id == passkey_id, Passkey.user_id == user.id))
+    await db.commit()
+    request.session.pop(_PASSKEY_DELETE_SESSION_KEY, None)
+    return {"message": "passkey deleted"}
 
 
 @router.get("/me", response_model=UserOut)

@@ -7,9 +7,9 @@ services:
       - /etc/listerine/production.secrets.env
     environment:
       APP_HOSTNAME: ${APP_HOSTNAME}
-      DATABASE_URL: sqlite+aiosqlite:///${APP_SQLITE_PATH}
+      DATABASE_URL: sqlite+aiosqlite:////data/listerine.db
     volumes:
-      - ${APP_DATA_DIR}:${APP_DATA_DIR}
+      - ${APP_DATA_DIR}:/data
     healthcheck:
       test:
         - CMD-SHELL

@@ -36,9 +36,17 @@ This directory contains a standalone deployment bundle for running Listerine wit
 
 /srv/webhooker/
 ├── production/listerine/
+│   ├── compose.production.yml
 │   ├── data/
-│   └── backups/
+│   ├── backups/
+│   └── env/
+│       └── production.common.env
 └── reviews/listerine/
+    └── pr-123/
+        ├── compose.review.yml
+        ├── data/
+        └── env/
+            └── review.common.env
 
 /var/lib/webhooker/
 ├── state/
@@ -70,7 +78,8 @@ Keep the existing mount for the Listerine deployment bundle as well:
 
 - Review deployments seed deterministic real data from `/app/app/fixtures/review_seed.json`.
 - Review deployments set `WEBAUTHN_RP_ID=listerine.example.com` so the same passkey RP can work across PR subdomains.
-- Both modes use SQLite on the host via `DATABASE_URL=sqlite+aiosqlite:///${APP_SQLITE_PATH}`.
+- Both modes mount the host data directory at `/data` in the container and use `DATABASE_URL=sqlite+aiosqlite:////data/listerine.db`.
+- The rendered `APP_DATA_DIR` should stay relative when possible, for example `./data`, so the Compose bundle remains portable with its sibling folders.
 - Both modes join the external Traefik network `system_traefik_external`.
 - CI publishes `sha-<full git sha>` tags for normal pushes.
 - CI publishes `sha-<pr head sha>` and `pr-<number>-<sha7>` tags for pull requests.
