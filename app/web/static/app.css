@@ -911,6 +911,24 @@ main {
   gap: 1rem;
 }
 
+.panel-back-button {
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 0;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #475569;
+  cursor: pointer;
+  font: inherit;
+  font-size: 1.4rem;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.panel-back-button:hover {
+  background: #e2e8f0;
+}
+
 .add-item-close {
   border: 0;
   background: transparent;

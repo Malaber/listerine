@@ -709,6 +709,12 @@ async function initDashboard() {
     });
   });
 
+  root.querySelectorAll("[data-dashboard-panel-back]").forEach((node) => {
+    node.addEventListener("click", () => {
+      setDashboardPanelOpen(root, "add", true);
+    });
+  });
+
   root.querySelectorAll("[data-dashboard-add-option]").forEach((node) => {
     node.addEventListener("click", () => {
       const panelName = node.getAttribute("data-dashboard-add-option");

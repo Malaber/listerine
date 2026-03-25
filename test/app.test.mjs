@@ -64,6 +64,7 @@ function dashboardHtml() {
       <div data-dashboard-household-overlay hidden>
         <button type="button" data-dashboard-household-close>Close household</button>
         <section data-dashboard-household-panel hidden>
+          <button type="button" data-dashboard-panel-back>Back</button>
           <form class="dashboard-form" data-household-form>
             <input type="text" name="name" data-household-name-input />
             <button type="submit">Create household</button>
@@ -73,6 +74,7 @@ function dashboardHtml() {
       <div data-dashboard-list-overlay hidden>
         <button type="button" data-dashboard-list-close>Close list</button>
         <section data-dashboard-list-panel hidden>
+          <button type="button" data-dashboard-panel-back>Back</button>
           <form class="dashboard-form" data-list-form>
             <select name="household_id" data-household-select>
               <option value="">Create a household first</option>
@@ -680,6 +682,12 @@ test("initDashboard handles refresh, household creation, list creation, and erro
 
     root.querySelector('[data-dashboard-add-option="household"]').click();
     assert.equal(root.querySelector("[data-dashboard-household-panel]").hidden, false);
+    root.querySelector("[data-dashboard-household-panel] [data-dashboard-panel-back]").click();
+    assert.equal(root.querySelector("[data-dashboard-add-panel]").hidden, false);
+    assert.equal(root.querySelector("[data-dashboard-household-panel]").hidden, true);
+
+    root.querySelector('[data-dashboard-add-option="household"]').click();
+    assert.equal(root.querySelector("[data-dashboard-household-panel]").hidden, false);
 
     householdForm.querySelector('input[name="name"]').value = "Family";
     householdForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
@@ -688,6 +696,11 @@ test("initDashboard handles refresh, household creation, list creation, and erro
     assert.equal(root.querySelector("[data-dashboard-household-panel]").hidden, true);
 
     root.querySelector("[data-dashboard-add-toggle]").click();
+    root.querySelector('[data-dashboard-add-option="list"]').click();
+    root.querySelector("[data-dashboard-list-panel] [data-dashboard-panel-back]").click();
+    assert.equal(root.querySelector("[data-dashboard-add-panel]").hidden, false);
+    assert.equal(root.querySelector("[data-dashboard-list-panel]").hidden, true);
+
     root.querySelector('[data-dashboard-add-option="list"]').click();
     listForm.querySelector('select[name="household_id"]').value = "house-1";
     listForm.querySelector('input[name="name"]').value = "Costco";
