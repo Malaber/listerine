@@ -196,6 +196,61 @@ function toggleDashboardForms(root, disabled) {
     });
 }
 
+function syncDashboardModalState(root) {
+  const overlays = [
+    root.querySelector("[data-dashboard-add-overlay]"),
+    root.querySelector("[data-dashboard-household-overlay]"),
+    root.querySelector("[data-dashboard-list-overlay]"),
+  ];
+  const hasModalOpen = overlays.some((overlay) => overlay instanceof HTMLElement && !overlay.hidden);
+  document.body.classList.toggle("has-list-modal-open", hasModalOpen);
+}
+
+function setDashboardPanelOpen(root, panelName, isOpen) {
+  const panels = {
+    add: {
+      overlay: root.querySelector("[data-dashboard-add-overlay]"),
+      panel: root.querySelector("[data-dashboard-add-panel]"),
+    },
+    household: {
+      overlay: root.querySelector("[data-dashboard-household-overlay]"),
+      panel: root.querySelector("[data-dashboard-household-panel]"),
+      focus: root.querySelector("[data-household-name-input]"),
+    },
+    list: {
+      overlay: root.querySelector("[data-dashboard-list-overlay]"),
+      panel: root.querySelector("[data-dashboard-list-panel]"),
+      focus: root.querySelector("[data-list-name-input]"),
+    },
+  };
+  const toggle = root.querySelector("[data-dashboard-add-toggle]");
+
+  Object.entries(panels).forEach(([name, nodes]) => {
+    const shouldOpen = isOpen && name === panelName;
+    if (nodes.overlay instanceof HTMLElement) {
+      nodes.overlay.hidden = !shouldOpen;
+    }
+    if (nodes.panel instanceof HTMLElement) {
+      nodes.panel.hidden = !shouldOpen;
+    }
+  });
+
+  if (toggle instanceof HTMLElement) {
+    toggle.setAttribute("aria-expanded", String(isOpen));
+  }
+
+  syncDashboardModalState(root);
+
+  if (isOpen) {
+    const activePanel = panels[panelName];
+    if (activePanel?.focus instanceof HTMLElement) {
+      window.setTimeout(() => {
+        activePanel.focus.focus();
+      }, 0);
+    }
+  }
+}
+
 function updateHouseholdOptions(root, households) {
   const select = root.querySelector("[data-household-select]");
   if (!select) {
@@ -222,6 +277,41 @@ function updateHouseholdOptions(root, households) {
   } else if (households.length === 1) {
     select.value = households[0].id;
   }
+}
+
+function updateDashboardListOptions(root, households, listsByHousehold) {
+  const group = root.querySelector("[data-dashboard-list-group]");
+  const emptyState = root.querySelector("[data-dashboard-list-empty]");
+  if (!group || !emptyState) {
+    return;
+  }
+
+  const listOptions = households.flatMap((household) =>
+    (listsByHousehold.get(household.id) || []).map((list) => ({
+      householdName: household.name,
+      id: list.id,
+      name: list.name,
+    }))
+  );
+
+  group.innerHTML = "";
+  emptyState.hidden = listOptions.length > 0;
+  if (!emptyState.hidden) {
+    group.appendChild(emptyState);
+    return;
+  }
+
+  listOptions.forEach((list) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "dashboard-add-list-button";
+    button.setAttribute("data-dashboard-open-list", list.id);
+    button.innerHTML = `
+      <strong>${list.name}</strong>
+      <small>${list.householdName}</small>
+    `;
+    group.appendChild(button);
+  });
 }
 
 function renderHouseholds(root, households, listsByHousehold) {
@@ -416,6 +506,7 @@ async function loadDashboardData(root) {
   );
 
   updateHouseholdOptions(root, households);
+  updateDashboardListOptions(root, households, listsByHousehold);
   renderHouseholds(root, households, listsByHousehold);
   renderPasskeys(root, passkeys);
 }
@@ -578,6 +669,74 @@ async function initDashboard() {
           error instanceof Error ? error.message : "Could not copy the invite link."
         );
       }
+      return;
+    }
+
+    const openListButton = event.target.closest("[data-dashboard-open-list]");
+    if (openListButton) {
+      const listId = openListButton.getAttribute("data-dashboard-open-list");
+      if (!listId) {
+        setDashboardMessage(root, "error", "Create or choose a list before adding an item.");
+        return;
+      }
+
+      setDashboardPanelOpen(root, "add", false);
+      navigateTo(`/lists/${listId}?addItem=1`);
+      return;
+    }
+  });
+
+  root.querySelector("[data-dashboard-add-toggle]")?.addEventListener("click", () => {
+    const panel = root.querySelector("[data-dashboard-add-panel]");
+    setDashboardPanelOpen(root, "add", panel?.hidden ?? true);
+  });
+
+  root.querySelectorAll("[data-dashboard-add-close]").forEach((node) => {
+    node.addEventListener("click", () => {
+      setDashboardPanelOpen(root, "add", false);
+    });
+  });
+
+  root.querySelectorAll("[data-dashboard-household-close]").forEach((node) => {
+    node.addEventListener("click", () => {
+      setDashboardPanelOpen(root, "household", false);
+    });
+  });
+
+  root.querySelectorAll("[data-dashboard-list-close]").forEach((node) => {
+    node.addEventListener("click", () => {
+      setDashboardPanelOpen(root, "list", false);
+    });
+  });
+
+  root.querySelectorAll("[data-dashboard-panel-back]").forEach((node) => {
+    node.addEventListener("click", () => {
+      setDashboardPanelOpen(root, "add", true);
+    });
+  });
+
+  root.querySelectorAll("[data-dashboard-add-option]").forEach((node) => {
+    node.addEventListener("click", () => {
+      const panelName = node.getAttribute("data-dashboard-add-option");
+      if (panelName === "household" || panelName === "list") {
+        setDashboardPanelOpen(root, panelName, true);
+      }
+    });
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") {
+      return;
+    }
+
+    const panelNames = ["household", "list", "add"];
+    const openPanelName = panelNames.find((name) => {
+      const panel = root.querySelector(`[data-dashboard-${name}-panel]`);
+      return panel instanceof HTMLElement && !panel.hidden;
+    });
+
+    if (openPanelName) {
+      setDashboardPanelOpen(root, openPanelName, false);
     }
   });
 
@@ -593,6 +752,7 @@ async function initDashboard() {
       await postJson("/api/v1/households", { name });
       householdForm.reset();
       await refresh();
+      setDashboardPanelOpen(root, "household", false);
       setDashboardMessage(root, "success", "Household created. You can add a list now.");
     } catch (error) {
       setDashboardMessage(
@@ -621,6 +781,7 @@ async function initDashboard() {
       const groceryList = await postJson(`/api/v1/households/${householdId}/lists`, { name });
       listForm.reset();
       await refresh();
+      setDashboardPanelOpen(root, "list", false);
       navigateTo(`/lists/${groceryList.id}`);
     } catch (error) {
       setDashboardMessage(
@@ -1745,6 +1906,17 @@ async function initListDetail() {
     await loadListDetail(root, state);
   };
 
+  const shouldOpenItemPanelFromQuery = () => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("addItem") === "1";
+  };
+
+  const clearItemPanelQuery = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("addItem");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  };
+
   root.querySelector("[data-item-form-toggle]")?.addEventListener("click", () => {
     const panel = root.querySelector("[data-item-panel]");
     setItemPanelOpen(root, panel?.hidden ?? true);
@@ -2058,6 +2230,11 @@ async function initListDetail() {
 
   try {
     await refresh();
+    if (shouldOpenItemPanelFromQuery()) {
+      setItemPanelOpen(root, true);
+      renderItemSuggestions(root, state);
+      clearItemPanelQuery();
+    }
     connectListSocket(root, state);
   } catch (error) {
     setListMessage(root, "error", error instanceof Error ? error.message : "Could not load the list.");
@@ -2219,7 +2396,10 @@ export {
   toggleButtons,
   setDashboardMessage,
   toggleDashboardForms,
+  syncDashboardModalState,
+  setDashboardPanelOpen,
   updateHouseholdOptions,
+  updateDashboardListOptions,
   renderHouseholds,
   loadDashboardData,
   formatPasskeyDate,
