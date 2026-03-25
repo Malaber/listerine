@@ -56,7 +56,9 @@ function dashboardHtml() {
         <section data-dashboard-add-panel hidden>
           <button type="button" data-dashboard-add-option="household">Household</button>
           <button type="button" data-dashboard-add-option="list">List</button>
-          <button type="button" data-dashboard-add-option="item">Item</button>
+          <div data-dashboard-list-group>
+            <p data-dashboard-list-empty>Create a household and list first</p>
+          </div>
         </section>
       </div>
       <div data-dashboard-household-overlay hidden>
@@ -77,17 +79,6 @@ function dashboardHtml() {
             </select>
             <input type="text" name="name" data-list-name-input />
             <button type="submit">Create list</button>
-          </form>
-        </section>
-      </div>
-      <div data-dashboard-item-overlay hidden>
-        <button type="button" data-dashboard-item-close>Close item</button>
-        <section data-dashboard-item-panel hidden>
-          <form class="dashboard-form" data-dashboard-item-form>
-            <select name="list_id" data-dashboard-list-select>
-              <option value="">Create a household and list first</option>
-            </select>
-            <button type="submit">Open list</button>
           </form>
         </section>
       </div>
@@ -376,9 +367,10 @@ test("dashboard helpers render household state and form status", async () => {
         ["house-2", [{ id: "list-2", name: "Supplies" }]],
       ]),
     );
-    const listSelect = root.querySelector("[data-dashboard-list-select]");
-    assert.equal(listSelect.options[0].textContent, "Select a list");
-    assert.equal(listSelect.options[1].textContent, "Home / Weekly");
+    const listButtons = root.querySelectorAll("[data-dashboard-open-list]");
+    assert.equal(listButtons.length, 2);
+    assert.match(listButtons[0].textContent, /Weekly/);
+    assert.match(listButtons[0].textContent, /Home/);
 
     app.renderHouseholds(
       root,
@@ -414,7 +406,8 @@ test("dashboard helpers render household state and form status", async () => {
     await app.loadDashboardData(root);
     assert.match(root.querySelector("[data-household-list]").textContent, /Weekly/);
     assert.match(root.querySelector("[data-passkey-list]").textContent, /Laptop/);
-    assert.match(root.querySelector("[data-dashboard-list-select]").textContent, /Home \/ Weekly/);
+    assert.match(root.querySelector("[data-dashboard-list-group]").textContent, /Home/);
+    assert.match(root.querySelector("[data-dashboard-list-group]").textContent, /Weekly/);
     assert.equal(app.suggestedPasskeyName(root), "Passkey 2");
     app.setPasskeyNameFormState(root, {
       mode: "add",
@@ -682,8 +675,6 @@ test("initDashboard handles refresh, household creation, list creation, and erro
     const root = document.querySelector("[data-dashboard]");
     const householdForm = root.querySelector("[data-household-form]");
     const listForm = root.querySelector("[data-list-form]");
-    const itemForm = root.querySelector("[data-dashboard-item-form]");
-
     root.querySelector("[data-dashboard-add-toggle]").click();
     assert.equal(root.querySelector("[data-dashboard-add-panel]").hidden, false);
 
@@ -705,10 +696,8 @@ test("initDashboard handles refresh, household creation, list creation, and erro
     assert.deepEqual(env.assigned, ["/lists/list-2"]);
 
     root.querySelector("[data-dashboard-add-toggle]").click();
-    root.querySelector('[data-dashboard-add-option="item"]').click();
-    itemForm.querySelector('select[name="list_id"]').value = "list-1";
-    itemForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-    assert.deepEqual(env.assigned, ["/lists/list-2", "/lists/list-1"]);
+    root.querySelector('[data-dashboard-open-list="list-1"]').click();
+    assert.deepEqual(env.assigned, ["/lists/list-2", "/lists/list-1?addItem=1"]);
 
     root.querySelector("[data-passkey-add]").click();
     root.querySelector("[data-passkey-name-input]").value = "Laptop";
@@ -760,9 +749,6 @@ test("initDashboard handles refresh, household creation, list creation, and erro
     await new Promise((resolve) => setTimeout(resolve, 0));
     assert.equal(root.querySelector("[data-dashboard-error]").textContent, "Please enter a list name.");
 
-    itemForm.querySelector('select[name="list_id"]').value = "";
-    itemForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-    assert.equal(root.querySelector("[data-dashboard-error]").textContent, "Create or choose a list before adding an item.");
     assert.ok(fetchLog.length > 0);
   } finally {
     env.restore();
@@ -993,6 +979,7 @@ test("list detail bootstraps, reacts to websocket updates, and handles list acti
   }
 
   const env = installDom(listDetailHtml(), {
+    url: "http://example.com/lists/list-1?addItem=1",
     WebSocket: MockSocket,
     timers: {
       setTimeout: (fn) => {
@@ -1059,6 +1046,8 @@ test("list detail bootstraps, reacts to websocket updates, and handles list acti
     const root = document.querySelector("[data-list-detail]");
     assert.equal(root.querySelector("[data-list-title]").textContent, "Weekly Groceries");
     assert.ok(sockets[0].url.includes("/api/v1/ws/lists/list-1?token=token-1"));
+    assert.equal(root.querySelector("[data-item-panel]").hidden, false);
+    assert.equal(env.dom.window.location.search, "");
 
     sockets[0].emit("open");
     assert.equal(root.querySelector("[data-list-sync-status]").textContent, "Live updates on.");
@@ -1087,11 +1076,11 @@ test("list detail bootstraps, reacts to websocket updates, and handles list acti
 
     sockets[0].emit("close");
     assert.equal(root.querySelector("[data-list-sync-status]").textContent, "Live updates paused. Reconnecting...");
-    scheduled[0]();
+    scheduled[scheduled.length - 1]();
     assert.equal(sockets.length > 1, true);
 
     root.querySelector("[data-item-form-toggle]").click();
-    assert.equal(root.querySelector("[data-item-panel]").hidden, false);
+    assert.equal(root.querySelector("[data-item-panel]").hidden, true);
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     assert.equal(root.querySelector("[data-item-panel]").hidden, true);
 

@@ -201,7 +201,6 @@ function syncDashboardModalState(root) {
     root.querySelector("[data-dashboard-add-overlay]"),
     root.querySelector("[data-dashboard-household-overlay]"),
     root.querySelector("[data-dashboard-list-overlay]"),
-    root.querySelector("[data-dashboard-item-overlay]"),
   ];
   const hasModalOpen = overlays.some((overlay) => overlay instanceof HTMLElement && !overlay.hidden);
   document.body.classList.toggle("has-list-modal-open", hasModalOpen);
@@ -222,11 +221,6 @@ function setDashboardPanelOpen(root, panelName, isOpen) {
       overlay: root.querySelector("[data-dashboard-list-overlay]"),
       panel: root.querySelector("[data-dashboard-list-panel]"),
       focus: root.querySelector("[data-list-name-input]"),
-    },
-    item: {
-      overlay: root.querySelector("[data-dashboard-item-overlay]"),
-      panel: root.querySelector("[data-dashboard-item-panel]"),
-      focus: root.querySelector("[data-dashboard-list-select]"),
     },
   };
   const toggle = root.querySelector("[data-dashboard-add-toggle]");
@@ -286,12 +280,12 @@ function updateHouseholdOptions(root, households) {
 }
 
 function updateDashboardListOptions(root, households, listsByHousehold) {
-  const select = root.querySelector("[data-dashboard-list-select]");
-  if (!select) {
+  const group = root.querySelector("[data-dashboard-list-group]");
+  const emptyState = root.querySelector("[data-dashboard-list-empty]");
+  if (!group || !emptyState) {
     return;
   }
 
-  const currentValue = select.value;
   const listOptions = households.flatMap((household) =>
     (listsByHousehold.get(household.id) || []).map((list) => ({
       householdName: household.name,
@@ -300,27 +294,24 @@ function updateDashboardListOptions(root, households, listsByHousehold) {
     }))
   );
 
-  select.innerHTML = "";
-
-  const placeholder = document.createElement("option");
-  placeholder.value = "";
-  placeholder.textContent = listOptions.length
-    ? "Select a list"
-    : "Create a household and list first";
-  select.appendChild(placeholder);
+  group.innerHTML = "";
+  emptyState.hidden = listOptions.length > 0;
+  if (!emptyState.hidden) {
+    group.appendChild(emptyState);
+    return;
+  }
 
   listOptions.forEach((list) => {
-    const option = document.createElement("option");
-    option.value = list.id;
-    option.textContent = `${list.householdName} / ${list.name}`;
-    select.appendChild(option);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "dashboard-add-list-button";
+    button.setAttribute("data-dashboard-open-list", list.id);
+    button.innerHTML = `
+      <strong>${list.name}</strong>
+      <small>${list.householdName}</small>
+    `;
+    group.appendChild(button);
   });
-
-  if (listOptions.some((list) => list.id === currentValue)) {
-    select.value = currentValue;
-  } else if (listOptions.length === 1) {
-    select.value = listOptions[0].id;
-  }
 }
 
 function renderHouseholds(root, households, listsByHousehold) {
@@ -558,7 +549,6 @@ async function initDashboard() {
 
   const householdForm = root.querySelector("[data-household-form]");
   const listForm = root.querySelector("[data-list-form]");
-  const itemForm = root.querySelector("[data-dashboard-item-form]");
   const passkeyNameForm = root.querySelector("[data-passkey-name-form]");
 
   const refresh = async () => {
@@ -679,6 +669,20 @@ async function initDashboard() {
           error instanceof Error ? error.message : "Could not copy the invite link."
         );
       }
+      return;
+    }
+
+    const openListButton = event.target.closest("[data-dashboard-open-list]");
+    if (openListButton) {
+      const listId = openListButton.getAttribute("data-dashboard-open-list");
+      if (!listId) {
+        setDashboardMessage(root, "error", "Create or choose a list before adding an item.");
+        return;
+      }
+
+      setDashboardPanelOpen(root, "add", false);
+      navigateTo(`/lists/${listId}?addItem=1`);
+      return;
     }
   });
 
@@ -705,16 +709,10 @@ async function initDashboard() {
     });
   });
 
-  root.querySelectorAll("[data-dashboard-item-close]").forEach((node) => {
-    node.addEventListener("click", () => {
-      setDashboardPanelOpen(root, "item", false);
-    });
-  });
-
   root.querySelectorAll("[data-dashboard-add-option]").forEach((node) => {
     node.addEventListener("click", () => {
       const panelName = node.getAttribute("data-dashboard-add-option");
-      if (panelName === "household" || panelName === "list" || panelName === "item") {
+      if (panelName === "household" || panelName === "list") {
         setDashboardPanelOpen(root, panelName, true);
       }
     });
@@ -725,7 +723,7 @@ async function initDashboard() {
       return;
     }
 
-    const panelNames = ["household", "list", "item", "add"];
+    const panelNames = ["household", "list", "add"];
     const openPanelName = panelNames.find((name) => {
       const panel = root.querySelector(`[data-dashboard-${name}-panel]`);
       return panel instanceof HTMLElement && !panel.hidden;
@@ -788,19 +786,6 @@ async function initDashboard() {
     } finally {
       toggleDashboardForms(root, false);
     }
-  });
-
-  itemForm?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const formData = new FormData(itemForm);
-    const listId = String(formData.get("list_id") || "");
-    if (!listId) {
-      setDashboardMessage(root, "error", "Create or choose a list before adding an item.");
-      return;
-    }
-
-    setDashboardPanelOpen(root, "item", false);
-    navigateTo(`/lists/${listId}`);
   });
 
   if (passkeyNameForm instanceof HTMLFormElement) {
@@ -1915,6 +1900,17 @@ async function initListDetail() {
     await loadListDetail(root, state);
   };
 
+  const shouldOpenItemPanelFromQuery = () => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("addItem") === "1";
+  };
+
+  const clearItemPanelQuery = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("addItem");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  };
+
   root.querySelector("[data-item-form-toggle]")?.addEventListener("click", () => {
     const panel = root.querySelector("[data-item-panel]");
     setItemPanelOpen(root, panel?.hidden ?? true);
@@ -2228,6 +2224,11 @@ async function initListDetail() {
 
   try {
     await refresh();
+    if (shouldOpenItemPanelFromQuery()) {
+      setItemPanelOpen(root, true);
+      renderItemSuggestions(root, state);
+      clearItemPanelQuery();
+    }
     connectListSocket(root, state);
   } catch (error) {
     setListMessage(root, "error", error instanceof Error ? error.message : "Could not load the list.");

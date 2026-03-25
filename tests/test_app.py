@@ -1351,7 +1351,7 @@ def test_web_pages_render_for_logged_in_user(client, monkeypatch) -> None:
     assert ">Logout<" in dashboard.text
     assert "data-dashboard-add-toggle" in dashboard.text
     assert "data-dashboard-add-option" in dashboard.text
-    assert "data-dashboard-list-select" in dashboard.text
+    assert "data-dashboard-list-group" in dashboard.text
 
     list_detail = client.get("/lists/abc")
     assert list_detail.status_code == 200
