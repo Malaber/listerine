@@ -23,7 +23,7 @@ and reference from that role.
 Use the external `malaber.webhooker.webhooker` role to:
 
 - deploy the `webhooker` stack itself
-- render `/etc/webhooker/env/webhooker.env`
+- render `/srv/listerine-pr/webhooker/env/webhooker.env`
 - publish these Listerine bundle files onto the target host
 - render Listerine secret env files
 - add worker mounts for every Listerine host path the worker must read
@@ -98,9 +98,7 @@ webhooker_env:
   GITHUB_WEBHOOK_SECRET: "{{ webhooker_github_webhook_secret }}"
 
 webhooker_worker_extra_mounts:
-  - /opt/listerine/deploy/webhooker:/opt/listerine/deploy/webhooker:ro
-  - /etc/listerine:/etc/listerine:ro
-  - /srv/webhooker:/srv/webhooker
+  - /srv/listerine-pr:/srv/listerine-pr
 
 webhooker_managed_files:
   - src: files/listerine/deploy/webhooker/compose.review.yml
@@ -122,79 +120,81 @@ webhooker_managed_files:
 webhooker_projects:
   - filename: listerine-review.yaml
     content:
-      project_id: listerine-review
+      project_id: listerine-pr-review
       github:
-        owner: MalaberCodex
+        owner: Malaber
         repo: listerine
-        token_env_var: GITHUB_TOKEN
-        webhook_secret_env_var: GITHUB_WEBHOOK_SECRET
-        allowed_event_types:
+        token_env: GITHUB_TOKEN
+        webhook_secret_env: GITHUB_WEBHOOK_SECRET
+        required_event_types:
           - pull_request
           - ping
       deployment:
         mode: review
-        compose_file: /opt/listerine/deploy/webhooker/compose.review.yml
-        working_directory: /opt/listerine/deploy/webhooker
-        hostname_template: pr-{pr_number}.listerine.example.com
-        project_name_prefix: listerine-pr
+        compose_file: /srv/listerine-pr/deploy/compose.review.yml
+        working_directory: /srv/listerine-pr/deploy
+        hostname_template: pr-{pr}.pr.listerine.malaber.de
+        project_name_prefix: listerine-pr-
       image:
         registry: ghcr.io
-        repository: malabercodex/listerine
-        tag_template: sha-{pr_head_sha}
+        repository: malaber/listerine
+        tag_template: pr-{pr}-{sha7}
       preview:
-        base_dir: /srv/webhooker/reviews/listerine
-        data_dir_template: /srv/webhooker/reviews/listerine/pr-{pr_number}/data
-        sqlite_path_template: /srv/webhooker/reviews/listerine/pr-{pr_number}/data/listerine.db
+        base_dir: /srv/listerine-pr/data/reviews
+        data_dir_template: ../data/reviews/pr-{pr}/data
+        sqlite_path_template: ../data/reviews/pr-{pr}/data/listerine.db
       reconcile:
-        interval_seconds: 60
-        redeploy_on_config_change: true
+        poll_interval_seconds: 60
+        cleanup_closed_prs: true
+        redeploy_on_sha_change: true
       traefik:
-        router_name_prefix: listerine-pr
-        service_name_prefix: listerine-pr
+        enable_labels: true
         certresolver: letsencrypt
       state:
-        path: /var/lib/webhooker/state/listerine-review.json
+        state_file: /srv/listerine-pr/webhooker/runtime/state/listerine-pr-review.json
       wake:
-        path: /var/lib/webhooker/wake/listerine-review.wake
+        wake_file: /srv/listerine-pr/webhooker/runtime/wake/listerine-pr-review
 
   - filename: listerine-production.yaml
     content:
       project_id: listerine-production
       github:
-        owner: MalaberCodex
+        owner: Malaber
         repo: listerine
-        token_env_var: GITHUB_TOKEN
-        webhook_secret_env_var: GITHUB_WEBHOOK_SECRET
-        allowed_event_types:
+        token_env: GITHUB_TOKEN
+        webhook_secret_env: GITHUB_WEBHOOK_SECRET
+        required_event_types:
           - push
           - ping
       deployment:
         mode: production
-        compose_file: /opt/listerine/deploy/webhooker/compose.production.yml
-        working_directory: /opt/listerine/deploy/webhooker
+        compose_file: /srv/listerine-pr/deploy/compose.production.yml
+        working_directory: /srv/listerine-pr/deploy
+        project_name_prefix: listerine-
         production_project_name: listerine
-        production_hostname: listerine.example.com
+        production_hostname: listerine.malaber.de
       image:
         registry: ghcr.io
-        repository: malabercodex/listerine
-        production_tag_template: sha-{commit_sha}
+        repository: malaber/listerine
+        tag_template: sha-{sha}
+        production_tag_template: sha-{sha}
       production:
         branch: main
-        data_dir: /srv/webhooker/production/listerine/data
-        sqlite_path: /srv/webhooker/production/listerine/data/listerine.db
-        backup_dir: /srv/webhooker/production/listerine/backups
+        data_dir: ../data/production/data
+        sqlite_path: ../data/production/data/listerine.db
+        backup_dir: ../data/production/backups
         backup_keep: 3
       reconcile:
-        interval_seconds: 60
-        redeploy_on_config_change: true
+        poll_interval_seconds: 60
+        cleanup_closed_prs: false
+        redeploy_on_sha_change: true
       traefik:
-        router_name_prefix: listerine
-        service_name_prefix: listerine
+        enable_labels: true
         certresolver: letsencrypt
       state:
-        path: /var/lib/webhooker/state/listerine-production.json
+        state_file: /srv/listerine-pr/webhooker/runtime/state/listerine-production.json
       wake:
-        path: /var/lib/webhooker/wake/listerine-production.wake
+        wake_file: /srv/listerine-pr/webhooker/runtime/wake/listerine-production
 ```
 
 If you deploy your own fork, update:
@@ -213,12 +213,12 @@ webhooker_github_token: replace-me
 webhooker_github_webhook_secret: replace-me
 
 webhooker_secret_env_files:
-  - path: /etc/listerine/review.secrets.env
+  - path: /srv/listerine-pr/secrets/review.env
     mode: "0600"
     content:
       SECRET_KEY: replace-me
 
-  - path: /etc/listerine/production.secrets.env
+  - path: /srv/listerine-pr/secrets/production.env
     mode: "0600"
     content:
       SECRET_KEY: replace-me
