@@ -12,6 +12,7 @@ on:
 permissions:
   contents: write
   packages: write
+  pull-requests: write
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -430,6 +431,49 @@ jobs:
           with urllib.request.urlopen(request) as response:
               print(f"review wake status={response.status}")
           PY
+      - name: Comment review URL on pull request
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v8
+        env:
+          REVIEW_URL: https://pr-${{ github.event.pull_request.number }}.pr.listerine.malaber.de
+        with:
+          script: |
+            const marker = '<!-- listerine-review-url -->';
+            const body = [
+              marker,
+              `Review app: ${process.env.REVIEW_URL}`,
+              '',
+              'This URL is deterministic for the PR and may take a minute to finish deploying after CI publishes the image.',
+            ].join('\n');
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+            const existing = comments.find((comment) =>
+              comment.user?.type === 'Bot' && comment.body?.includes(marker)
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+              return;
+            }
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number,
+              body,
+            });
       - name: Wake webhooker production deployment
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:

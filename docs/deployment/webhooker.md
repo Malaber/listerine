@@ -49,6 +49,7 @@ The CI workflow is already wired for `webhooker`-managed deployments:
 - pull requests also publish `ghcr.io/<owner>/<repo>:pr-<number>-<sha7>`
 - pull request builds send a signed wake request to the review deployment endpoint
 - pushes to `main` send a signed wake request to the production deployment endpoint
+- pull request builds also update a sticky PR comment with the deterministic review URL
 
 ## GitHub Actions settings
 
@@ -67,6 +68,19 @@ API and worker services in the infra repo.
 - review deployments set `WEBAUTHN_RP_ID=listerine.example.com` so one RP can work across PR subdomains
 - both modes use host-mounted SQLite
 - both modes join the external Traefik network `system_traefik_external`
+
+## Review deployment layout
+
+The intended contained host layout keeps everything for review deploys under `/srv/listerine-pr/`:
+
+- `/srv/listerine-pr/deploy/`: Compose templates and non-secret env files
+- `/srv/listerine-pr/secrets/`: runtime secret env files
+- `/srv/listerine-pr/data/reviews/pr-<PR>/`: per-PR SQLite data
+- `/srv/listerine-pr/webhooker/`: `webhooker` compose stack, project YAML, state, and wake files
+
+The intended review URL for a pull request is:
+
+- `https://pr-<PR>.pr.listerine.malaber.de`
 
 ## Consuming From An Infra Repo
 

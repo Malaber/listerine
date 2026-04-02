@@ -1,5 +1,5 @@
+from pydantic import EmailStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import EmailStr
 
 
 class Settings(BaseSettings):
@@ -14,6 +14,13 @@ class Settings(BaseSettings):
     webauthn_rp_id: str | None = None
     seed_data_path: str | None = None
     bootstrap_admin_email: EmailStr | None = None
+
+    @field_validator("bootstrap_admin_email", mode="before")
+    @classmethod
+    def normalize_blank_bootstrap_admin_email(cls, value: object) -> object:
+        if isinstance(value, str) and value.strip() == "":
+            return None
+        return value
 
 
 settings = Settings()
