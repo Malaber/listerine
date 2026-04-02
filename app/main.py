@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app.admin import configure_admin
 from app.api.v1.router import api_router
@@ -28,6 +29,7 @@ app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app.add_middleware(
     SessionMiddleware, secret_key=settings.secret_key, https_only=settings.secure_cookies
 )
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 app.include_router(api_router, prefix="/api/v1")
 app.include_router(web_router)
 app.mount("/static", StaticFiles(directory="app/web/static"), name="static")

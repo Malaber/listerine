@@ -634,13 +634,20 @@ def test_passkey_register_and_login_flow(client, monkeypatch) -> None:
 
 def test_passkey_flow_uses_configured_webauthn_rp_id(client, monkeypatch) -> None:
     captured_rp_ids: list[str] = []
+    captured_origins: list[str] = []
+    forwarded_headers = {
+        "host": "pr-77.review.example.com",
+        "x-forwarded-proto": "https",
+    }
 
     def _capture_registration(**kwargs):
         captured_rp_ids.append(kwargs["expected_rp_id"])
+        captured_origins.append(kwargs["expected_origin"])
         return _mock_verified_registration()
 
     def _capture_authentication(**kwargs):
         captured_rp_ids.append(kwargs["expected_rp_id"])
+        captured_origins.append(kwargs["expected_origin"])
         return _mock_verified_authentication()
 
     monkeypatch.setattr(
@@ -657,14 +664,14 @@ def test_passkey_flow_uses_configured_webauthn_rp_id(client, monkeypatch) -> Non
     register_options = client.post(
         "/api/v1/auth/register/options",
         json={"email": email, "display_name": "User"},
-        headers={"host": "pr-77.review.example.com"},
+        headers=forwarded_headers,
     )
     assert register_options.status_code == 200
 
     register_verify = client.post(
         "/api/v1/auth/register/verify",
         json=_passkey_finish_payload(),
-        headers={"host": "pr-77.review.example.com"},
+        headers=forwarded_headers,
     )
     assert register_verify.status_code == 200
 
@@ -672,17 +679,21 @@ def test_passkey_flow_uses_configured_webauthn_rp_id(client, monkeypatch) -> Non
     login_options = client.post(
         "/api/v1/auth/login/options",
         json={},
-        headers={"host": "pr-77.review.example.com"},
+        headers=forwarded_headers,
     )
     assert login_options.status_code == 200
 
     login_verify = client.post(
         "/api/v1/auth/login/verify",
         json=_passkey_finish_payload(),
-        headers={"host": "pr-77.review.example.com"},
+        headers=forwarded_headers,
     )
     assert login_verify.status_code == 200
     assert captured_rp_ids == ["review.example.com", "review.example.com"]
+    assert captured_origins == [
+        "https://pr-77.review.example.com",
+        "https://pr-77.review.example.com",
+    ]
 
 
 def test_bootstrap_admin_email_promotes_matching_user(client, monkeypatch) -> None:
