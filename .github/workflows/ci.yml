@@ -197,7 +197,16 @@ jobs:
 
   docker_build_platform:
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: |
+      (github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        always()) ||
+      (github.event_name != 'pull_request' &&
+        needs.python_test.result == 'success' &&
+        needs.javascript_test.result == 'success' &&
+        needs.browser_e2e.result == 'success' &&
+        needs.swift_test.result == 'success' &&
+        needs.version.result == 'success')
     needs:
       - python_test
       - javascript_test
@@ -271,7 +280,13 @@ jobs:
 
   docker_build:
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: |
+      (github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        always()) ||
+      (github.event_name != 'pull_request' &&
+        needs.docker_build_platform.result == 'success' &&
+        needs.version.result == 'success')
     needs:
       - docker_build_platform
       - version
