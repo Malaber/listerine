@@ -4,7 +4,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
-ARG LISTERINE_VERSION=development
+ARG LISTERINE_VERSION=0.0.0.dev0
 
 WORKDIR /app
 
@@ -12,12 +12,16 @@ RUN addgroup --system app && adduser --system --ingroup app app
 RUN mkdir /data && chown app:app /data
 
 COPY pyproject.toml README.md alembic.ini ./
+COPY docker/export_runtime_requirements.py ./docker/export_runtime_requirements.py
+
+RUN python docker/export_runtime_requirements.py > docker/runtime-requirements.txt \
+    && pip install -r docker/runtime-requirements.txt
+
 COPY app ./app
 COPY alembic ./alembic
 COPY docker ./docker
 
-RUN pip install --upgrade pip \
-    && SETUPTOOLS_SCM_PRETEND_VERSION=${LISTERINE_VERSION} pip install . \
+RUN SETUPTOOLS_SCM_PRETEND_VERSION=${LISTERINE_VERSION} pip install --no-deps . \
     && printf '%s\n' "${LISTERINE_VERSION}" > VERSION \
     && chmod +x /app/docker/start.sh \
     && chown -R app:app /app

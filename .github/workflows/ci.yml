@@ -202,16 +202,8 @@ jobs:
         github.event.pull_request.head.repo.full_name == github.repository &&
         always()) ||
       (github.event_name != 'pull_request' &&
-        needs.python_test.result == 'success' &&
-        needs.javascript_test.result == 'success' &&
-        needs.browser_e2e.result == 'success' &&
-        needs.swift_test.result == 'success' &&
         needs.version.result == 'success')
     needs:
-      - python_test
-      - javascript_test
-      - browser_e2e
-      - swift_test
       - version
     strategy:
       fail-fast: false
@@ -489,58 +481,6 @@ jobs:
               issue_number,
               body,
             });
-      - name: Wake webhooker production deployment
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        env:
-          WAKE_URL: ${{ vars.WEBHOOKER_PRODUCTION_WAKE_URL }}
-          WAKE_SECRET: ${{ secrets.WEBHOOKER_WEBHOOK_SECRET }}
-          PUSH_SHA: ${{ github.sha }}
-          REF_NAME: ${{ github.ref_name }}
-          REPOSITORY: ${{ github.repository }}
-          DELIVERY_ID: ci-production-${{ github.run_id }}-${{ github.run_attempt }}
-        run: |
-          python - <<'PY'
-          import hashlib
-          import hmac
-          import json
-          import os
-          import urllib.request
-
-          if not os.environ["WAKE_URL"] or not os.environ["WAKE_SECRET"]:
-              print("Skipping production wake: WEBHOOKER_PRODUCTION_WAKE_URL or WEBHOOKER_WEBHOOK_SECRET is not configured.")
-              raise SystemExit(0)
-
-          owner, repo = os.environ["REPOSITORY"].split("/", 1)
-          payload = {
-              "ref": f"refs/heads/{os.environ['REF_NAME']}",
-              "after": os.environ["PUSH_SHA"],
-              "repository": {
-                  "name": repo,
-                  "full_name": os.environ["REPOSITORY"],
-                  "owner": {"login": owner},
-              },
-          }
-          body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
-          signature = "sha256=" + hmac.new(
-              os.environ["WAKE_SECRET"].encode("utf-8"),
-              body,
-              hashlib.sha256,
-          ).hexdigest()
-          request = urllib.request.Request(
-              os.environ["WAKE_URL"],
-              data=body,
-              method="POST",
-              headers={
-                  "Content-Type": "application/json",
-                  "X-GitHub-Event": "push",
-                  "X-GitHub-Delivery": os.environ["DELIVERY_ID"],
-                  "X-Hub-Signature-256": signature,
-              },
-          )
-          with urllib.request.urlopen(request) as response:
-              print(f"production wake status={response.status}")
-          PY
-
   release:
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
@@ -604,3 +544,54 @@ jobs:
             cat docker-release-inspect.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+      - name: Wake webhooker production deployment
+        if: github.ref == 'refs/heads/main'
+        env:
+          WAKE_URL: ${{ vars.WEBHOOKER_PRODUCTION_WAKE_URL }}
+          WAKE_SECRET: ${{ secrets.WEBHOOKER_WEBHOOK_SECRET }}
+          PUSH_SHA: ${{ github.sha }}
+          REF_NAME: ${{ github.ref_name }}
+          REPOSITORY: ${{ github.repository }}
+          DELIVERY_ID: ci-production-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import hmac
+          import json
+          import os
+          import urllib.request
+
+          if not os.environ["WAKE_URL"] or not os.environ["WAKE_SECRET"]:
+              print("Skipping production wake: WEBHOOKER_PRODUCTION_WAKE_URL or WEBHOOKER_WEBHOOK_SECRET is not configured.")
+              raise SystemExit(0)
+
+          owner, repo = os.environ["REPOSITORY"].split("/", 1)
+          payload = {
+              "ref": f"refs/heads/{os.environ['REF_NAME']}",
+              "after": os.environ["PUSH_SHA"],
+              "repository": {
+                  "name": repo,
+                  "full_name": os.environ["REPOSITORY"],
+                  "owner": {"login": owner},
+              },
+          }
+          body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+          signature = "sha256=" + hmac.new(
+              os.environ["WAKE_SECRET"].encode("utf-8"),
+              body,
+              hashlib.sha256,
+          ).hexdigest()
+          request = urllib.request.Request(
+              os.environ["WAKE_URL"],
+              data=body,
+              method="POST",
+              headers={
+                  "Content-Type": "application/json",
+                  "X-GitHub-Event": "push",
+                  "X-GitHub-Delivery": os.environ["DELIVERY_ID"],
+                  "X-Hub-Signature-256": signature,
+              },
+          )
+          with urllib.request.urlopen(request) as response:
+              print(f"production wake status={response.status}")
+          PY

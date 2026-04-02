@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -45,6 +46,10 @@ _PASSKEY_ADD_SESSION_KEY = "passkey_add"
 _PASSKEY_DELETE_SESSION_KEY = "passkey_delete"
 _PASSKEY_RENAME_SESSION_KEY = "passkey_rename"
 _DEFAULT_INITIAL_PASSKEY_NAME = "Passkey 1"
+_REGISTRATION_FAILURE_DETAIL = (
+    "Could not create that account. Try signing in with an existing "
+    "passkey or use a different email."
+)
 
 
 def _rp_id_for_request(request: Request) -> str:
@@ -91,6 +96,17 @@ async def _load_user_with_passkeys_by_email(db: AsyncSession, email: str) -> Use
     return result.scalar_one_or_none()
 
 
+async def _load_passkey_with_user_by_credential_id(
+    db: AsyncSession, credential_id: str
+) -> Passkey | None:
+    result = await db.execute(
+        select(Passkey)
+        .options(selectinload(Passkey.user))
+        .where(Passkey.credential_id == credential_id)
+    )
+    return result.scalar_one_or_none()
+
+
 def _passkey_descriptor(passkey: Passkey) -> PublicKeyCredentialDescriptor:
     return PublicKeyCredentialDescriptor(id=base64url_to_bytes(passkey.credential_id))
 
@@ -124,10 +140,6 @@ async def _apply_bootstrap_admin_email(db: AsyncSession, user: User) -> User:
 async def begin_passkey_registration(
     payload: PasskeyRegisterStartRequest, request: Request, db: AsyncSession = Depends(get_db)
 ) -> dict:
-    existing = await _load_user_with_passkeys_by_email(db, payload.email)
-    if existing is not None:
-        raise HTTPException(status_code=400, detail="Email already exists")
-
     user_id = uuid4()
     options = generate_registration_options(
         rp_id=_rp_id_for_request(request),
@@ -161,7 +173,7 @@ async def finish_passkey_registration(
 
     existing = await _load_user_with_passkeys_by_email(db, pending["email"])
     if existing is not None:
-        raise HTTPException(status_code=400, detail="Email already exists")
+        raise HTTPException(status_code=400, detail=_REGISTRATION_FAILURE_DETAIL)
 
     try:
         verified = verify_registration_response(
@@ -178,7 +190,7 @@ async def finish_passkey_registration(
     if (
         await db.execute(select(Passkey).where(Passkey.credential_id == credential_id))
     ).scalar_one_or_none() is not None:
-        raise HTTPException(status_code=400, detail="That passkey is already registered")
+        raise HTTPException(status_code=400, detail=_REGISTRATION_FAILURE_DETAIL)
 
     user = User(
         id=UUID(pending["user_id"]),
@@ -195,7 +207,11 @@ async def finish_passkey_registration(
         )
     )
     db.add(user)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=_REGISTRATION_FAILURE_DETAIL) from exc
     await db.refresh(user)
     user = await _apply_bootstrap_admin_email(db, user)
 
@@ -205,23 +221,15 @@ async def finish_passkey_registration(
 
 
 @router.post("/login/options")
-async def begin_passkey_login(
-    payload: PasskeyLoginStartRequest, request: Request, db: AsyncSession = Depends(get_db)
-) -> dict:
-    user = await _load_user_with_passkeys_by_email(db, payload.email)
-    if user is None or not user.passkeys:
-        raise HTTPException(status_code=404, detail="No passkey found for that email")
-
+async def begin_passkey_login(_: PasskeyLoginStartRequest, request: Request) -> dict:
     options = generate_authentication_options(
         rp_id=_rp_id_for_request(request),
-        allow_credentials=[_passkey_descriptor(passkey) for passkey in user.passkeys],
         user_verification=UserVerificationRequirement.REQUIRED,
     )
     request.session[_LOGIN_SESSION_KEY] = {
         "challenge": bytes_to_base64url(options.challenge),
         "origin": _origin_for_request(request),
         "rp_id": _rp_id_for_request(request),
-        "user_id": str(user.id),
     }
     return json.loads(options_to_json(options))
 
@@ -234,14 +242,13 @@ async def finish_passkey_login(
     if pending is None:
         raise HTTPException(status_code=400, detail="Login session expired")
 
-    user = await _load_user_with_passkeys(db, UUID(pending["user_id"]))
-    if user is None or not user.passkeys:
-        raise HTTPException(status_code=404, detail="No passkey found for that user")
-
     credential_id = _credential_id_from_payload(payload)
-    passkey = next((entry for entry in user.passkeys if entry.credential_id == credential_id), None)
+    passkey = await _load_passkey_with_user_by_credential_id(db, credential_id)
     if passkey is None:
         raise HTTPException(status_code=404, detail="No passkey found for that credential")
+    user = passkey.user
+    if user is None:
+        raise HTTPException(status_code=404, detail="No user found for that passkey")
 
     try:
         verified = verify_authentication_response(
@@ -262,6 +269,7 @@ async def finish_passkey_login(
     passkey.sign_count = verified.new_sign_count
     passkey.last_used_at = datetime.now(UTC)
     await db.commit()
+    await db.refresh(passkey)
     await db.refresh(user)
     user = await _apply_bootstrap_admin_email(db, user)
 

@@ -1390,12 +1390,6 @@ main {
   max-width: 48rem;
 }
 
-.auth-grid {
-  display: grid;
-  gap: 1.5rem;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-}
-
 .auth-card {
   background: #fff;
   border: 1px solid #d7dee8;
@@ -1404,9 +1398,41 @@ main {
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
 }
 
+.auth-card-primary {
+  max-width: 32rem;
+}
+
 .auth-form {
   display: grid;
   gap: 1rem;
+}
+
+.auth-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.auth-tab-button {
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  padding: 0.65rem 1rem;
+  border-radius: 999px;
+}
+
+.auth-tab-button[aria-selected="true"] {
+  background: #0f172a;
+  border-color: #0f172a;
+  color: #fff;
+}
+
+.auth-tab-button:hover {
+  border-color: #94a3b8;
 }
 
 .auth-field {
