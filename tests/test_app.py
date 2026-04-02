@@ -1372,9 +1372,9 @@ def test_password_auth_endpoints_are_disabled(client) -> None:
 def test_web_pages_require_login(client) -> None:
     response = client.get("/login")
     assert response.status_code == 200
+    assert "Sign In" in response.text
     assert "Sign in with passkey" in response.text
-    assert "Create account" in response.text
-    assert "No passkey yet?" in response.text
+    assert "Create Account" in response.text
     assert "Sign-in is account-discovery free" in response.text
     assert "Logout" not in response.text
     assert client.get("/", follow_redirects=False).status_code == 303

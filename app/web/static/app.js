@@ -2280,17 +2280,24 @@ async function handlePasskeyLoginClick(root, loginForm) {
   }
 }
 
-function setRegisterPanelOpen(root, open) {
-  const panel = root.querySelector("[data-passkey-register-panel]");
-  const toggle = root.querySelector("[data-passkey-register-toggle]");
-  if (!panel || !toggle) {
+function setAuthTab(root, tab) {
+  const panels = root.querySelectorAll("[data-auth-tab-panel]");
+  const triggers = root.querySelectorAll("[data-auth-tab-trigger]");
+  if (!panels.length || !triggers.length) {
     return;
   }
 
-  panel.hidden = !open;
-  toggle.setAttribute("aria-expanded", open ? "true" : "false");
+  panels.forEach((panel) => {
+    panel.hidden = panel.getAttribute("data-auth-tab-panel") !== tab;
+  });
+  triggers.forEach((trigger) => {
+    trigger.setAttribute(
+      "aria-selected",
+      trigger.getAttribute("data-auth-tab-trigger") === tab ? "true" : "false"
+    );
+  });
 
-  if (open) {
+  if (tab === "signup") {
     root.querySelector('[data-passkey-register] input[name="display_name"]')?.focus();
   }
 }
@@ -2309,14 +2316,10 @@ function initPasskeyAuth() {
 
   const registerForm = root.querySelector("[data-passkey-register]");
   const loginForm = root.querySelector("[data-passkey-login]");
-  const registerToggle = root.querySelector("[data-passkey-register-toggle]");
-  const registerCancel = root.querySelector("[data-passkey-register-cancel]");
-
-  registerToggle?.addEventListener("click", () => {
-    setRegisterPanelOpen(root, true);
-  });
-  registerCancel?.addEventListener("click", () => {
-    setRegisterPanelOpen(root, false);
+  root.querySelectorAll("[data-auth-tab-trigger]").forEach((trigger) => {
+    trigger.addEventListener("click", () => {
+      setAuthTab(root, trigger.getAttribute("data-auth-tab-trigger"));
+    });
   });
 
   root.querySelector("[data-passkey-register-button]").addEventListener("click", async () => {
@@ -2477,7 +2480,7 @@ export {
   registerWithPasskey,
   loginWithPasskey,
   handlePasskeyLoginClick,
-  setRegisterPanelOpen,
+  setAuthTab,
   initPasskeyAuth,
   formatInviteExpiry,
   initHouseholdInvite,

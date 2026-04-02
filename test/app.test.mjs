@@ -93,12 +93,14 @@ function loginHtml() {
     <section data-passkey-auth>
       <p data-auth-error hidden></p>
       <p data-auth-success hidden></p>
+      <button type="button" data-auth-tab-trigger="signin" aria-selected="true">Sign In</button>
+      <button type="button" data-auth-tab-trigger="signup" aria-selected="false">Create Account</button>
+      <section data-auth-tab-panel="signin">
       <form data-passkey-login>
         <button type="button" data-passkey-login-button>Login</button>
       </form>
-      <button type="button" data-passkey-register-toggle aria-expanded="false">Create account</button>
-      <section data-passkey-register-panel hidden>
-        <button type="button" data-passkey-register-cancel>Cancel</button>
+      </section>
+      <section data-auth-tab-panel="signup" hidden>
         <form data-passkey-register>
           <input type="text" name="display_name" value="Tester" />
           <input type="email" name="email" value="register@example.com" />
@@ -1735,10 +1737,12 @@ test("passkey helpers and auth initialization handle supported and unsupported b
     const registerForm = root.querySelector("[data-passkey-register]");
     const loginForm = root.querySelector("[data-passkey-login]");
 
-    app.setRegisterPanelOpen(root, true);
-    assert.equal(root.querySelector("[data-passkey-register-panel]").hidden, false);
-    app.setRegisterPanelOpen(root, false);
-    assert.equal(root.querySelector("[data-passkey-register-panel]").hidden, true);
+    app.setAuthTab(root, "signup");
+    assert.equal(root.querySelector('[data-auth-tab-panel="signup"]').hidden, false);
+    assert.equal(root.querySelector('[data-auth-tab-panel="signin"]').hidden, true);
+    app.setAuthTab(root, "signin");
+    assert.equal(root.querySelector('[data-auth-tab-panel="signin"]').hidden, false);
+    assert.equal(root.querySelector('[data-auth-tab-panel="signup"]').hidden, true);
 
     await app.registerWithPasskey(root, registerForm);
     await app.loginWithPasskey(root, loginForm);
@@ -1749,11 +1753,11 @@ test("passkey helpers and auth initialization handle supported and unsupported b
     assert.deepEqual(env.assigned, ["/", "/"]);
 
     await app.initPasskeyAuth();
-    root.querySelector("[data-passkey-register-toggle]").click();
-    assert.equal(root.querySelector("[data-passkey-register-panel]").hidden, false);
-    root.querySelector("[data-passkey-register-cancel]").click();
-    assert.equal(root.querySelector("[data-passkey-register-panel]").hidden, true);
-    root.querySelector("[data-passkey-register-toggle]").click();
+    root.querySelector('[data-auth-tab-trigger="signup"]').click();
+    assert.equal(root.querySelector('[data-auth-tab-panel="signup"]').hidden, false);
+    root.querySelector('[data-auth-tab-trigger="signin"]').click();
+    assert.equal(root.querySelector('[data-auth-tab-panel="signin"]').hidden, false);
+    root.querySelector('[data-auth-tab-trigger="signup"]').click();
     root.querySelector("[data-passkey-register-button]").click();
     root.querySelector("[data-passkey-login-button]").click();
     await new Promise((resolve) => setTimeout(resolve, 0));
