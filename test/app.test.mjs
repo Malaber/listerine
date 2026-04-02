@@ -96,11 +96,15 @@ function loginHtml() {
       <form data-passkey-login>
         <button type="button" data-passkey-login-button>Login</button>
       </form>
-      <form data-passkey-register>
-        <input type="text" name="display_name" value="Tester" />
-        <input type="email" name="email" value="register@example.com" />
-        <button type="button" data-passkey-register-button>Register</button>
-      </form>
+      <button type="button" data-passkey-register-toggle aria-expanded="false">Create account</button>
+      <section data-passkey-register-panel hidden>
+        <button type="button" data-passkey-register-cancel>Cancel</button>
+        <form data-passkey-register>
+          <input type="text" name="display_name" value="Tester" />
+          <input type="email" name="email" value="register@example.com" />
+          <button type="button" data-passkey-register-button>Register</button>
+        </form>
+      </section>
     </section>
   `;
 }
@@ -1731,6 +1735,11 @@ test("passkey helpers and auth initialization handle supported and unsupported b
     const registerForm = root.querySelector("[data-passkey-register]");
     const loginForm = root.querySelector("[data-passkey-login]");
 
+    app.setRegisterPanelOpen(root, true);
+    assert.equal(root.querySelector("[data-passkey-register-panel]").hidden, false);
+    app.setRegisterPanelOpen(root, false);
+    assert.equal(root.querySelector("[data-passkey-register-panel]").hidden, true);
+
     await app.registerWithPasskey(root, registerForm);
     await app.loginWithPasskey(root, loginForm);
     assert.deepEqual(passkeyCalls, [
@@ -1740,6 +1749,11 @@ test("passkey helpers and auth initialization handle supported and unsupported b
     assert.deepEqual(env.assigned, ["/", "/"]);
 
     await app.initPasskeyAuth();
+    root.querySelector("[data-passkey-register-toggle]").click();
+    assert.equal(root.querySelector("[data-passkey-register-panel]").hidden, false);
+    root.querySelector("[data-passkey-register-cancel]").click();
+    assert.equal(root.querySelector("[data-passkey-register-panel]").hidden, true);
+    root.querySelector("[data-passkey-register-toggle]").click();
     root.querySelector("[data-passkey-register-button]").click();
     root.querySelector("[data-passkey-login-button]").click();
     await new Promise((resolve) => setTimeout(resolve, 0));

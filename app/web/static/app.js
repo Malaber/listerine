@@ -2280,6 +2280,21 @@ async function handlePasskeyLoginClick(root, loginForm) {
   }
 }
 
+function setRegisterPanelOpen(root, open) {
+  const panel = root.querySelector("[data-passkey-register-panel]");
+  const toggle = root.querySelector("[data-passkey-register-toggle]");
+  if (!panel || !toggle) {
+    return;
+  }
+
+  panel.hidden = !open;
+  toggle.setAttribute("aria-expanded", open ? "true" : "false");
+
+  if (open) {
+    root.querySelector('[data-passkey-register] input[name="display_name"]')?.focus();
+  }
+}
+
 function initPasskeyAuth() {
   const root = document.querySelector("[data-passkey-auth]");
   if (!root) {
@@ -2294,6 +2309,15 @@ function initPasskeyAuth() {
 
   const registerForm = root.querySelector("[data-passkey-register]");
   const loginForm = root.querySelector("[data-passkey-login]");
+  const registerToggle = root.querySelector("[data-passkey-register-toggle]");
+  const registerCancel = root.querySelector("[data-passkey-register-cancel]");
+
+  registerToggle?.addEventListener("click", () => {
+    setRegisterPanelOpen(root, true);
+  });
+  registerCancel?.addEventListener("click", () => {
+    setRegisterPanelOpen(root, false);
+  });
 
   root.querySelector("[data-passkey-register-button]").addEventListener("click", async () => {
     toggleButtons(root, true);
@@ -2453,6 +2477,7 @@ export {
   registerWithPasskey,
   loginWithPasskey,
   handlePasskeyLoginClick,
+  setRegisterPanelOpen,
   initPasskeyAuth,
   formatInviteExpiry,
   initHouseholdInvite,

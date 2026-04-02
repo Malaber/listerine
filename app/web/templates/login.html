@@ -15,30 +15,45 @@
     <p class="auth-banner auth-banner-success" data-auth-success hidden></p>
   </div>
 
-  <div class="auth-grid">
-    <section class="auth-card">
-      <h2>Sign in</h2>
-      <p>Choose a passkey and your browser or password manager will identify the account for you.</p>
-      <form class="auth-form" data-passkey-login>
-        <button type="button" data-passkey-login-button>Sign in with passkey</button>
-      </form>
-    </section>
+  <section class="auth-card auth-card-primary">
+    <h2>Continue</h2>
+    <p>Choose a passkey and your browser or password manager will identify the account for you.</p>
+    <form class="auth-form" data-passkey-login>
+      <button type="button" data-passkey-login-button>Sign in with passkey</button>
+    </form>
+    <div class="auth-secondary-actions">
+      <p>No passkey yet?</p>
+      <button
+        type="button"
+        class="auth-link-button"
+        data-passkey-register-toggle
+        aria-expanded="false"
+        aria-controls="signup-panel"
+      >
+        Create an account
+      </button>
+    </div>
+  </section>
 
-    <section class="auth-card">
-      <h2>Create account</h2>
-      <p>We still need an email so the new account has an identifier you can share in invites and admin tools.</p>
-      <form class="auth-form" data-passkey-register>
-        <label class="auth-field">
-          <span>Display name</span>
-          <input type="text" name="display_name" autocomplete="name" required />
-        </label>
-        <label class="auth-field">
-          <span>Email</span>
-          <input type="email" name="email" autocomplete="username webauthn" required />
-        </label>
-        <button type="button" data-passkey-register-button>Create passkey</button>
-      </form>
-    </section>
-  </div>
+  <section id="signup-panel" class="auth-card auth-card-secondary" data-passkey-register-panel hidden>
+    <div class="auth-panel-header">
+      <div>
+        <h2>Create account</h2>
+        <p>We still need an email so the new account has an identifier you can share in invites and admin tools.</p>
+      </div>
+      <button type="button" class="auth-link-button" data-passkey-register-cancel>Cancel</button>
+    </div>
+    <form class="auth-form" data-passkey-register>
+      <label class="auth-field">
+        <span>Display name</span>
+        <input type="text" name="display_name" autocomplete="name" required />
+      </label>
+      <label class="auth-field">
+        <span>Email</span>
+        <input type="email" name="email" autocomplete="username webauthn" required />
+      </label>
+      <button type="button" data-passkey-register-button>Create passkey</button>
+    </form>
+  </section>
 </section>
 {% endblock %}

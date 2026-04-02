@@ -1390,12 +1390,6 @@ main {
   max-width: 48rem;
 }
 
-.auth-grid {
-  display: grid;
-  gap: 1.5rem;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-}
-
 .auth-card {
   background: #fff;
   border: 1px solid #d7dee8;
@@ -1404,9 +1398,56 @@ main {
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
 }
 
+.auth-card-primary {
+  max-width: 32rem;
+}
+
+.auth-card-secondary {
+  max-width: 38rem;
+}
+
+.auth-card-secondary[hidden] {
+  display: none;
+}
+
 .auth-form {
   display: grid;
   gap: 1rem;
+}
+
+.auth-secondary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.7rem;
+  margin-top: 1rem;
+}
+
+.auth-secondary-actions p,
+.auth-panel-header p {
+  margin: 0;
+}
+
+.auth-link-button {
+  border: 0;
+  background: transparent;
+  color: #1d4ed8;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  padding: 0;
+}
+
+.auth-link-button:hover {
+  color: #1e3a8a;
+}
+
+.auth-panel-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 1rem;
 }
 
 .auth-field {
@@ -1446,6 +1487,12 @@ main {
 .auth-form button:disabled {
   opacity: 0.65;
   cursor: progress;
+}
+
+@media (max-width: 640px) {
+  .auth-panel-header {
+    flex-direction: column;
+  }
 }
 
 .auth-banner {
