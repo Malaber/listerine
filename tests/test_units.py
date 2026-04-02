@@ -13,7 +13,7 @@ from app.api.v1.routes.auth import (
     _password_auth_disabled,
     _rp_id_for_request,
 )
-from app.core.config import settings
+from app.core.config import Settings, settings
 from app.core.security import (
     create_access_token,
     hash_password,
@@ -204,6 +204,14 @@ def test_bootstrap_admin_email_helper_respects_config(monkeypatch) -> None:
     user.is_admin = True
     assert asyncio.run(_apply_bootstrap_admin_email(db, user)) is user
     assert db.commit_calls == 0
+
+
+def test_settings_normalize_blank_bootstrap_admin_email() -> None:
+    assert Settings(bootstrap_admin_email="").bootstrap_admin_email is None
+    assert Settings(bootstrap_admin_email="   ").bootstrap_admin_email is None
+    assert str(Settings(bootstrap_admin_email="admin@example.com").bootstrap_admin_email) == (
+        "admin@example.com"
+    )
 
 
 def test_passkey_request_helpers() -> None:

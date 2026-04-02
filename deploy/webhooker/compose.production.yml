@@ -4,7 +4,7 @@ services:
     restart: unless-stopped
     env_file:
       - ./env/production.common.env
-      - /etc/listerine/production.secrets.env
+      - ../secrets/production.env
     environment:
       APP_HOSTNAME: ${APP_HOSTNAME}
       DATABASE_URL: sqlite+aiosqlite:////data/listerine.db
