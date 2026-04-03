@@ -17,6 +17,9 @@ from app.models import (
     User,
 )
 
+PREVIEW_INSTANCE_ADMIN_EMAIL = "listerine_admin@schaedler.rocks"
+PREVIEW_MEMBER_EMAIL = "listerine@schaedler.rocks"
+
 
 def _decode_public_key(value: str) -> bytes:
     return base64.b64decode(value.encode("ascii"))
@@ -314,6 +317,15 @@ async def ensure_seed_data(db: AsyncSession, fixture_path: str) -> None:
                 db, household, member_user, str(member_payload.get("role", "member"))
             )
         await _ensure_member(db, household, users[str(household_payload["owner_email"])], "owner")
+
+    preview_member = users.get(PREVIEW_MEMBER_EMAIL)
+    preview_admin = users.get(PREVIEW_INSTANCE_ADMIN_EMAIL)
+    if preview_member is not None:
+        for household in households.values():
+            role = "owner" if household.owner_user_id == preview_member.id else "member"
+            await _ensure_member(db, household, preview_member, role)
+    if preview_admin is not None:
+        await db.execute(delete(HouseholdMember).where(HouseholdMember.user_id == preview_admin.id))
 
     categories: dict[tuple[str | None, str], Category] = {}
     for category_payload in categories_payload:
