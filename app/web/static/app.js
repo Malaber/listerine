@@ -2591,7 +2591,6 @@ export {
   loginWithPasskey,
   handlePasskeyLoginClick,
   setSettingsMessage,
-  replacePasskeyFromSettings,
   initPasskeyAuth,
   initUserSettings,
   formatInviteExpiry,
