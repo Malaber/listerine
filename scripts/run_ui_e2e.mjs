@@ -184,7 +184,7 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
   await page.getByLabel("Name this passkey").fill(secondPasskeyName);
   await page.getByRole("button", { name: "Continue" }).click();
   await expectVisible(
-    page.locator("[data-dashboard-success]", { hasText: "Another passkey is ready to use." }),
+    page.locator("[data-passkey-success]", { hasText: "Another passkey is ready to use." }),
     "Expected passkey add success message",
   );
   await expectVisible(
@@ -206,7 +206,7 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
   await page.getByLabel("Rename this passkey").fill(renamedPasskeyName);
   await page.getByRole("button", { name: "Save and verify" }).click();
   await expectVisible(
-    page.locator("[data-dashboard-success]", {
+    page.locator("[data-passkey-success]", {
       hasText: "Passkey renamed after confirming it still works.",
     }),
     "Expected passkey rename success message",
@@ -252,7 +252,7 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
   logStep("Deleting the original passkey using the second passkey as confirmation");
   await page.locator(".passkey-row").nth(0).getByRole("button", { name: "Delete" }).click();
   await expectVisible(
-    page.locator("[data-dashboard-success]", {
+    page.locator("[data-passkey-success]", {
       hasText: "Passkey deleted after confirming another one worked.",
     }),
     "Expected passkey delete success message",

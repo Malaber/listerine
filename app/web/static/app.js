@@ -2429,7 +2429,7 @@ function initUserSettings() {
   }
 
   if (!window.PublicKeyCredential || !navigator.credentials) {
-    setSettingsMessage(root, "error", "This browser does not support passkeys.");
+    setPasskeyManagementMessage(root, "error", "This browser does not support passkeys.");
     toggleButtons(root, true);
     return;
   }

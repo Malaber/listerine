@@ -37,15 +37,6 @@ function createJsonRejectingResponse({ ok = true, status = 200, statusText = "OK
 function dashboardHtml() {
   return `
     <section class="dashboard-shell" data-dashboard>
-      <button type="button" data-passkey-add>Add another passkey</button>
-      <form data-passkey-name-form hidden>
-        <span data-passkey-name-title>Name this passkey</span>
-        <input type="text" name="name" data-passkey-name-input />
-        <button type="submit" data-passkey-name-submit>Continue</button>
-        <button type="button" data-passkey-name-cancel>Cancel</button>
-      </form>
-      <div data-passkey-empty hidden></div>
-      <div data-passkey-list></div>
       <div data-dashboard-error hidden></div>
       <div data-dashboard-success hidden></div>
       <div data-dashboard-empty hidden></div>
@@ -103,9 +94,19 @@ function loginHtml() {
 function settingsHtml() {
   return `
     <section data-user-settings>
-      <button type="button" data-settings-passkey-button>Replace passkey</button>
-      <div data-settings-error hidden></div>
-      <div data-settings-success hidden></div>
+      <section data-passkey-management>
+        <button type="button" data-passkey-add>Add another passkey</button>
+        <form data-passkey-name-form hidden>
+          <span data-passkey-name-title>Name this passkey</span>
+          <input type="text" name="name" data-passkey-name-input />
+          <button type="submit" data-passkey-name-submit>Continue</button>
+          <button type="button" data-passkey-name-cancel>Cancel</button>
+        </form>
+        <div data-passkey-empty hidden></div>
+        <div data-passkey-list></div>
+        <div data-passkey-error hidden></div>
+        <div data-passkey-success hidden></div>
+      </section>
     </section>
   `;
 }
@@ -401,43 +402,13 @@ test("dashboard helpers render household state and form status", async () => {
       if (fetchIndex === 1) {
         return createResponse({ jsonData: [{ id: "house-1", name: "Home" }] });
       }
-      if (fetchIndex === 2) {
-        return createResponse({
-          jsonData: [{ id: "passkey-1", name: "Laptop", created_at: "2024-01-01T00:00:00Z", last_used_at: null }],
-        });
-      }
       return createResponse({ jsonData: [{ id: "list-1", name: "Weekly" }] });
     };
     env.dom.window.fetch = globalThis.fetch;
     await app.loadDashboardData(root);
     assert.match(root.querySelector("[data-household-list]").textContent, /Weekly/);
-    assert.match(root.querySelector("[data-passkey-list]").textContent, /Laptop/);
     assert.match(root.querySelector("[data-dashboard-list-group]").textContent, /Home/);
     assert.match(root.querySelector("[data-dashboard-list-group]").textContent, /Weekly/);
-    assert.equal(app.suggestedPasskeyName(root), "Passkey 2");
-    app.setPasskeyNameFormState(root, {
-      mode: "add",
-      passkeyId: "",
-      title: "Name this passkey",
-      submitLabel: "Continue",
-      name: "Passkey 2",
-    });
-    assert.equal(root.querySelector("[data-passkey-name-form]").hidden, false);
-    assert.equal(root.querySelector("[data-passkey-add]").hidden, true);
-    assert.equal(root.querySelector("[data-passkey-name-input]").value, "Passkey 2");
-    assert.equal(root.querySelector("[data-passkey-name-submit]").textContent, "Continue");
-    app.setPasskeyNameFormState(root, {
-      mode: "rename",
-      passkeyId: "passkey-1",
-      title: "Rename this passkey",
-      submitLabel: "Save and verify",
-      name: "Laptop",
-    });
-    assert.equal(root.querySelector("[data-passkey-name-title]").textContent, "Rename this passkey");
-    assert.equal(root.querySelector("[data-passkey-name-submit]").textContent, "Save and verify");
-    app.setPasskeyNameFormState(root, null);
-    assert.equal(root.querySelector("[data-passkey-name-form]").hidden, true);
-    assert.equal(root.querySelector("[data-passkey-add]").hidden, false);
   } finally {
     env.restore();
   }
@@ -715,35 +686,6 @@ test("initDashboard handles refresh, household creation, list creation, and erro
     root.querySelector("[data-dashboard-add-toggle]").click();
     root.querySelector('[data-dashboard-open-list="list-1"]').click();
     assert.deepEqual(env.assigned, ["/lists/list-2", "/lists/list-1?addItem=1"]);
-
-    root.querySelector("[data-passkey-add]").click();
-    root.querySelector("[data-passkey-name-input]").value = "Laptop";
-    root.querySelector("[data-passkey-name-form]").dispatchEvent(
-      new Event("submit", { bubbles: true, cancelable: true }),
-    );
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    assert.equal(root.querySelector("[data-dashboard-success]").textContent, "Another passkey is ready to use.");
-    assert.match(root.querySelector("[data-passkey-list]").textContent, /Laptop/);
-    assert.equal(root.querySelector("[data-passkey-name-form]").hidden, true);
-
-    root.querySelector('[data-passkey-rename="passkey-2"]').click();
-    root.querySelector("[data-passkey-name-input]").value = "Travel key";
-    root.querySelector("[data-passkey-name-form]").dispatchEvent(
-      new Event("submit", { bubbles: true, cancelable: true }),
-    );
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    assert.equal(
-      root.querySelector("[data-dashboard-success]").textContent,
-      "Passkey renamed after confirming it still works.",
-    );
-
-    root.querySelector('[data-passkey-delete="passkey-1"]').click();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    assert.equal(
-      root.querySelector("[data-dashboard-success]").textContent,
-      "Passkey deleted after confirming another one worked.",
-    );
-
     globalThis.fetch = async () => createResponse({ ok: false, status: 500, jsonData: { detail: "Failed load" } });
     env.dom.window.fetch = globalThis.fetch;
     await app.initDashboard();
@@ -772,14 +714,11 @@ test("initDashboard handles refresh, household creation, list creation, and erro
   }
 });
 
-test("initDashboard handles passkey naming form cancel and blank input", async () => {
+test("initUserSettings handles passkey naming form cancel and blank input", async () => {
   const fetchLog = [];
-  const env = installDom(dashboardHtml(), {
+  const env = installDom(settingsHtml(), {
     fetch: async (url, options = {}) => {
       fetchLog.push([url, options.method || "GET"]);
-      if (url === "/api/v1/households" && (!options.method || options.method === "GET")) {
-        return createResponse({ jsonData: [] });
-      }
       if (url === "/api/v1/auth/passkeys" && (!options.method || options.method === "GET")) {
         return createResponse({ jsonData: [{ id: "passkey-1", name: "Phone", created_at: "2024-01-01T00:00:00Z", last_used_at: null }] });
       }
@@ -795,14 +734,14 @@ test("initDashboard handles passkey naming form cancel and blank input", async (
         throw new Error("should not create");
       },
     };
-    await app.initDashboard();
+    await app.initUserSettings();
 
-    const root = document.querySelector("[data-dashboard]");
+    const root = document.querySelector("[data-user-settings]");
     root.querySelector("[data-passkey-add]").click();
     assert.equal(root.querySelector("[data-passkey-name-form]").hidden, false);
     root.querySelector("[data-passkey-name-cancel]").click();
     await new Promise((resolve) => setTimeout(resolve, 0));
-    assert.equal(root.querySelector("[data-dashboard-success]").textContent, "");
+    assert.equal(root.querySelector("[data-passkey-success]").textContent, "");
     assert.equal(root.querySelector("[data-passkey-name-form]").hidden, true);
     assert.deepEqual(
       fetchLog.filter(([url]) => url === "/api/v1/auth/passkeys/register/options"),
@@ -815,7 +754,7 @@ test("initDashboard handles passkey naming form cancel and blank input", async (
       new Event("submit", { bubbles: true, cancelable: true }),
     );
     await new Promise((resolve) => setTimeout(resolve, 0));
-    assert.equal(root.querySelector("[data-dashboard-error]").textContent, "Passkey name is required.");
+    assert.equal(root.querySelector("[data-passkey-error]").textContent, "Passkey name is required.");
     assert.deepEqual(
       fetchLog.filter(([url]) => url === "/api/v1/auth/passkeys/register/options"),
       [],
@@ -1736,11 +1675,24 @@ test("passkey login helpers and auth initialization handle supported and unsuppo
   }
 });
 
-test("user settings passkey replacement handles success and unsupported browsers", async () => {
+test("user settings passkey management handles success and unsupported browsers", async () => {
+  let passkeys = [
+    { id: "passkey-1", name: "Phone", created_at: "2024-01-01T00:00:00Z", last_used_at: null },
+  ];
   const env = installDom(settingsHtml(), {
-    fetch: async (url) => {
-      if (url === "/api/v1/auth/settings/passkey/options") {
+    fetch: async (url, options = {}) => {
+      if (url === "/api/v1/auth/passkeys" && (!options.method || options.method === "GET")) {
+        return createResponse({ jsonData: passkeys });
+      }
+      if (url === "/api/v1/auth/passkeys/register/options") {
         return createResponse({ jsonData: { challenge: "AQID", user: { id: "BAUG" } } });
+      }
+      if (url === "/api/v1/auth/passkeys/register/verify") {
+        passkeys = [
+          ...passkeys,
+          { id: "passkey-2", name: "Laptop", created_at: "2024-01-02T00:00:00Z", last_used_at: null },
+        ];
+        return createResponse({ jsonData: {} });
       }
       return createResponse({ jsonData: {} });
     },
@@ -1760,15 +1712,19 @@ test("user settings passkey replacement handles success and unsupported browsers
       },
     };
     const root = document.querySelector("[data-user-settings]");
-    await app.replacePasskeyFromSettings(root);
-    assert.equal(root.querySelector("[data-settings-success]").textContent, "Passkey updated.");
     await app.initUserSettings();
-    root.querySelector("[data-settings-passkey-button]").click();
+    root.querySelector("[data-passkey-add]").click();
+    root.querySelector("[data-passkey-name-input]").value = "Laptop";
+    root.querySelector("[data-passkey-name-form]").dispatchEvent(
+      new Event("submit", { bubbles: true, cancelable: true }),
+    );
     await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(root.querySelector("[data-passkey-success]").textContent, "Another passkey is ready to use.");
+    assert.match(root.querySelector("[data-passkey-list]").textContent, /Laptop/);
     delete globalThis.window.PublicKeyCredential;
     delete globalThis.navigator.credentials;
     await app.initUserSettings();
-    assert.equal(root.querySelector("[data-settings-error]").textContent, "This browser does not support passkeys.");
+    assert.equal(root.querySelector("[data-passkey-error]").textContent, "This browser does not support passkeys.");
   } finally {
     env.restore();
   }
