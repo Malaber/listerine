@@ -6,7 +6,7 @@ import { chromium } from "playwright";
 const baseUrl = process.env.PREVIEW_BASE_URL ?? "http://127.0.0.1:8000";
 const artifactDir = process.env.PREVIEW_ARTIFACT_DIR ?? "e2e-artifacts/ui-e2e";
 const videoDir = path.join(artifactDir, "videos");
-const seedPath = process.env.E2E_SEED_PATH ?? "app/fixtures/review_seed.json";
+const seedPath = process.env.E2E_SEED_PATH ?? "app/fixtures/review_seed_e2e.json";
 
 function logStep(message) {
   console.log(`[ui-e2e] ${message}`);

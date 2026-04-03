@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "description": "Seed data for review deployments."
+    "description": "Seed data for browser e2e runs."
   },
   "e2e": {
     "rp_id": "localhost",
@@ -15,10 +15,11 @@
       "display_name": "Listerine Admin",
       "is_admin": true,
       "passkey": {
-        "credential_id": "KOsO6JsnTl-cxewqIv2zZg",
-        "name": "Bitwarden - Listerine PR Admin",
-        "public_key_b64": "pQECAyYgASFYIKls1uvkBI7r5JxeJv0R/Hv+P2Hr5xrqM9oJ5uJfQQ0bIlggn4nomxrsGEfDvgfiPqNeDQnRCTEnTk0AzcdhRXtefD8=",
-        "sign_count": 0
+        "credential_id": "2BFE30Hm8RUrLQt6eM9BvA",
+        "public_key_b64": "pQECAyYgASFYIBKSsxZ4T75+fm2Ni8YlN1gWoqT+qysM+AQSQYVmxQY8Ilgg5/iiReXxiHuwmh8ELDnK214lFiTYiOG4E2/scHNjGtM=",
+        "sign_count": 0,
+        "private_key_pkcs8_b64": "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgE6Q6UMwzgw7FSi8oouyh5kdAok7/WxlPR1AKbL7a2vKhRANCAAQSkrMWeE++fn5tjYvGJTdYFqKk/qsrDPgEEkGFZsUGPOf4okXl8Yh7sJofBCw5ytteJRYk2IjhuBNv7HBzYxrT",
+        "user_handle_b64": "HuXIfs1kjAt+gJ2EBO6LqQ=="
       }
     },
     {
@@ -26,10 +27,11 @@
       "display_name": "Listerine User",
       "is_admin": false,
       "passkey": {
-        "credential_id": "ELRITAXBSdmGqV3B50JvSQ",
-        "name": "Bitwarden - Listerine PR",
-        "public_key_b64": "pQECAyYgASFYIK+2e1axC/AMSd42viJwVvoWY01sI69uv4y17bqLibp1IlggegsKGeFtWqFHbAdzKigDMAn3ChBgU95j9B/hjaba7+0=",
-        "sign_count": 0
+        "credential_id": "wzGuB7Z9cAVSK5sKiqdYpQ",
+        "public_key_b64": "pQECAyYgASFYINF08nvAX9c4PN6hlc5MHT1fLc4o/BsGyj6s82xSGKJzIlggFLLzLccAAqIQXVj+5M9k7dIM+KzlQT601kCtKdGFKq0=",
+        "sign_count": 0,
+        "private_key_pkcs8_b64": "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgjtl5SDKoa03Ysn1z0wahf6X6ttq7V10JWzWvAkufYm2hRANCAATRdPJ7wF/XODzeoZXOTB09Xy3OKPwbBso+rPNsUhiicxSy8y3HAAKiEF1Y/uTPZO3SDPis5UE+tNZArSnRhSqt",
+        "user_handle_b64": "8mIs7d9nAju9saMpue8/bg=="
       }
     },
     {
@@ -44,7 +46,9 @@
       "passkey": {
         "credential_id": "pQFXIEZNb1wkD1H1o-EWWA",
         "public_key_b64": "BCH+g26lGh2EOvO6iHtaIgHlF543KIF9UH44ntS9ugrViasZLcyjwYkdUWXEKPcWVqBT8H/G1X83aKV985jJIts=",
-        "sign_count": 0
+        "sign_count": 0,
+        "private_key_pkcs8_b64": "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgh238RHClNI+CotJKAMKMn68FcBseIf5KEBUXZ+0RbnmhRANCAAQh/oNupRodhDrzuoh7WiIB5ReeNyiBfVB+OJ7UvboK1YmrGS3Mo8GJHVFlxCj3FlagU/B/xtV/N2ilffOYySLb",
+        "user_handle_b64": "v/MuPG7091eu0cAUO744EQ=="
       }
     },
     {

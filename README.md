@@ -42,6 +42,8 @@ The checked-in review fixture (`app/fixtures/review_seed.json`) includes determi
 - `listerine_admin@schaedler.rocks` (admin): instance-admin only; household memberships are stripped
 - `preview@example.com` and `preview-invitee@example.com` are kept for compatibility
 
+The browser e2e flow uses a separate fixture, `app/fixtures/review_seed_e2e.json`, so the review deployment seed does not need to carry browser-private authenticator material.
+
 ## Export passkeys from a running PR instance
 
 Use the helper script to copy passkey material from a live preview database into seed fixtures:
