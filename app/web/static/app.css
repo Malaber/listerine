@@ -1399,7 +1399,7 @@ main {
 }
 
 .auth-card-primary {
-  max-width: 32rem;
+  max-width: 72rem;
 }
 
 .auth-form {
@@ -1493,6 +1493,22 @@ main {
 .auth-banner-info {
   background: #eff6ff;
   color: #1d4ed8;
+}
+
+@media (max-width: 720px) {
+  .auth-card {
+    padding: 1rem 1.25rem;
+    border-radius: 16px;
+  }
+
+  .auth-tabs {
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .auth-tab-button {
+    width: 100%;
+  }
 }
 
 .dashboard-account-card {

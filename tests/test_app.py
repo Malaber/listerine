@@ -697,6 +697,104 @@ def test_passkey_register_and_login_flow(client, monkeypatch) -> None:
     assert "access_token" in login_verify.json()
 
 
+def test_passkey_settings_replace_flow(client, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: _mock_verified_registration(),
+    )
+    email = f"{uuid4()}@example.com"
+    client.post(
+        "/api/v1/auth/register/options",
+        json={"email": email, "display_name": "User"},
+    )
+    register_verify = client.post(
+        "/api/v1/auth/register/verify",
+        json=_passkey_finish_payload(),
+    )
+    assert register_verify.status_code == 200
+    options = client.post("/api/v1/auth/settings/passkey/options", json={})
+    assert options.status_code == 200
+    assert "challenge" in options.json()
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: SimpleNamespace(
+            credential_id=b"settings-credential-id",
+            credential_public_key=b"credential-public-key",
+            sign_count=9,
+        ),
+    )
+    verify = client.post(
+        "/api/v1/auth/settings/passkey/verify",
+        json=_passkey_finish_payload(SECOND_CREDENTIAL_ID),
+    )
+    assert verify.status_code == 200
+    assert verify.json()["email"] == email
+
+    passkeys = client.get("/api/v1/auth/passkeys").json()
+    assert len(passkeys) == 1
+    assert passkeys[0]["name"] == "Passkey 1"
+
+
+def test_passkey_settings_replace_error_paths(client, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: _mock_verified_registration(),
+    )
+    email = f"{uuid4()}@example.com"
+    client.post(
+        "/api/v1/auth/register/options",
+        json={"email": email, "display_name": "User"},
+    )
+    register_verify = client.post(
+        "/api/v1/auth/register/verify",
+        json=_passkey_finish_payload(),
+    )
+    assert register_verify.status_code == 200
+
+    expired = client.post(
+        "/api/v1/auth/settings/passkey/verify",
+        json=_passkey_finish_payload(),
+    )
+    assert expired.status_code == 400
+
+    options = client.post("/api/v1/auth/settings/passkey/options", json={})
+    assert options.status_code == 200
+
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: (_ for _ in ()).throw(Exception("bad verify")),
+    )
+    verify_failure = client.post(
+        "/api/v1/auth/settings/passkey/verify",
+        json=_passkey_finish_payload(),
+    )
+    assert verify_failure.status_code == 400
+
+    options_again = client.post("/api/v1/auth/settings/passkey/options", json={})
+    assert options_again.status_code == 200
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: _mock_verified_registration(),
+    )
+    duplicate_verify = client.post(
+        "/api/v1/auth/settings/passkey/verify",
+        json=_passkey_finish_payload(),
+    )
+    assert duplicate_verify.status_code == 400
+
+    async def _missing_user(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr("app.api.v1.routes.auth._load_user_with_passkeys", _missing_user)
+    missing_user_options = client.post("/api/v1/auth/settings/passkey/options", json={})
+    assert missing_user_options.status_code == 404
+    missing_user_verify = client.post(
+        "/api/v1/auth/settings/passkey/verify",
+        json=_passkey_finish_payload(),
+    )
+    assert missing_user_verify.status_code == 404
+
+
 def test_passkey_flow_uses_configured_webauthn_rp_id(client, monkeypatch) -> None:
     captured_rp_ids: list[str] = []
     captured_origins: list[str] = []
@@ -1438,16 +1536,24 @@ def test_web_pages_require_login(client) -> None:
     response = client.get("/login")
     assert response.status_code == 200
     assert "Sign In" in response.text
-    assert "Sign in with passkey" in response.text
     assert "Create Account" in response.text
-    assert "Sign-in is account-discovery free" in response.text
+    assert "Sign in with passkey" in response.text
+    assert (
+        "Choose a passkey and your browser or password manager will identify the account for you."
+        in response.text
+    )
+    assert "Create passkey" in response.text
+    assert 'data-auth-tab-trigger="signin"' in response.text
+    assert 'data-auth-tab-trigger="signup"' in response.text
     assert "Logout" not in response.text
     assert client.get("/", follow_redirects=False).status_code == 303
+    assert client.get("/settings", follow_redirects=False).status_code == 303
     assert client.get("/lists/abc", follow_redirects=False).status_code == 303
 
     script = client.get("/static/app.js")
     assert "navigator.credentials.create" in script.text
     assert "navigator.credentials.get" in script.text
+    assert "data-auth-tab-trigger" in script.text
     assert 'typeof value.toJSON === "function"' in script.text
 
 
@@ -1487,11 +1593,14 @@ def test_web_pages_render_for_logged_in_user(client, monkeypatch) -> None:
     dashboard = client.get("/")
     assert dashboard.status_code == 200
     assert 'action="/logout"' in dashboard.text
+    assert 'href="/settings"' in dashboard.text
     assert 'href="/admin"' not in dashboard.text
     assert ">Logout<" in dashboard.text
     assert "data-dashboard-add-toggle" in dashboard.text
     assert "data-dashboard-add-option" in dashboard.text
     assert "data-dashboard-list-group" in dashboard.text
+    assert "Your passkeys" not in dashboard.text
+    assert "Add another passkey" not in dashboard.text
 
     list_detail = client.get("/lists/abc")
     assert list_detail.status_code == 200
@@ -1502,6 +1611,15 @@ def test_web_pages_render_for_logged_in_user(client, monkeypatch) -> None:
     assert "data-item-suggestions" in list_detail.text
     assert "danger-button" in list_detail.text
     assert "data-list-sync-status" in list_detail.text
+
+    settings = client.get("/settings")
+    assert settings.status_code == 200
+    assert "Account and passkey" in settings.text
+    assert "Signed in as" in settings.text
+    assert "Your passkeys" in settings.text
+    assert "Add another passkey" in settings.text
+    assert "data-passkey-list" in settings.text
+    assert "Replace passkey" not in settings.text
 
     admin_page = client.get("/admin", follow_redirects=False)
     assert admin_page.status_code in {302, 303, 307}

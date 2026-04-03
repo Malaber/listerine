@@ -6,13 +6,6 @@
     <p>Accounts stay private until you sign in with a passkey from your browser or password manager.</p>
     <h2>Passkey-only authentication</h2>
     <p>Sign-in is account-discovery free, so this page does not ask who you are before your passkey does.</p>
-    {% if localhost_hint %}
-    <p class="auth-banner auth-banner-info">
-      For local passkeys, open this page on <strong>localhost</strong> instead of <strong>127.0.0.1</strong>.
-    </p>
-    {% endif %}
-    <p class="auth-banner auth-banner-error" data-auth-error hidden></p>
-    <p class="auth-banner auth-banner-success" data-auth-success hidden></p>
   </div>
 
   <section class="auth-card auth-card-primary">
@@ -36,6 +29,14 @@
         Create Account
       </button>
     </div>
+
+    {% if localhost_hint %}
+    <p class="auth-banner auth-banner-info">
+      For local passkeys, open this page on <strong>localhost</strong> instead of <strong>127.0.0.1</strong>.
+    </p>
+    {% endif %}
+    <p class="auth-banner auth-banner-error" data-auth-error hidden></p>
+    <p class="auth-banner auth-banner-success" data-auth-success hidden></p>
 
     <div data-auth-tab-panel="signin">
       <h2>Sign In</h2>
