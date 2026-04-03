@@ -507,12 +507,6 @@ function setPasskeyNameFormState(root, state) {
   }, 0);
 }
 
-function confirmPasskeyDeletion() {
-  return window.confirm(
-    "Before this passkey is removed, you must authenticate with another passkey to confirm it still works.\n\nContinue?"
-  );
-}
-
 async function copyText(value) {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(value);
@@ -559,6 +553,40 @@ function togglePasskeyManagementForms(root, disabled) {
       const locked = node.getAttribute("data-passkey-locked") === "true";
       node.disabled = disabled || locked;
     });
+}
+
+function syncPasskeyManagementModalState(root) {
+  const deleteOverlay = root.querySelector("[data-passkey-delete-overlay]");
+  const hasModalOpen = deleteOverlay instanceof HTMLElement && !deleteOverlay.hidden;
+  document.body.classList.toggle("has-list-modal-open", hasModalOpen);
+}
+
+function setPasskeyDeleteConfirmState(root, state) {
+  const overlay = root.querySelector("[data-passkey-delete-overlay]");
+  const panel = root.querySelector("[data-passkey-delete-panel]");
+  const nameNode = root.querySelector("[data-passkey-delete-name]");
+  const confirmButton = root.querySelector("[data-passkey-delete-confirm]");
+  if (
+    !(overlay instanceof HTMLElement)
+    || !(panel instanceof HTMLElement)
+    || !(nameNode instanceof HTMLElement)
+    || !(confirmButton instanceof HTMLButtonElement)
+  ) {
+    return;
+  }
+
+  const isOpen = Boolean(state);
+  overlay.hidden = !isOpen;
+  panel.hidden = !isOpen;
+  nameNode.textContent = state?.name || "this passkey";
+  confirmButton.dataset.passkeyId = state?.passkeyId || "";
+  syncPasskeyManagementModalState(root);
+
+  if (isOpen) {
+    window.setTimeout(() => {
+      confirmButton.focus();
+    }, 0);
+  }
 }
 
 function initPasskeyManagement(root, options = {}) {
@@ -631,15 +659,35 @@ function initPasskeyManagement(root, options = {}) {
         return;
       }
 
-      if (!confirmPasskeyDeletion()) {
-        setMessage(root, "", "");
+      setMessage(root, "", "");
+      setPasskeyDeleteConfirmState(root, {
+        passkeyId: deletePasskeyButton.getAttribute("data-passkey-delete"),
+        name:
+          deletePasskeyButton.closest(".passkey-row")?.querySelector(".passkey-copy strong")
+            ?.textContent?.trim() || "this passkey",
+      });
+      return;
+    }
+
+    const closeDeletePasskeyButton = event.target.closest("[data-passkey-delete-close]");
+    if (closeDeletePasskeyButton) {
+      setPasskeyDeleteConfirmState(root, null);
+      return;
+    }
+
+    const confirmDeletePasskeyButton = event.target.closest("[data-passkey-delete-confirm]");
+    if (confirmDeletePasskeyButton) {
+      const passkeyId = confirmDeletePasskeyButton.getAttribute("data-passkey-id");
+      if (!passkeyId) {
+        setPasskeyDeleteConfirmState(root, null);
+        setMessage(root, "error", "Choose a passkey to delete first.");
         return;
       }
 
-      const passkeyId = deletePasskeyButton.getAttribute("data-passkey-delete");
       toggleForms(root, true);
       try {
         await deletePasskey(root, passkeyId);
+        setPasskeyDeleteConfirmState(root, null);
         setPasskeyNameFormState(root, null);
         await refresh();
         setMessage(root, "success", "Passkey deleted after confirming another one worked.");
@@ -652,6 +700,17 @@ function initPasskeyManagement(root, options = {}) {
       } finally {
         toggleForms(root, false);
       }
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") {
+      return;
+    }
+
+    const overlay = root.querySelector("[data-passkey-delete-overlay]");
+    if (overlay instanceof HTMLElement && !overlay.hidden) {
+      setPasskeyDeleteConfirmState(root, null);
     }
   });
 
@@ -2562,7 +2621,7 @@ export {
   renderPasskeys,
   suggestedPasskeyName,
   setPasskeyNameFormState,
-  confirmPasskeyDeletion,
+  setPasskeyDeleteConfirmState,
   addPasskey,
   renamePasskey,
   deletePasskey,

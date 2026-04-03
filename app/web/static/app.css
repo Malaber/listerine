@@ -1589,6 +1589,14 @@ main {
   font-size: 0.92rem;
 }
 
+.passkey-delete-panel {
+  width: min(100%, 34rem);
+}
+
+.passkey-delete-panel .dashboard-helper {
+  margin: 0.75rem 0 0;
+}
+
 @media (max-width: 720px) {
   main {
     padding: 0 1rem 1.5rem;

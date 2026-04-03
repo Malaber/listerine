@@ -54,6 +54,47 @@
     <div class="passkey-list" data-passkey-list></div>
     <div class="dashboard-banner dashboard-banner-error" data-passkey-error hidden></div>
     <div class="dashboard-banner dashboard-banner-success" data-passkey-success hidden></div>
+
+    <div class="item-modal" data-passkey-delete-overlay hidden>
+      <button
+        class="item-modal-backdrop"
+        type="button"
+        aria-label="Close passkey delete confirmation"
+        data-passkey-delete-close
+      ></button>
+      <section
+        class="dashboard-card item-edit-panel passkey-delete-panel"
+        data-passkey-delete-panel
+        hidden
+      >
+        <div class="add-item-panel-header">
+          <div>
+            <p class="dashboard-label">Confirm deletion</p>
+            <h3>Delete this passkey?</h3>
+          </div>
+          <button
+            class="add-item-close"
+            type="button"
+            aria-label="Close passkey delete confirmation"
+            data-passkey-delete-close
+          >
+            &times;
+          </button>
+        </div>
+        <p class="dashboard-helper">
+          To delete <strong data-passkey-delete-name></strong>, you must authenticate with another
+          passkey to confirm you still have a working Passkey after deleting one.
+        </p>
+        <div class="passkey-name-actions">
+          <button type="button" class="danger-button" data-passkey-delete-confirm>
+            Continue to verification
+          </button>
+          <button type="button" class="secondary-button" data-passkey-delete-close>
+            Cancel
+          </button>
+        </div>
+      </section>
+    </div>
   </section>
 </section>
 {% endblock %}
