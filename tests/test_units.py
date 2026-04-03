@@ -63,6 +63,15 @@ def test_security_helpers_round_trip() -> None:
     assert isinstance(create_access_token(uuid4()), str)
 
 
+def test_access_token_expiry_uses_configured_window() -> None:
+    token = create_access_token(uuid4())
+    payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+    expires_at = datetime.fromtimestamp(payload["exp"], UTC)
+    delta = expires_at - datetime.now(UTC)
+    assert delta > timedelta(days=27, hours=23)
+    assert delta < timedelta(days=28, minutes=1)
+
+
 def test_websocket_hub_connect_broadcast_disconnect() -> None:
     hub = WebSocketHub()
     list_id = uuid4()
