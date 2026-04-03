@@ -91,6 +91,22 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)) -> Res
     return templates.TemplateResponse(request, "dashboard.html", _template_auth_context(user))
 
 
+@router.get("/settings", response_class=HTMLResponse, response_model=None)
+async def user_settings(request: Request, db: AsyncSession = Depends(get_db)) -> Response:
+    user = await _get_session_user(request, db)
+    if user is None:
+        return RedirectResponse(url="/login?next=/settings", status_code=303)
+    return templates.TemplateResponse(
+        request,
+        "settings.html",
+        {
+            **_template_auth_context(user),
+            "email": user.email,
+            "display_name": user.display_name,
+        },
+    )
+
+
 @router.get("/lists/{list_id}", response_class=HTMLResponse, response_model=None)
 async def list_detail(
     request: Request, list_id: str, db: AsyncSession = Depends(get_db)

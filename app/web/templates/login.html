@@ -16,50 +16,11 @@
   </div>
 
   <section class="auth-card auth-card-primary">
-    <div class="auth-tabs" role="tablist" aria-label="Authentication">
-      <button
-        type="button"
-        class="auth-tab-button"
-        data-auth-tab-trigger="signin"
-        role="tab"
-        aria-selected="true"
-      >
-        Sign In
-      </button>
-      <button
-        type="button"
-        class="auth-tab-button"
-        data-auth-tab-trigger="signup"
-        role="tab"
-        aria-selected="false"
-      >
-        Create Account
-      </button>
-    </div>
-
-    <div data-auth-tab-panel="signin">
-      <h2>Sign In</h2>
-      <p>Choose a passkey and your browser or password manager will identify the account for you.</p>
-      <form class="auth-form" data-passkey-login>
-        <button type="button" data-passkey-login-button>Sign in with passkey</button>
-      </form>
-    </div>
-
-    <div data-auth-tab-panel="signup" hidden>
-      <h2>Create Account</h2>
-      <p>We still need an email so the new account has an identifier you can share in invites and admin tools.</p>
-      <form class="auth-form" data-passkey-register>
-        <label class="auth-field">
-          <span>Display name</span>
-          <input type="text" name="display_name" autocomplete="name" required />
-        </label>
-        <label class="auth-field">
-          <span>Email</span>
-          <input type="email" name="email" autocomplete="username webauthn" required />
-        </label>
-        <button type="button" data-passkey-register-button>Create passkey</button>
-      </form>
-    </div>
+    <h2>Sign In</h2>
+    <p>Choose a passkey and your browser or password manager will identify the account for you.</p>
+    <form class="auth-form" data-passkey-login>
+      <button type="button" data-passkey-login-button>Sign in with passkey</button>
+    </form>
   </section>
 </section>
 {% endblock %}

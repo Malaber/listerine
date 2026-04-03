@@ -2258,6 +2258,7 @@ async function registerWithPasskey(root, form) {
 }
 
 async function loginWithPasskey(root, form) {
+  void form;
   const options = await postJson("/api/v1/auth/login/options", {});
   const credential = await navigator.credentials.get({
     publicKey: publicKeyFromJSON(options),
@@ -2280,28 +2281,6 @@ async function handlePasskeyLoginClick(root, loginForm) {
   }
 }
 
-function setAuthTab(root, tab) {
-  const panels = root.querySelectorAll("[data-auth-tab-panel]");
-  const triggers = root.querySelectorAll("[data-auth-tab-trigger]");
-  if (!panels.length || !triggers.length) {
-    return;
-  }
-
-  panels.forEach((panel) => {
-    panel.hidden = panel.getAttribute("data-auth-tab-panel") !== tab;
-  });
-  triggers.forEach((trigger) => {
-    trigger.setAttribute(
-      "aria-selected",
-      trigger.getAttribute("data-auth-tab-trigger") === tab ? "true" : "false"
-    );
-  });
-
-  if (tab === "signup") {
-    root.querySelector('[data-passkey-register] input[name="display_name"]')?.focus();
-  }
-}
-
 function initPasskeyAuth() {
   const root = document.querySelector("[data-passkey-auth]");
   if (!root) {
@@ -2314,28 +2293,68 @@ function initPasskeyAuth() {
     return;
   }
 
-  const registerForm = root.querySelector("[data-passkey-register]");
   const loginForm = root.querySelector("[data-passkey-login]");
-  root.querySelectorAll("[data-auth-tab-trigger]").forEach((trigger) => {
-    trigger.addEventListener("click", () => {
-      setAuthTab(root, trigger.getAttribute("data-auth-tab-trigger"));
-    });
-  });
+  root.querySelector("[data-passkey-login-button]")?.addEventListener(
+    "click",
+    handlePasskeyLoginClick.bind(null, root, loginForm)
+  );
+}
 
-  root.querySelector("[data-passkey-register-button]").addEventListener("click", async () => {
+function setSettingsMessage(root, type, message) {
+  const errorNode = root.querySelector("[data-settings-error]");
+  const successNode = root.querySelector("[data-settings-success]");
+  if (!(errorNode instanceof HTMLElement) || !(successNode instanceof HTMLElement)) {
+    return;
+  }
+
+  errorNode.hidden = true;
+  successNode.hidden = true;
+  errorNode.textContent = "";
+  successNode.textContent = "";
+
+  if (type === "error") {
+    errorNode.hidden = false;
+    errorNode.textContent = message;
+    return;
+  }
+
+  successNode.hidden = false;
+  successNode.textContent = message;
+}
+
+async function replacePasskeyFromSettings(root) {
+  const options = await postJson("/api/v1/auth/settings/passkey/options", {});
+  const credential = await navigator.credentials.create({
+    publicKey: publicKeyFromJSON(options),
+  });
+  await postJson("/api/v1/auth/settings/passkey/verify", {
+    credential: credentialToJSON(credential),
+  });
+  setSettingsMessage(root, "success", "Passkey updated.");
+}
+
+function initUserSettings() {
+  const root = document.querySelector("[data-user-settings]");
+  if (!root) {
+    return;
+  }
+
+  if (!window.PublicKeyCredential || !navigator.credentials) {
+    setSettingsMessage(root, "error", "This browser does not support passkeys.");
+    toggleButtons(root, true);
+    return;
+  }
+
+  root.querySelector("[data-settings-passkey-button]")?.addEventListener("click", async () => {
     toggleButtons(root, true);
     try {
-      await registerWithPasskey(root, registerForm);
+      await replacePasskeyFromSettings(root);
     } catch (error) {
-      setMessage(root, "error", error instanceof Error ? error.message : "Passkey registration failed.");
+      setSettingsMessage(root, "error", error instanceof Error ? error.message : "Passkey update failed.");
     } finally {
       toggleButtons(root, false);
     }
   });
-
-  root
-    .querySelector("[data-passkey-login-button]")
-    .addEventListener("click", handlePasskeyLoginClick.bind(null, root, loginForm));
 }
 
 function formatInviteExpiry(value) {
@@ -2399,6 +2418,7 @@ async function initHouseholdInvite() {
 
 function initApp() {
   initPasskeyAuth();
+  initUserSettings();
   initDashboard();
   initHouseholdInvite();
   initListDetail();
@@ -2480,8 +2500,10 @@ export {
   registerWithPasskey,
   loginWithPasskey,
   handlePasskeyLoginClick,
-  setAuthTab,
+  setSettingsMessage,
+  replacePasskeyFromSettings,
   initPasskeyAuth,
+  initUserSettings,
   formatInviteExpiry,
   initHouseholdInvite,
   initApp,

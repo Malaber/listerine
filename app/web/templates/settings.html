@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="dashboard-shell" data-user-settings>
+  <div class="dashboard-hero">
+    <div class="dashboard-copy">
+      <p class="dashboard-kicker">User settings</p>
+      <h1>Account and passkey</h1>
+      <p class="dashboard-intro">
+        Manage the passkey tied to your account. Replacing your passkey keeps your account email the
+        same and updates the credential used for sign in.
+      </p>
+    </div>
+    <aside class="dashboard-card dashboard-card-accent">
+      <h2>Signed in as</h2>
+      <p><strong>{{ display_name }}</strong></p>
+      <p>{{ email }}</p>
+    </aside>
+  </div>
+  <section class="dashboard-card">
+    <div class="dashboard-section-heading">
+      <div>
+        <p class="dashboard-label">Security</p>
+        <h2>Passkey</h2>
+      </div>
+    </div>
+    <p class="dashboard-helper">
+      Use this to replace your existing passkey with a new one from this browser or password manager.
+    </p>
+    <form class="dashboard-form" data-settings-passkey>
+      <button type="button" data-settings-passkey-button>Replace passkey</button>
+    </form>
+    <div class="dashboard-banner dashboard-banner-error" data-settings-error hidden></div>
+    <div class="dashboard-banner dashboard-banner-success" data-settings-success hidden></div>
+  </section>
+</section>
+{% endblock %}

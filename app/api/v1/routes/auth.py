@@ -42,6 +42,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 _REGISTER_SESSION_KEY = "passkey_register"
 _LOGIN_SESSION_KEY = "passkey_login"
+_SETTINGS_SESSION_KEY = "passkey_settings"
 _PASSKEY_ADD_SESSION_KEY = "passkey_add"
 _PASSKEY_DELETE_SESSION_KEY = "passkey_delete"
 _PASSKEY_RENAME_SESSION_KEY = "passkey_rename"
@@ -277,6 +278,85 @@ async def finish_passkey_login(
     token = create_access_token(user.id)
     request.session["access_token"] = token
     return TokenOut(access_token=token)
+
+
+@router.post("/settings/passkey/options")
+async def begin_passkey_replace(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    refreshed = await _load_user_with_passkeys(db, user.id)
+    if refreshed is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    options = generate_registration_options(
+        rp_id=_rp_id_for_request(request),
+        rp_name=settings.app_name,
+        user_name=refreshed.email,
+        user_id=refreshed.id.bytes,
+        user_display_name=refreshed.display_name,
+        authenticator_selection=AuthenticatorSelectionCriteria(
+            resident_key=ResidentKeyRequirement.REQUIRED,
+            user_verification=UserVerificationRequirement.REQUIRED,
+        ),
+        exclude_credentials=[_passkey_descriptor(passkey) for passkey in refreshed.passkeys],
+    )
+    request.session[_SETTINGS_SESSION_KEY] = {
+        "challenge": bytes_to_base64url(options.challenge),
+        "origin": _origin_for_request(request),
+        "rp_id": _rp_id_for_request(request),
+        "user_id": str(refreshed.id),
+    }
+    return json.loads(options_to_json(options))
+
+
+@router.post("/settings/passkey/verify", response_model=UserOut)
+async def finish_passkey_replace(
+    payload: PasskeyFinishRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    pending = request.session.get(_SETTINGS_SESSION_KEY)
+    if pending is None or pending["user_id"] != str(user.id):
+        raise HTTPException(status_code=400, detail="Passkey settings session expired")
+
+    refreshed = await _load_user_with_passkeys(db, user.id)
+    if refreshed is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    try:
+        verified = verify_registration_response(
+            credential=payload.credential,
+            expected_challenge=base64url_to_bytes(pending["challenge"]),
+            expected_rp_id=pending["rp_id"],
+            expected_origin=pending["origin"],
+            require_user_verification=True,
+        )
+    except Exception as exc:  # pragma: no cover - exercised via API tests with monkeypatch
+        raise HTTPException(status_code=400, detail="Passkey update failed") from exc
+
+    credential_id = bytes_to_base64url(verified.credential_id)
+    if (
+        await db.execute(select(Passkey).where(Passkey.credential_id == credential_id))
+    ).scalar_one_or_none() is not None:
+        raise HTTPException(status_code=400, detail="That passkey is already registered")
+
+    await db.execute(delete(Passkey).where(Passkey.user_id == refreshed.id))
+    db.add(
+        Passkey(
+            user_id=refreshed.id,
+            name=_DEFAULT_INITIAL_PASSKEY_NAME,
+            credential_id=credential_id,
+            public_key=verified.credential_public_key,
+            sign_count=verified.sign_count,
+        )
+    )
+    await db.commit()
+    await db.refresh(refreshed)
+    request.session.pop(_SETTINGS_SESSION_KEY, None)
+    return refreshed
 
 
 @router.post("/register", response_model=None)

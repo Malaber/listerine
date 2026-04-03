@@ -93,20 +93,19 @@ function loginHtml() {
     <section data-passkey-auth>
       <p data-auth-error hidden></p>
       <p data-auth-success hidden></p>
-      <button type="button" data-auth-tab-trigger="signin" aria-selected="true">Sign In</button>
-      <button type="button" data-auth-tab-trigger="signup" aria-selected="false">Create Account</button>
-      <section data-auth-tab-panel="signin">
       <form data-passkey-login>
         <button type="button" data-passkey-login-button>Login</button>
       </form>
-      </section>
-      <section data-auth-tab-panel="signup" hidden>
-        <form data-passkey-register>
-          <input type="text" name="display_name" value="Tester" />
-          <input type="email" name="email" value="register@example.com" />
-          <button type="button" data-passkey-register-button>Register</button>
-        </form>
-      </section>
+    </section>
+  `;
+}
+
+function settingsHtml() {
+  return `
+    <section data-user-settings>
+      <button type="button" data-settings-passkey-button>Replace passkey</button>
+      <div data-settings-error hidden></div>
+      <div data-settings-success hidden></div>
     </section>
   `;
 }
@@ -1316,9 +1315,6 @@ test("initListDetail and passkey auth surface load and interaction failures", as
 
   const passkeyEnv = installDom(loginHtml(), {
     fetch: async (url) => {
-      if (url.includes("/register/options")) {
-        return createResponse({ jsonData: { challenge: "AQID", user: { id: "BAUG" } } });
-      }
       if (url.includes("/login/options")) {
         return createResponse({ jsonData: { challenge: "AQID" } });
       }
@@ -1338,7 +1334,6 @@ test("initListDetail and passkey auth surface load and interaction failures", as
       },
     };
     app.initPasskeyAuth();
-    document.querySelector("[data-passkey-register-button]").click();
     document.querySelector("[data-passkey-login-button]").click();
     await new Promise((resolve) => setTimeout(resolve, 0));
     assert.equal(document.querySelector("[data-auth-error]").textContent.length > 0, true);
@@ -1682,7 +1677,6 @@ test("late list-detail and login failure branches are covered", async () => {
 
     window.PublicKeyCredential = class {};
     navigator.credentials = {
-      create: async () => ({}),
       get: async () => {
         throw "Login exploded";
       },
@@ -1696,13 +1690,10 @@ test("late list-detail and login failure branches are covered", async () => {
   }
 });
 
-test("passkey helpers and auth initialization handle supported and unsupported browsers", async () => {
+test("passkey login helpers and auth initialization handle supported and unsupported browsers", async () => {
   const passkeyCalls = [];
   const env = installDom(loginHtml(), {
     fetch: async (url) => {
-      if (url === "/api/v1/auth/register/options") {
-        return createResponse({ jsonData: { challenge: "AQID", user: { id: "BAUG" } } });
-      }
       if (url === "/api/v1/auth/login/options") {
         return createResponse({ jsonData: { challenge: "AQID" } });
       }
@@ -1715,14 +1706,6 @@ test("passkey helpers and auth initialization handle supported and unsupported b
     env.dom.window.PublicKeyCredential = class {};
     globalThis.window.PublicKeyCredential = env.dom.window.PublicKeyCredential;
     globalThis.navigator.credentials = {
-      async create(options) {
-        passkeyCalls.push(["create", options.publicKey.challenge.length]);
-        return {
-          id: "cred-1",
-          rawId: new Uint8Array([1, 2, 3]).buffer,
-          response: { clientDataJSON: new Uint8Array([4, 5, 6]) },
-        };
-      },
       async get(options) {
         passkeyCalls.push(["get", options.publicKey.challenge.length]);
         return {
@@ -1734,31 +1717,13 @@ test("passkey helpers and auth initialization handle supported and unsupported b
     };
 
     const root = document.querySelector("[data-passkey-auth]");
-    const registerForm = root.querySelector("[data-passkey-register]");
     const loginForm = root.querySelector("[data-passkey-login]");
 
-    app.setAuthTab(root, "signup");
-    assert.equal(root.querySelector('[data-auth-tab-panel="signup"]').hidden, false);
-    assert.equal(root.querySelector('[data-auth-tab-panel="signin"]').hidden, true);
-    app.setAuthTab(root, "signin");
-    assert.equal(root.querySelector('[data-auth-tab-panel="signin"]').hidden, false);
-    assert.equal(root.querySelector('[data-auth-tab-panel="signup"]').hidden, true);
-
-    await app.registerWithPasskey(root, registerForm);
     await app.loginWithPasskey(root, loginForm);
-    assert.deepEqual(passkeyCalls, [
-      ["create", 3],
-      ["get", 3],
-    ]);
-    assert.deepEqual(env.assigned, ["/", "/"]);
+    assert.deepEqual(passkeyCalls, [["get", 3]]);
+    assert.deepEqual(env.assigned, ["/"]);
 
     await app.initPasskeyAuth();
-    root.querySelector('[data-auth-tab-trigger="signup"]').click();
-    assert.equal(root.querySelector('[data-auth-tab-panel="signup"]').hidden, false);
-    root.querySelector('[data-auth-tab-trigger="signin"]').click();
-    assert.equal(root.querySelector('[data-auth-tab-panel="signin"]').hidden, false);
-    root.querySelector('[data-auth-tab-trigger="signup"]').click();
-    root.querySelector("[data-passkey-register-button]").click();
     root.querySelector("[data-passkey-login-button]").click();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -1766,6 +1731,44 @@ test("passkey helpers and auth initialization handle supported and unsupported b
     delete globalThis.navigator.credentials;
     await app.initPasskeyAuth();
     assert.equal(root.querySelector("[data-auth-error]").textContent, "This browser does not support passkeys.");
+  } finally {
+    env.restore();
+  }
+});
+
+test("user settings passkey replacement handles success and unsupported browsers", async () => {
+  const env = installDom(settingsHtml(), {
+    fetch: async (url) => {
+      if (url === "/api/v1/auth/settings/passkey/options") {
+        return createResponse({ jsonData: { challenge: "AQID", user: { id: "BAUG" } } });
+      }
+      return createResponse({ jsonData: {} });
+    },
+  });
+
+  try {
+    const app = await loadApp();
+    env.dom.window.PublicKeyCredential = class {};
+    globalThis.window.PublicKeyCredential = env.dom.window.PublicKeyCredential;
+    globalThis.navigator.credentials = {
+      async create() {
+        return {
+          id: "cred-1",
+          rawId: new Uint8Array([1, 2, 3]).buffer,
+          response: { clientDataJSON: new Uint8Array([4, 5, 6]) },
+        };
+      },
+    };
+    const root = document.querySelector("[data-user-settings]");
+    await app.replacePasskeyFromSettings(root);
+    assert.equal(root.querySelector("[data-settings-success]").textContent, "Passkey updated.");
+    await app.initUserSettings();
+    root.querySelector("[data-settings-passkey-button]").click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    delete globalThis.window.PublicKeyCredential;
+    delete globalThis.navigator.credentials;
+    await app.initUserSettings();
+    assert.equal(root.querySelector("[data-settings-error]").textContent, "This browser does not support passkeys.");
   } finally {
     env.restore();
   }
