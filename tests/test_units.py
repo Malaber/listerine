@@ -3,12 +3,15 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
+from fastapi import HTTPException
 from jose import jwt
 from starlette.requests import Request
 
 from app.admin import SessionAdminAuth, get_application_version
 from app.api.v1.routes.auth import (
+    _auth_flow_session_is_valid,
     _apply_bootstrap_admin_email,
+    _new_auth_flow_session,
     _origin_for_request,
     _password_auth_disabled,
     _rp_id_for_request,
@@ -19,8 +22,14 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
+from app.services.auth_sessions import (
+    AUTH_SESSION_ID_KEY,
+    _as_utc,
+    _auth_session_is_valid,
+    get_session_user,
+    revoke_auth_session,
+)
 from app.services.websocket_hub import WebSocketHub
-from app.web.routes import _get_session_user, _has_session_access_token
 
 
 class DummyWebSocket:
@@ -55,12 +64,48 @@ class DummyDB:
         self.refresh_calls += 1
 
 
+class DummyScalarResult:
+    def __init__(self, value) -> None:
+        self.value = value
+
+    def scalar_one_or_none(self):
+        return self.value
+
+
+class DummyAuthSessionDB:
+    def __init__(self, auth_session=None) -> None:
+        self.auth_session = auth_session
+        self.commit_calls = 0
+        self.deleted = []
+
+    async def get(self, model, session_id):
+        return self.auth_session
+
+    async def delete(self, auth_session) -> None:
+        self.deleted.append(auth_session)
+
+    async def commit(self) -> None:
+        self.commit_calls += 1
+
+    async def execute(self, query):
+        return DummyScalarResult(self.auth_session)
+
+
 def test_security_helpers_round_trip() -> None:
     password = "hello"
     password_hash = hash_password(password)
     assert verify_password(password, password_hash)
     assert not verify_password("bad", password_hash)
     assert isinstance(create_access_token(uuid4()), str)
+
+
+def test_access_token_expiry_uses_configured_window() -> None:
+    token = create_access_token(uuid4())
+    payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+    expires_at = datetime.fromtimestamp(payload["exp"], UTC)
+    delta = expires_at - datetime.now(UTC)
+    assert delta > timedelta(days=27, hours=23)
+    assert delta < timedelta(days=28, minutes=1)
 
 
 def test_websocket_hub_connect_broadcast_disconnect() -> None:
@@ -85,47 +130,91 @@ def test_security_helpers_handle_long_passwords() -> None:
     assert verify_password(long_password, password_hash)
 
 
-def test_has_session_access_token_rejects_invalid_jwt() -> None:
-    request = Request({"type": "http", "headers": [], "session": {"access_token": "bad-token"}})
+def test_auth_flow_session_validity_uses_short_ttl(monkeypatch) -> None:
+    monkeypatch.setattr("app.api.v1.routes.auth.settings.auth_flow_expire_seconds", 60)
 
-    assert _has_session_access_token(request) is False
+    fresh_session = _new_auth_flow_session(challenge="x")
+    assert _auth_flow_session_is_valid(fresh_session) is True
+
+    expired_session = {
+        "issued_at": (datetime.now(UTC) - timedelta(seconds=61)).isoformat(),
+    }
+    assert _auth_flow_session_is_valid(expired_session) is False
+
+    assert _auth_flow_session_is_valid({}) is False
+    assert _auth_flow_session_is_valid({"issued_at": "not-a-date"}) is False
+    assert _auth_flow_session_is_valid({"issued_at": "2026-04-03T12:00:00"}) is False
 
 
-def test_has_session_access_token_rejects_missing_token_and_subject() -> None:
-    request_without_token = Request({"type": "http", "headers": [], "session": {}})
-    assert _has_session_access_token(request_without_token) is False
+def test_auth_session_validity_checks_idle_and_absolute_windows(monkeypatch) -> None:
+    now = datetime.now(UTC)
+    monkeypatch.setattr("app.services.auth_sessions.settings.session_idle_timeout_seconds", 60)
 
-    token_without_subject = jwt.encode(
-        {"exp": datetime.now(UTC) + timedelta(minutes=5)},
-        settings.secret_key,
-        algorithm=settings.algorithm,
+    valid_session = SimpleNamespace(
+        last_seen_at=now - timedelta(seconds=30),
+        expires_at=now + timedelta(days=1),
     )
-    request_without_subject = Request(
-        {
-            "type": "http",
-            "headers": [],
-            "session": {"access_token": token_without_subject},
-        }
+    assert _auth_session_is_valid(valid_session, now) is True
+
+    idle_expired_session = SimpleNamespace(
+        last_seen_at=now - timedelta(seconds=61),
+        expires_at=now + timedelta(days=1),
     )
-    assert _has_session_access_token(request_without_subject) is False
+    assert _auth_session_is_valid(idle_expired_session, now) is False
+
+    absolute_expired_session = SimpleNamespace(
+        last_seen_at=now - timedelta(seconds=30),
+        expires_at=now - timedelta(seconds=1),
+    )
+    assert _auth_session_is_valid(absolute_expired_session, now) is False
 
 
-def test_get_session_user_clears_invalid_session_payloads() -> None:
-    token_without_subject = jwt.encode(
-        {"exp": datetime.now(UTC) + timedelta(minutes=5)},
-        settings.secret_key,
-        algorithm=settings.algorithm,
-    )
-    request = Request(
-        {
-            "type": "http",
-            "headers": [],
-            "session": {"access_token": token_without_subject},
-        }
-    )
+def test_auth_session_datetime_normalization_accepts_naive_values() -> None:
+    naive = datetime(2026, 4, 3, 12, 0, 0)
+    normalized = _as_utc(naive)
+    assert normalized.tzinfo is UTC
+    assert normalized.hour == 12
 
-    assert asyncio.run(_get_session_user(request, None)) is None
+
+def test_revoke_auth_session_ignores_invalid_or_missing_session_ids() -> None:
+    invalid_request = Request(
+        {"type": "http", "headers": [], "session": {AUTH_SESSION_ID_KEY: "not-a-uuid"}}
+    )
+    invalid_db = DummyAuthSessionDB()
+    asyncio.run(revoke_auth_session(invalid_request, invalid_db))
+    assert invalid_db.commit_calls == 0
+
+    missing_request = Request(
+        {"type": "http", "headers": [], "session": {AUTH_SESSION_ID_KEY: str(uuid4())}}
+    )
+    missing_db = DummyAuthSessionDB(auth_session=None)
+    asyncio.run(revoke_auth_session(missing_request, missing_db))
+    assert missing_db.commit_calls == 0
+
+
+def test_get_session_user_clears_invalid_server_session_ids() -> None:
+    request = Request({"type": "http", "headers": [], "session": {AUTH_SESSION_ID_KEY: "bad-id"}})
+
+    assert asyncio.run(get_session_user(request, DummyAuthSessionDB())) is None
     assert request.session == {}
+
+
+def test_get_current_user_rejects_bearer_tokens_without_subject() -> None:
+    from app.api.deps import get_current_user
+
+    token = jwt.encode(
+        {"exp": datetime.now(UTC) + timedelta(minutes=5)},
+        settings.secret_key,
+        algorithm=settings.algorithm,
+    )
+    request = Request({"type": "http", "headers": [], "session": {}})
+
+    try:
+        asyncio.run(get_current_user(request, DummyAuthSessionDB(), token))
+    except HTTPException as exc:
+        assert exc.status_code == 401
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("Expected get_current_user to reject tokens without a subject")
 
 
 def test_get_application_version_reads_version_file(tmp_path, monkeypatch) -> None:
