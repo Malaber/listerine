@@ -8,7 +8,9 @@ from starlette.requests import Request
 
 from app.admin import SessionAdminAuth, get_application_version
 from app.api.v1.routes.auth import (
+    _auth_flow_session_is_valid,
     _apply_bootstrap_admin_email,
+    _new_auth_flow_session,
     _origin_for_request,
     _password_auth_disabled,
     _rp_id_for_request,
@@ -19,8 +21,8 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
+from app.services.auth_sessions import _auth_session_is_valid
 from app.services.websocket_hub import WebSocketHub
-from app.web.routes import _get_session_user, _has_session_access_token
 
 
 class DummyWebSocket:
@@ -94,47 +96,39 @@ def test_security_helpers_handle_long_passwords() -> None:
     assert verify_password(long_password, password_hash)
 
 
-def test_has_session_access_token_rejects_invalid_jwt() -> None:
-    request = Request({"type": "http", "headers": [], "session": {"access_token": "bad-token"}})
+def test_auth_flow_session_validity_uses_short_ttl(monkeypatch) -> None:
+    monkeypatch.setattr("app.api.v1.routes.auth.settings.auth_flow_expire_seconds", 60)
 
-    assert _has_session_access_token(request) is False
+    fresh_session = _new_auth_flow_session(challenge="x")
+    assert _auth_flow_session_is_valid(fresh_session) is True
+
+    expired_session = {
+        "issued_at": (datetime.now(UTC) - timedelta(seconds=61)).isoformat(),
+    }
+    assert _auth_flow_session_is_valid(expired_session) is False
 
 
-def test_has_session_access_token_rejects_missing_token_and_subject() -> None:
-    request_without_token = Request({"type": "http", "headers": [], "session": {}})
-    assert _has_session_access_token(request_without_token) is False
+def test_auth_session_validity_checks_idle_and_absolute_windows(monkeypatch) -> None:
+    now = datetime.now(UTC)
+    monkeypatch.setattr("app.services.auth_sessions.settings.session_idle_timeout_seconds", 60)
 
-    token_without_subject = jwt.encode(
-        {"exp": datetime.now(UTC) + timedelta(minutes=5)},
-        settings.secret_key,
-        algorithm=settings.algorithm,
+    valid_session = SimpleNamespace(
+        last_seen_at=now - timedelta(seconds=30),
+        expires_at=now + timedelta(days=1),
     )
-    request_without_subject = Request(
-        {
-            "type": "http",
-            "headers": [],
-            "session": {"access_token": token_without_subject},
-        }
-    )
-    assert _has_session_access_token(request_without_subject) is False
+    assert _auth_session_is_valid(valid_session, now) is True
 
-
-def test_get_session_user_clears_invalid_session_payloads() -> None:
-    token_without_subject = jwt.encode(
-        {"exp": datetime.now(UTC) + timedelta(minutes=5)},
-        settings.secret_key,
-        algorithm=settings.algorithm,
+    idle_expired_session = SimpleNamespace(
+        last_seen_at=now - timedelta(seconds=61),
+        expires_at=now + timedelta(days=1),
     )
-    request = Request(
-        {
-            "type": "http",
-            "headers": [],
-            "session": {"access_token": token_without_subject},
-        }
-    )
+    assert _auth_session_is_valid(idle_expired_session, now) is False
 
-    assert asyncio.run(_get_session_user(request, None)) is None
-    assert request.session == {}
+    absolute_expired_session = SimpleNamespace(
+        last_seen_at=now - timedelta(seconds=30),
+        expires_at=now - timedelta(seconds=1),
+    )
+    assert _auth_session_is_valid(absolute_expired_session, now) is False
 
 
 def test_get_application_version_reads_version_file(tmp_path, monkeypatch) -> None:

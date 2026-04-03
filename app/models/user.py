@@ -27,3 +27,8 @@ class User(Base):
         cascade="all, delete-orphan",
         order_by="Passkey.created_at",
     )
+    auth_sessions = relationship(
+        "AuthSession",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
