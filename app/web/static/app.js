@@ -1855,7 +1855,7 @@ async function loadListDetail(root, state) {
   const [groceryList, items, categories, categoryOrder] = await Promise.all([
     fetchJson(`/api/v1/lists/${listId}`),
     fetchJson(`/api/v1/lists/${listId}/items`),
-    fetchJson("/api/v1/categories"),
+    fetchJson(`/api/v1/lists/${listId}/categories`),
     fetchJson(`/api/v1/lists/${listId}/category-order`),
   ]);
 

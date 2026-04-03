@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 
-from app.api.deps import get_current_user, get_list_for_user
+from app.api.deps import ensure_non_admin_user, get_current_user, get_list_for_user
 from app.core.database import get_db
 from app.models import GroceryItem, ListCategoryOrder
 from app.schemas.domain import GroceryItemOut, ListCategoryOrderOut
@@ -19,6 +19,7 @@ async def ws_list(websocket: WebSocket, list_id: UUID) -> None:
     db = await anext(db_gen)
     try:
         user = await get_current_user(websocket, db, websocket.query_params.get("token"))
+        ensure_non_admin_user(user)
         await get_list_for_user(db, list_id, user.id)
         await hub.connect(list_id, websocket)
         result = await db.execute(select(GroceryItem).where(GroceryItem.list_id == list_id))

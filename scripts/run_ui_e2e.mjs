@@ -6,7 +6,7 @@ import { chromium } from "playwright";
 const baseUrl = process.env.PREVIEW_BASE_URL ?? "http://127.0.0.1:8000";
 const artifactDir = process.env.PREVIEW_ARTIFACT_DIR ?? "e2e-artifacts/ui-e2e";
 const videoDir = path.join(artifactDir, "videos");
-const seedPath = process.env.E2E_SEED_PATH ?? "app/fixtures/review_seed.json";
+const seedPath = process.env.E2E_SEED_PATH ?? "app/fixtures/review_seed_e2e.json";
 
 function logStep(message) {
   console.log(`[ui-e2e] ${message}`);
@@ -276,7 +276,7 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
 async function loginFromLoginPage(page, expectedUrlPattern) {
   await assertLoginPageTabs(page);
   await page.getByRole("button", { name: "Sign in with passkey" }).click();
-  await page.waitForURL(expectedUrlPattern);
+  await page.waitForURL(expectedUrlPattern, { waitUntil: "commit" });
 }
 
 async function loginFromRoot(page, user, expectedHeading) {
@@ -456,16 +456,18 @@ async function main() {
     await resetFixtureItems(context.request, scenario.listId, expectedChecked);
     const listUrl = new URL(`/lists/${scenario.listId}`, baseUrl).toString();
 
-    await expectVisible(page.getByRole("link", { name: "Admin" }), "Expected admin link");
+    if (owner.is_admin) {
+      await expectVisible(page.getByRole("link", { name: "Admin" }), "Expected admin link");
 
-    const adminPage = await context.newPage();
-    await adminPage.goto(new URL("/admin", baseUrl).toString(), { waitUntil: "networkidle" });
-    await expectVisible(
-      adminPage.getByRole("link", { name: "Go to application" }),
-      "Expected Go to application link in admin",
-    );
-    await screenshot(adminPage, "admin-home");
-    await adminPage.close();
+      const adminPage = await context.newPage();
+      await adminPage.goto(new URL("/admin", baseUrl).toString(), { waitUntil: "networkidle" });
+      await expectVisible(
+        adminPage.getByRole("link", { name: "Go to application" }),
+        "Expected Go to application link in admin",
+      );
+      await screenshot(adminPage, "admin-home");
+      await adminPage.close();
+    }
 
     const pageTwo = await context.newPage();
     await Promise.all([
@@ -478,6 +480,7 @@ async function main() {
 
     logStep("Running main list interaction flow");
     await expectVisible(page.getByRole("button", { name: "Add item" }), "Expected floating add button");
+    await expectVisible(page.locator(".item-card", { hasText: "Spaghetti" }), "Expected seeded items to load");
 
     await page.keyboard.press("Enter");
     await expectVisible(page.getByRole("heading", { name: "Add an item" }), "Enter should open add modal");

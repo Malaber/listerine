@@ -58,11 +58,9 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)) -> Res
     user = await _get_session_user(request, db)
     if user is None:
         return RedirectResponse(url="/login", status_code=303)
-    return templates.TemplateResponse(
-        request,
-        "dashboard.html",
-        _template_auth_context(user),
-    )
+    if user.is_admin:
+        return RedirectResponse(url="/admin", status_code=303)
+    return templates.TemplateResponse(request, "dashboard.html", _template_auth_context(user))
 
 
 @router.get("/settings", response_class=HTMLResponse, response_model=None)
@@ -88,6 +86,8 @@ async def list_detail(
     user = await _get_session_user(request, db)
     if user is None:
         return RedirectResponse(url="/login", status_code=303)
+    if user.is_admin:
+        return RedirectResponse(url="/admin", status_code=303)
     return templates.TemplateResponse(
         request,
         "list_detail.html",
@@ -105,6 +105,8 @@ async def invite_detail(
     user = await _get_session_user(request, db)
     if user is None:
         return RedirectResponse(url=f"/login?next=/invite/{token}", status_code=303)
+    if user.is_admin:
+        return RedirectResponse(url="/admin", status_code=303)
     return templates.TemplateResponse(
         request,
         "invite_detail.html",
