@@ -6,8 +6,8 @@
       <p class="dashboard-kicker">User settings</p>
       <h1>Account and passkey</h1>
       <p class="dashboard-intro">
-        Manage the passkey tied to your account. Replacing your passkey keeps your account email the
-        same and updates the credential used for sign in.
+        Manage the passkeys tied to your account. Add, rename, or remove them here without mixing
+        account security into the start page.
       </p>
     </div>
     <aside class="dashboard-card dashboard-card-accent">
@@ -16,21 +16,44 @@
       <p>{{ email }}</p>
     </aside>
   </div>
-  <section class="dashboard-card">
+
+  <section class="dashboard-card dashboard-account-card" data-passkey-management>
     <div class="dashboard-section-heading">
       <div>
         <p class="dashboard-label">Security</p>
-        <h2>Passkey</h2>
+        <h2>Your passkeys</h2>
       </div>
+      <button type="button" class="secondary-button" data-passkey-add>
+        Add another passkey
+      </button>
     </div>
     <p class="dashboard-helper">
-      Use this to replace your existing passkey with a new one from this browser or password manager.
+      You can register as many passkeys as you want. To delete one, you’ll first need to prove one
+      of your other passkeys still works.
     </p>
-    <form class="dashboard-form" data-settings-passkey>
-      <button type="button" data-settings-passkey-button>Replace passkey</button>
+    <form class="passkey-name-form" data-passkey-name-form hidden>
+      <label class="dashboard-field">
+        <span data-passkey-name-title>Name this passkey</span>
+        <input
+          type="text"
+          name="name"
+          maxlength="120"
+          placeholder="Laptop passkey"
+          data-passkey-name-input
+        />
+      </label>
+      <div class="passkey-name-actions">
+        <button type="submit" class="primary-button" data-passkey-name-submit>Continue</button>
+        <button type="button" class="secondary-button" data-passkey-name-cancel>Cancel</button>
+      </div>
     </form>
-    <div class="dashboard-banner dashboard-banner-error" data-settings-error hidden></div>
-    <div class="dashboard-banner dashboard-banner-success" data-settings-success hidden></div>
+    <div class="dashboard-empty" data-passkey-empty hidden>
+      <h3>No passkeys loaded</h3>
+      <p>Refresh the page or add a passkey to load this list.</p>
+    </div>
+    <div class="passkey-list" data-passkey-list></div>
+    <div class="dashboard-banner dashboard-banner-error" data-passkey-error hidden></div>
+    <div class="dashboard-banner dashboard-banner-success" data-passkey-success hidden></div>
   </section>
 </section>
 {% endblock %}

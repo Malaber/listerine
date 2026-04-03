@@ -1534,6 +1534,8 @@ def test_web_pages_render_for_logged_in_user(client, monkeypatch) -> None:
     assert "data-dashboard-add-toggle" in dashboard.text
     assert "data-dashboard-add-option" in dashboard.text
     assert "data-dashboard-list-group" in dashboard.text
+    assert "Your passkeys" not in dashboard.text
+    assert "Add another passkey" not in dashboard.text
 
     list_detail = client.get("/lists/abc")
     assert list_detail.status_code == 200
@@ -1548,7 +1550,11 @@ def test_web_pages_render_for_logged_in_user(client, monkeypatch) -> None:
     settings = client.get("/settings")
     assert settings.status_code == 200
     assert "Account and passkey" in settings.text
-    assert "Replace passkey" in settings.text
+    assert "Signed in as" in settings.text
+    assert "Your passkeys" in settings.text
+    assert "Add another passkey" in settings.text
+    assert "data-passkey-list" in settings.text
+    assert "Replace passkey" not in settings.text
 
     admin_page = client.get("/admin", follow_redirects=False)
     assert admin_page.status_code in {302, 303, 307}

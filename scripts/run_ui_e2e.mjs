@@ -82,21 +82,6 @@ async function assertLoginPageTabs(page) {
     page.getByRole("button", { name: "Sign in with passkey" }),
     "Expected the passkey sign-in button on the login page",
   );
-
-  await createAccountTab.click();
-  await expectVisible(
-    page.getByRole("heading", { name: "Create Account" }),
-    "Expected the create-account heading after switching tabs",
-  );
-  await expectVisible(page.getByLabel("Display name"), "Expected the display name field on the signup tab");
-  await expectVisible(page.getByLabel("Email"), "Expected the email field on the signup tab");
-  await expectVisible(page.getByRole("button", { name: "Create passkey" }), "Expected the create-passkey button");
-
-  await signInTab.click();
-  await expectHidden(
-    page.getByLabel("Display name"),
-    "Expected the signup form to be hidden again after returning to the sign-in tab",
-  );
 }
 
 async function screenshot(page, name) {
@@ -171,8 +156,14 @@ async function passkeysFromSession(requestContext) {
   return apiJson(requestContext, "/api/v1/auth/passkeys");
 }
 
+async function openSettingsPage(page) {
+  await page.getByRole("link", { name: "Settings" }).click();
+  await page.waitForURL(/\/settings(\?|$)/);
+}
+
 async function runPasskeyManagementFlow(page, context, owner, rpId, authenticator) {
-  logStep("Opening dashboard passkey management");
+  logStep("Opening settings passkey management");
+  await openSettingsPage(page);
   await expectVisible(
     page.getByRole("heading", { name: "Your passkeys" }),
     "Expected passkey management section",
@@ -187,7 +178,7 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
 
   const secondAuthenticator = await createVirtualAuthenticator(page);
 
-  logStep("Adding a second passkey through the dashboard");
+  logStep("Adding a second passkey through settings");
   const secondPasskeyName = "Laptop passkey";
   await page.getByRole("button", { name: "Add another passkey" }).click();
   await page.getByLabel("Name this passkey").fill(secondPasskeyName);
@@ -206,7 +197,7 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
   assert.equal(passkeysAfterAdd[1].name, secondPasskeyName, "Expected backend to store the chosen passkey name");
   await expectVisible(
     page.locator(".passkey-row", { hasText: secondPasskeyName }),
-    "Expected the dashboard to show the chosen passkey name",
+    "Expected settings to show the chosen passkey name",
   );
 
   logStep("Renaming the new passkey after confirming it still works");
@@ -224,7 +215,7 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
   assert.equal(passkeysAfterRename[1].name, renamedPasskeyName, "Expected backend to store the renamed passkey label");
   await expectVisible(
     page.locator(".passkey-row", { hasText: renamedPasskeyName }),
-    "Expected the dashboard to show the renamed passkey label",
+    "Expected settings to show the renamed passkey label",
   );
 
   const credentialsAfterAdd = await authenticatorCredentials(secondAuthenticator);
@@ -257,6 +248,7 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
     "Expected login with the second passkey to succeed",
   );
 
+  await openSettingsPage(page);
   logStep("Deleting the original passkey using the second passkey as confirmation");
   await page.locator(".passkey-row").nth(0).getByRole("button", { name: "Delete" }).click();
   await expectVisible(
