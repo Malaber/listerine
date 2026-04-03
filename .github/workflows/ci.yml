@@ -52,7 +52,7 @@ jobs:
       PYTHON_VERSION: '3.14'
       NODE_VERSION: '24'
       DATABASE_URL: sqlite+aiosqlite:///./tmp-ci-ui-e2e.db
-      SEED_DATA_PATH: app/fixtures/review_seed.json
+      SEED_DATA_PATH: app/fixtures/review_seed_e2e.json
       WEBAUTHN_RP_ID: localhost
     steps:
       - uses: actions/checkout@v6
@@ -81,7 +81,7 @@ jobs:
           cat ui-e2e-server.log >&2
           exit 1
       - name: Run browser ui e2e
-        run: PREVIEW_BASE_URL=http://localhost:8000 node scripts/run_ui_e2e.mjs
+        run: PREVIEW_BASE_URL=http://localhost:8000 E2E_SEED_PATH=app/fixtures/review_seed_e2e.json node scripts/run_ui_e2e.mjs
       - name: Upload browser artifacts
         if: always()
         uses: actions/upload-artifact@v6

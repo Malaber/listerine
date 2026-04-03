@@ -203,6 +203,75 @@ def test_lifespan_runs_seed_data_fixture(monkeypatch, tmp_path) -> None:
         asyncio.run(dispose_db())
 
 
+def test_seed_data_enforces_preview_member_and_admin_membership_rules(tmp_path) -> None:
+    fixture_path = tmp_path / "seed-preview-users.json"
+    fixture_path.write_text(
+        json.dumps(
+            {
+                "users": [
+                    {
+                        "email": "listerine_admin@schaedler.rocks",
+                        "display_name": "Admin",
+                        "is_admin": True,
+                    },
+                    {
+                        "email": "listerine@schaedler.rocks",
+                        "display_name": "Member",
+                        "is_admin": False,
+                    },
+                    {"email": "other@example.com", "display_name": "Other", "is_admin": False},
+                ],
+                "households": [
+                    {
+                        "name": "Home",
+                        "owner_email": "listerine@schaedler.rocks",
+                        "members": [{"email": "listerine_admin@schaedler.rocks", "role": "member"}],
+                        "lists": [],
+                    },
+                    {
+                        "name": "Cabin",
+                        "owner_email": "other@example.com",
+                        "members": [],
+                        "lists": [],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    asyncio.run(reset_db())
+
+    async def _assert_rules() -> None:
+        async with AsyncSessionLocal() as session:
+            await ensure_seed_data(session, str(fixture_path))
+            users = (await session.execute(select(User))).scalars().all()
+            by_email = {user.email: user for user in users}
+            admin_user = by_email["listerine_admin@schaedler.rocks"]
+            member_user = by_email["listerine@schaedler.rocks"]
+            households = (await session.execute(select(Household))).scalars().all()
+            assert len(households) == 2
+            for household in households:
+                member_link = await session.execute(
+                    select(HouseholdMember).where(
+                        HouseholdMember.household_id == household.id,
+                        HouseholdMember.user_id == member_user.id,
+                    )
+                )
+                assert member_link.scalar_one_or_none() is not None
+                admin_link = await session.execute(
+                    select(HouseholdMember).where(
+                        HouseholdMember.household_id == household.id,
+                        HouseholdMember.user_id == admin_user.id,
+                    )
+                )
+                assert admin_link.scalar_one_or_none() is None
+
+    try:
+        asyncio.run(_assert_rules())
+    finally:
+        asyncio.run(dispose_db())
+
+
 def test_seed_data_updates_existing_rows_and_removes_stale_items(tmp_path) -> None:
     initial_fixture_path = tmp_path / "seed-initial.json"
     updated_fixture_path = tmp_path / "seed-updated.json"

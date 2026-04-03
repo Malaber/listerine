@@ -1035,7 +1035,7 @@ test("list detail bootstraps, reacts to websocket updates, and handles list acti
           ],
         });
       }
-      if (url === "/api/v1/categories") {
+      if (url === "/api/v1/lists/list-1/categories") {
         return createResponse({ jsonData: [{ id: "cat-1", name: "Dairy", color: "#fff", aliases: ["milk"] }] });
       }
       if (url === "/api/v1/lists/list-1/category-order") {
@@ -1172,7 +1172,7 @@ test("initListDetail covers error and alternate interaction branches", async () 
             ],
           });
         }
-        if (url === "/api/v1/categories") {
+        if (url === "/api/v1/lists/list-1/categories") {
           return createResponse({ jsonData: [{ id: "cat-1", name: "Bakery", color: "#eee", aliases: [] }] });
         }
         if (url === "/api/v1/lists/list-1/category-order") {
@@ -1376,7 +1376,7 @@ test("remaining app.js branch edges are exercised", async () => {
             ],
           });
         }
-        if (url === "/api/v1/categories") {
+        if (url === "/api/v1/lists/list-1/categories") {
           return createResponse({ jsonData: [{ id: "cat-1", name: "Bakery", color: "#eee", aliases: [] }] });
         }
         if (url === "/api/v1/lists/list-1/category-order") {
@@ -1545,7 +1545,7 @@ test("late list-detail and login failure branches are covered", async () => {
               ],
             });
           }
-          if (url === "/api/v1/categories") {
+          if (url === "/api/v1/lists/list-1/categories") {
             return createResponse({
               jsonData: [
                 { id: "cat-1", name: "Bakery", color: "#eee", aliases: [] },
@@ -1910,7 +1910,7 @@ test("item edit delete delegates to the visible delete button", async () => {
         if (url === "/api/v1/lists/list-1/items") {
           return createResponse({ jsonData: [{ id: "item-1", name: "Milk", checked: false, category_id: null, sort_order: 1, quantity_text: "", note: "" }] });
         }
-        if (url === "/api/v1/categories") {
+        if (url === "/api/v1/lists/list-1/categories") {
           return createResponse({ jsonData: [] });
         }
         if (url === "/api/v1/lists/list-1/category-order") {
