@@ -17,6 +17,7 @@ def _template_auth_context(user: User | None) -> dict[str, bool]:
         "is_admin": bool(user and user.is_admin),
     }
 
+
 def _safe_next_path(request: Request) -> str:
     next_path = request.query_params.get("next", "/")
     if not next_path.startswith("/") or next_path.startswith("//"):
@@ -57,7 +58,11 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)) -> Res
     user = await _get_session_user(request, db)
     if user is None:
         return RedirectResponse(url="/login", status_code=303)
-    return templates.TemplateResponse(request, "dashboard.html", _template_auth_context(user))
+    return templates.TemplateResponse(
+        request,
+        "dashboard.html",
+        _template_auth_context(user),
+    )
 
 
 @router.get("/lists/{list_id}", response_class=HTMLResponse, response_model=None)

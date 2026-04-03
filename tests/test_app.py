@@ -57,9 +57,19 @@ async def _delete_user(user_id: UUID) -> None:
         await session.commit()
 
 
-async def _add_household_member(household_id: UUID, user_id: UUID, role: str = "member") -> None:
+async def _add_household_member(
+    household_id: UUID,
+    user_id: UUID,
+    role: str = "member",
+) -> None:
     async with AsyncSessionLocal() as session:
-        session.add(HouseholdMember(household_id=household_id, user_id=user_id, role=role))
+        session.add(
+            HouseholdMember(
+                household_id=household_id,
+                user_id=user_id,
+                role=role,
+            )
+        )
         await session.commit()
 
 
@@ -81,7 +91,9 @@ def _mock_verified_authentication() -> SimpleNamespace:
     return SimpleNamespace(new_sign_count=2)
 
 
-def _passkey_finish_payload(credential_id: str = REGISTERED_CREDENTIAL_ID) -> dict[str, object]:
+def _passkey_finish_payload(
+    credential_id: str = REGISTERED_CREDENTIAL_ID,
+) -> dict[str, object]:
     return {"credential": {"id": credential_id, "type": "public-key", "response": {}}}
 
 
@@ -1590,13 +1602,16 @@ def test_browser_session_slides_on_use(client, monkeypatch) -> None:
 
     auth_session = asyncio.run(_get_auth_session(user_id))
     assert auth_session is not None
-    assert auth_session.last_seen_at > stale_last_seen
+    assert _as_utc(auth_session.last_seen_at) > stale_last_seen
 
 
 def test_idle_browser_session_redirects_to_login(client, monkeypatch) -> None:
     user_id = _register_session_user(client, monkeypatch, f"{uuid4()}@example.com")
     asyncio.run(
-        _set_auth_session_times(user_id, last_seen_at=datetime.now(UTC) - timedelta(days=29))
+        _set_auth_session_times(
+            user_id,
+            last_seen_at=datetime.now(UTC) - timedelta(days=29),
+        )
     )
 
     response = client.get("/", follow_redirects=False)
@@ -1607,7 +1622,12 @@ def test_idle_browser_session_redirects_to_login(client, monkeypatch) -> None:
 
 def test_absolute_browser_session_redirects_to_login(client, monkeypatch) -> None:
     user_id = _register_session_user(client, monkeypatch, f"{uuid4()}@example.com")
-    asyncio.run(_set_auth_session_times(user_id, expires_at=datetime.now(UTC) - timedelta(minutes=1)))
+    asyncio.run(
+        _set_auth_session_times(
+            user_id,
+            expires_at=datetime.now(UTC) - timedelta(minutes=1),
+        )
+    )
 
     response = client.get("/", follow_redirects=False)
     assert response.status_code == 303

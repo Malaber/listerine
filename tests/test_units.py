@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
+from fastapi import HTTPException
 from jose import jwt
 from starlette.requests import Request
 
@@ -21,7 +22,13 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
-from app.services.auth_sessions import _auth_session_is_valid
+from app.services.auth_sessions import (
+    AUTH_SESSION_ID_KEY,
+    _as_utc,
+    _auth_session_is_valid,
+    get_session_user,
+    revoke_auth_session,
+)
 from app.services.websocket_hub import WebSocketHub
 
 
@@ -55,6 +62,33 @@ class DummyDB:
 
     async def refresh(self, user) -> None:
         self.refresh_calls += 1
+
+
+class DummyScalarResult:
+    def __init__(self, value) -> None:
+        self.value = value
+
+    def scalar_one_or_none(self):
+        return self.value
+
+
+class DummyAuthSessionDB:
+    def __init__(self, auth_session=None) -> None:
+        self.auth_session = auth_session
+        self.commit_calls = 0
+        self.deleted = []
+
+    async def get(self, model, session_id):
+        return self.auth_session
+
+    async def delete(self, auth_session) -> None:
+        self.deleted.append(auth_session)
+
+    async def commit(self) -> None:
+        self.commit_calls += 1
+
+    async def execute(self, query):
+        return DummyScalarResult(self.auth_session)
 
 
 def test_security_helpers_round_trip() -> None:
@@ -107,6 +141,10 @@ def test_auth_flow_session_validity_uses_short_ttl(monkeypatch) -> None:
     }
     assert _auth_flow_session_is_valid(expired_session) is False
 
+    assert _auth_flow_session_is_valid({}) is False
+    assert _auth_flow_session_is_valid({"issued_at": "not-a-date"}) is False
+    assert _auth_flow_session_is_valid({"issued_at": "2026-04-03T12:00:00"}) is False
+
 
 def test_auth_session_validity_checks_idle_and_absolute_windows(monkeypatch) -> None:
     now = datetime.now(UTC)
@@ -129,6 +167,54 @@ def test_auth_session_validity_checks_idle_and_absolute_windows(monkeypatch) -> 
         expires_at=now - timedelta(seconds=1),
     )
     assert _auth_session_is_valid(absolute_expired_session, now) is False
+
+
+def test_auth_session_datetime_normalization_accepts_naive_values() -> None:
+    naive = datetime(2026, 4, 3, 12, 0, 0)
+    normalized = _as_utc(naive)
+    assert normalized.tzinfo is UTC
+    assert normalized.hour == 12
+
+
+def test_revoke_auth_session_ignores_invalid_or_missing_session_ids() -> None:
+    invalid_request = Request(
+        {"type": "http", "headers": [], "session": {AUTH_SESSION_ID_KEY: "not-a-uuid"}}
+    )
+    invalid_db = DummyAuthSessionDB()
+    asyncio.run(revoke_auth_session(invalid_request, invalid_db))
+    assert invalid_db.commit_calls == 0
+
+    missing_request = Request(
+        {"type": "http", "headers": [], "session": {AUTH_SESSION_ID_KEY: str(uuid4())}}
+    )
+    missing_db = DummyAuthSessionDB(auth_session=None)
+    asyncio.run(revoke_auth_session(missing_request, missing_db))
+    assert missing_db.commit_calls == 0
+
+
+def test_get_session_user_clears_invalid_server_session_ids() -> None:
+    request = Request({"type": "http", "headers": [], "session": {AUTH_SESSION_ID_KEY: "bad-id"}})
+
+    assert asyncio.run(get_session_user(request, DummyAuthSessionDB())) is None
+    assert request.session == {}
+
+
+def test_get_current_user_rejects_bearer_tokens_without_subject() -> None:
+    from app.api.deps import get_current_user
+
+    token = jwt.encode(
+        {"exp": datetime.now(UTC) + timedelta(minutes=5)},
+        settings.secret_key,
+        algorithm=settings.algorithm,
+    )
+    request = Request({"type": "http", "headers": [], "session": {}})
+
+    try:
+        asyncio.run(get_current_user(request, DummyAuthSessionDB(), token))
+    except HTTPException as exc:
+        assert exc.status_code == 401
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("Expected get_current_user to reject tokens without a subject")
 
 
 def test_get_application_version_reads_version_file(tmp_path, monkeypatch) -> None:

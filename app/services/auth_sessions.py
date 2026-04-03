@@ -24,13 +24,20 @@ def _absolute_timeout() -> timedelta:
     return timedelta(seconds=settings.session_max_age_seconds)
 
 
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
 def _auth_session_is_valid(auth_session: AuthSession, now: datetime) -> bool:
-    return auth_session.expires_at > now and auth_session.last_seen_at > now - _idle_timeout()
+    return (
+        _as_utc(auth_session.expires_at) > now
+        and _as_utc(auth_session.last_seen_at) > now - _idle_timeout()
+    )
 
 
-async def create_auth_session(
-    request: HTTPConnection, db: AsyncSession, user: User
-) -> AuthSession:
+async def create_auth_session(request: HTTPConnection, db: AsyncSession, user: User) -> AuthSession:
     now = _now_utc()
     auth_session = AuthSession(
         user_id=user.id,
