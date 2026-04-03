@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="auth-shell" data-passkey-auth data-next-url="{{ next_url }}">
+  <div class="auth-copy">
+    <h1>Login</h1>
+    <p>Accounts stay private until you sign in with a passkey from your browser or password manager.</p>
+    <h2>Passkey-only authentication</h2>
+    <p>Sign-in is account-discovery free, so this page does not ask who you are before your passkey does.</p>
+  </div>
+
   <section class="auth-card auth-card-primary">
     <div class="auth-tabs" role="tablist" aria-label="Authentication">
       <button
@@ -32,7 +39,7 @@
     <p class="auth-banner auth-banner-success" data-auth-success hidden></p>
 
     <div data-auth-tab-panel="signin">
-      <h1>Sign In</h1>
+      <h2>Sign In</h2>
       <p>Choose a passkey and your browser or password manager will identify the account for you.</p>
       <form class="auth-form" data-passkey-login>
         <button type="button" data-passkey-login-button>Sign in with passkey</button>
@@ -40,7 +47,7 @@
     </div>
 
     <div data-auth-tab-panel="signup" hidden>
-      <h1>Create Account</h1>
+      <h2>Create Account</h2>
       <p>We still need an email so the new account has an identifier you can share in invites and admin tools.</p>
       <form class="auth-form" data-passkey-register>
         <label class="auth-field">
