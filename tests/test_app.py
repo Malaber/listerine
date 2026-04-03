@@ -161,6 +161,7 @@ def test_full_flow(client) -> None:
         client.get(f"/api/v1/households/{household_id}/lists", headers=headers).status_code == 200
     )
     assert client.get(f"/api/v1/lists/{list_id}", headers=headers).status_code == 200
+    assert client.get(f"/api/v1/lists/{list_id}/categories", headers=headers).status_code == 200
 
     admin_headers = _auth_headers(client, f"{uuid4()}@example.com", is_admin=True)
     category = client.post(
@@ -374,6 +375,41 @@ def test_list_category_order_rejects_duplicates_and_list_delete_cleans_up_orders
 
     deleted_list = client.delete(f"/api/v1/lists/{grocery_list['id']}", headers=headers)
     assert deleted_list.status_code == 200
+
+
+def test_list_categories_are_scoped_to_accessible_household(client) -> None:
+    member_headers = _auth_headers(client, f"{uuid4()}@example.com")
+    outsider_headers = _auth_headers(client, f"{uuid4()}@example.com")
+    admin_headers = _auth_headers(client, f"{uuid4()}@example.com", is_admin=True)
+
+    household = client.post(
+        "/api/v1/households", json={"name": "Home"}, headers=member_headers
+    ).json()
+    grocery_list = client.post(
+        f"/api/v1/households/{household['id']}/lists",
+        json={"name": "Weekly"},
+        headers=member_headers,
+    ).json()
+    global_category = client.post(
+        "/api/v1/categories",
+        json={"name": "Produce", "color": "#22c55e"},
+        headers=admin_headers,
+    ).json()
+
+    categories = client.get(
+        f"/api/v1/lists/{grocery_list['id']}/categories",
+        headers=member_headers,
+    )
+    assert categories.status_code == 200
+    assert categories.json() == [global_category]
+
+    assert (
+        client.get(
+            f"/api/v1/lists/{grocery_list['id']}/categories",
+            headers=outsider_headers,
+        ).status_code
+        == 403
+    )
 
 
 def test_delete_category_clears_item_category_and_order(client) -> None:
