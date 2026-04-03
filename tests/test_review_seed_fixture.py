@@ -20,8 +20,8 @@ def test_review_seed_fixture_has_unique_passkey_credentials_and_seeds() -> None:
         user["passkey"]["credential_id"] for user in users if isinstance(user.get("passkey"), dict)
     ]
     assert len(credential_ids) == len(set(credential_ids))
-    assert "listerine_admin@schaedler.rocks" not in emails
-    assert "listerine@schaedler.rocks" not in emails
+    assert "listerine_admin@schaedler.rocks" in emails
+    assert "listerine@schaedler.rocks" in emails
 
     asyncio.run(reset_db())
 
@@ -35,6 +35,8 @@ def test_review_seed_fixture_has_unique_passkey_credentials_and_seeds() -> None:
                         select(User).where(
                             User.email.in_(
                                 [
+                                    "listerine_admin@schaedler.rocks",
+                                    "listerine@schaedler.rocks",
                                     "preview@example.com",
                                     "preview-invitee@example.com",
                                 ]
@@ -45,14 +47,14 @@ def test_review_seed_fixture_has_unique_passkey_credentials_and_seeds() -> None:
                 .scalars()
                 .all()
             )
-            assert len(seeded_users) == 2
+            assert len(seeded_users) == 4
 
             passkeys = (
                 (await session.execute(select(Passkey).order_by(Passkey.credential_id.asc())))
                 .scalars()
                 .all()
             )
-            assert len(passkeys) >= 1
+            assert len(passkeys) >= 3
 
     try:
         asyncio.run(_assert_seeded())

@@ -36,11 +36,11 @@ Open [http://localhost:8000/docs](http://localhost:8000/docs).
 
 ## Seeded review identities
 
-The checked-in review fixture (`app/fixtures/review_seed.json`) currently seeds preview-only users:
+The checked-in review fixture (`app/fixtures/review_seed.json`) includes deterministic preview users:
 
-- `preview@example.com` (admin): preview instance admin
-- `preview-invitee@example.com` (non-admin): seeded into the review households
-- `listerine@schaedler.rocks` and `listerine_admin@schaedler.rocks` are intentionally not seeded right now so they can be registered in preview environments and exported back into the fixture later
+- `listerine@schaedler.rocks` (non-admin): seeded into all households (owner/member as appropriate)
+- `listerine_admin@schaedler.rocks` (admin): instance-admin only; household memberships are stripped
+- `preview@example.com` and `preview-invitee@example.com` are kept for compatibility
 
 ## Export passkeys from a running PR instance
 
