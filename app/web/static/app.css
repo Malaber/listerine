@@ -1382,24 +1382,20 @@ main {
 
 .auth-shell {
   display: grid;
-  gap: 2rem;
+  gap: 1.5rem;
   max-width: 960px;
-}
-
-.auth-copy {
-  max-width: 48rem;
 }
 
 .auth-card {
   background: #fff;
   border: 1px solid #d7dee8;
-  border-radius: 16px;
-  padding: 1rem 1.25rem;
+  border-radius: 30px;
+  padding: 1rem 2.5rem 2rem;
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
 }
 
 .auth-card-primary {
-  max-width: 32rem;
+  max-width: 100%;
 }
 
 .auth-form {
@@ -1410,18 +1406,20 @@ main {
 .auth-tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
+  gap: 1rem;
+  margin-bottom: 2rem;
 }
 
 .auth-tab-button {
   border: 1px solid #cbd5e1;
-  background: #f8fafc;
+  background: #fff;
   color: #334155;
   cursor: pointer;
   font: inherit;
   font-weight: 700;
-  padding: 0.65rem 1rem;
+  font-size: clamp(1.25rem, 2vw, 1.6rem);
+  line-height: 1.1;
+  padding: 1rem 2rem;
   border-radius: 999px;
 }
 
@@ -1433,6 +1431,14 @@ main {
 
 .auth-tab-button:hover {
   border-color: #94a3b8;
+}
+
+.auth-card [data-auth-tab-panel] h1 {
+  margin: 0 0 1.5rem;
+}
+
+.auth-card [data-auth-tab-panel] p {
+  max-width: 48rem;
 }
 
 .auth-field {
@@ -1461,8 +1467,9 @@ main {
   background: #0f172a;
   color: #fff;
   cursor: pointer;
-  padding: 0.85rem 1.1rem;
+  padding: 1.15rem 1.5rem;
   font-weight: 700;
+  font-size: clamp(1.25rem, 2vw, 1.8rem);
 }
 
 .auth-form button:hover {
@@ -1493,6 +1500,24 @@ main {
 .auth-banner-info {
   background: #eff6ff;
   color: #1d4ed8;
+}
+
+@media (max-width: 720px) {
+  .auth-card {
+    padding: 1rem 1.25rem 1.5rem;
+    border-radius: 22px;
+  }
+
+  .auth-tabs {
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .auth-tab-button {
+    width: 100%;
+    justify-content: center;
+    padding-inline: 1.5rem;
+  }
 }
 
 .dashboard-account-card {

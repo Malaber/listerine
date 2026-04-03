@@ -1470,9 +1470,16 @@ def test_password_auth_endpoints_are_disabled(client) -> None:
 def test_web_pages_require_login(client) -> None:
     response = client.get("/login")
     assert response.status_code == 200
+    assert "Sign In" in response.text
+    assert "Create Account" in response.text
     assert "Sign in with passkey" in response.text
-    assert "Sign-in is account-discovery free" in response.text
-    assert "Create passkey" not in response.text
+    assert (
+        "Choose a passkey and your browser or password manager will identify the account for you."
+        in response.text
+    )
+    assert "Create passkey" in response.text
+    assert 'data-auth-tab-trigger="signin"' in response.text
+    assert 'data-auth-tab-trigger="signup"' in response.text
     assert "Logout" not in response.text
     assert client.get("/", follow_redirects=False).status_code == 303
     assert client.get("/settings", follow_redirects=False).status_code == 303
@@ -1481,6 +1488,7 @@ def test_web_pages_require_login(client) -> None:
     script = client.get("/static/app.js")
     assert "navigator.credentials.create" in script.text
     assert "navigator.credentials.get" in script.text
+    assert "data-auth-tab-trigger" in script.text
     assert 'typeof value.toJSON === "function"' in script.text
 
 

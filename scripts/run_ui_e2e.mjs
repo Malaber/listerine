@@ -69,6 +69,36 @@ async function expectHidden(locator, message) {
   assert(!(await locator.isVisible().catch(() => false)), message);
 }
 
+async function assertLoginPageTabs(page) {
+  const signInTab = page.getByRole("tab", { name: "Sign In" });
+  const createAccountTab = page.getByRole("tab", { name: "Create Account" });
+  await expectVisible(signInTab, "Expected the Sign In tab on the login page");
+  await expectVisible(createAccountTab, "Expected the Create Account tab on the login page");
+  await expectVisible(
+    page.getByRole("heading", { name: "Sign In" }),
+    "Expected the sign-in heading inside the active auth panel",
+  );
+  await expectVisible(
+    page.getByRole("button", { name: "Sign in with passkey" }),
+    "Expected the passkey sign-in button on the login page",
+  );
+
+  await createAccountTab.click();
+  await expectVisible(
+    page.getByRole("heading", { name: "Create Account" }),
+    "Expected the create-account heading after switching tabs",
+  );
+  await expectVisible(page.getByLabel("Display name"), "Expected the display name field on the signup tab");
+  await expectVisible(page.getByLabel("Email"), "Expected the email field on the signup tab");
+  await expectVisible(page.getByRole("button", { name: "Create passkey" }), "Expected the create-passkey button");
+
+  await signInTab.click();
+  await expectHidden(
+    page.getByLabel("Display name"),
+    "Expected the signup form to be hidden again after returning to the sign-in tab",
+  );
+}
+
 async function screenshot(page, name) {
   await page.screenshot({ path: path.join(artifactDir, `${name}.png`), fullPage: true });
 }
@@ -252,6 +282,7 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
 }
 
 async function loginFromLoginPage(page, expectedUrlPattern) {
+  await assertLoginPageTabs(page);
   await page.getByRole("button", { name: "Sign in with passkey" }).click();
   await page.waitForURL(expectedUrlPattern);
 }
