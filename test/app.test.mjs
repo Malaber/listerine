@@ -113,7 +113,7 @@ function settingsHtml() {
 
 function listDetailHtml() {
   return `
-    <section data-list-detail data-list-id="list-1" data-access-token="token-1">
+    <section data-list-detail data-list-id="list-1">
       <h1 data-list-title>Loading list...</h1>
       <button type="button" data-list-settings-toggle>Settings</button>
       <div data-list-error hidden></div>
@@ -1001,7 +1001,7 @@ test("list detail bootstraps, reacts to websocket updates, and handles list acti
 
     const root = document.querySelector("[data-list-detail]");
     assert.equal(root.querySelector("[data-list-title]").textContent, "Weekly Groceries");
-    assert.ok(sockets[0].url.includes("/api/v1/ws/lists/list-1?token=token-1"));
+    assert.ok(sockets[0].url.includes("/api/v1/ws/lists/list-1"));
     assert.equal(root.querySelector("[data-item-panel]").hidden, false);
     assert.equal(env.dom.window.location.search, "");
 

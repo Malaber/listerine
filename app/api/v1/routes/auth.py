@@ -1,5 +1,5 @@
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -27,6 +27,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import create_access_token
 from app.models import Passkey, User
+from app.services.auth_sessions import create_auth_session, revoke_auth_session
 from app.schemas.auth import (
     PasskeyFinishRequest,
     PasskeyLoginStartRequest,
@@ -81,6 +82,32 @@ def _credential_id_from_payload(payload: PasskeyFinishRequest) -> str:
     if not isinstance(credential_id, str) or not credential_id:
         raise HTTPException(status_code=400, detail="Credential id is required")
     return credential_id
+
+
+def _new_auth_flow_session(**payload: object) -> dict[str, object]:
+    return {
+        **payload,
+        "issued_at": datetime.now(UTC).isoformat(),
+    }
+
+
+def _auth_flow_session_is_valid(pending: dict[str, object] | None) -> bool:
+    if pending is None or not isinstance(pending, dict):
+        return False
+
+    issued_at_raw = pending.get("issued_at")
+    if not isinstance(issued_at_raw, str):
+        return False
+
+    try:
+        issued_at = datetime.fromisoformat(issued_at_raw)
+    except ValueError:
+        return False
+
+    if issued_at.tzinfo is None:
+        return False
+
+    return datetime.now(UTC) - issued_at < timedelta(seconds=settings.auth_flow_expire_seconds)
 
 
 async def _load_user_with_passkeys(db: AsyncSession, user_id: UUID) -> User | None:
@@ -154,12 +181,14 @@ async def begin_passkey_registration(
         ),
     )
     request.session[_REGISTER_SESSION_KEY] = {
-        "challenge": bytes_to_base64url(options.challenge),
-        "email": payload.email,
-        "display_name": payload.display_name,
-        "origin": _origin_for_request(request),
-        "rp_id": _rp_id_for_request(request),
-        "user_id": str(user_id),
+        **_new_auth_flow_session(
+            challenge=bytes_to_base64url(options.challenge),
+            email=payload.email,
+            display_name=payload.display_name,
+            origin=_origin_for_request(request),
+            rp_id=_rp_id_for_request(request),
+            user_id=str(user_id),
+        )
     }
     return json.loads(options_to_json(options))
 
@@ -169,7 +198,8 @@ async def finish_passkey_registration(
     payload: PasskeyFinishRequest, request: Request, db: AsyncSession = Depends(get_db)
 ) -> User:
     pending = request.session.get(_REGISTER_SESSION_KEY)
-    if pending is None:
+    if not _auth_flow_session_is_valid(pending):
+        request.session.pop(_REGISTER_SESSION_KEY, None)
         raise HTTPException(status_code=400, detail="Registration session expired")
 
     existing = await _load_user_with_passkeys_by_email(db, pending["email"])
@@ -216,8 +246,7 @@ async def finish_passkey_registration(
     await db.refresh(user)
     user = await _apply_bootstrap_admin_email(db, user)
 
-    request.session.pop(_REGISTER_SESSION_KEY, None)
-    request.session["access_token"] = create_access_token(user.id)
+    await create_auth_session(request, db, user)
     return user
 
 
@@ -228,9 +257,11 @@ async def begin_passkey_login(_: PasskeyLoginStartRequest, request: Request) -> 
         user_verification=UserVerificationRequirement.REQUIRED,
     )
     request.session[_LOGIN_SESSION_KEY] = {
-        "challenge": bytes_to_base64url(options.challenge),
-        "origin": _origin_for_request(request),
-        "rp_id": _rp_id_for_request(request),
+        **_new_auth_flow_session(
+            challenge=bytes_to_base64url(options.challenge),
+            origin=_origin_for_request(request),
+            rp_id=_rp_id_for_request(request),
+        )
     }
     return json.loads(options_to_json(options))
 
@@ -240,7 +271,8 @@ async def finish_passkey_login(
     payload: PasskeyFinishRequest, request: Request, db: AsyncSession = Depends(get_db)
 ) -> TokenOut:
     pending = request.session.get(_LOGIN_SESSION_KEY)
-    if pending is None:
+    if not _auth_flow_session_is_valid(pending):
+        request.session.pop(_LOGIN_SESSION_KEY, None)
         raise HTTPException(status_code=400, detail="Login session expired")
 
     credential_id = _credential_id_from_payload(payload)
@@ -274,9 +306,8 @@ async def finish_passkey_login(
     await db.refresh(user)
     user = await _apply_bootstrap_admin_email(db, user)
 
-    request.session.pop(_LOGIN_SESSION_KEY, None)
     token = create_access_token(user.id)
-    request.session["access_token"] = token
+    await create_auth_session(request, db, user)
     return TokenOut(access_token=token)
 
 
@@ -370,7 +401,8 @@ async def login_password_disabled(_: PasswordAuthRequest) -> None:
 
 
 @router.post("/logout")
-async def logout(request: Request) -> dict[str, str]:
+async def logout(request: Request, db: AsyncSession = Depends(get_db)) -> dict[str, str]:
+    await revoke_auth_session(request, db)
     request.session.clear()
     return {"message": "logged out"}
 
@@ -410,11 +442,13 @@ async def begin_add_passkey(
         exclude_credentials=[_passkey_descriptor(passkey) for passkey in refreshed.passkeys],
     )
     request.session[_PASSKEY_ADD_SESSION_KEY] = {
-        "challenge": bytes_to_base64url(options.challenge),
-        "origin": _origin_for_request(request),
-        "rp_id": _rp_id_for_request(request),
-        "user_id": str(refreshed.id),
-        "name": passkey_name,
+        **_new_auth_flow_session(
+            challenge=bytes_to_base64url(options.challenge),
+            origin=_origin_for_request(request),
+            rp_id=_rp_id_for_request(request),
+            user_id=str(refreshed.id),
+            name=passkey_name,
+        )
     }
     return json.loads(options_to_json(options))
 
@@ -427,9 +461,10 @@ async def finish_add_passkey(
     db: AsyncSession = Depends(get_db),
 ) -> Passkey:
     pending = request.session.get(_PASSKEY_ADD_SESSION_KEY)
-    if pending is None:
+    if not _auth_flow_session_is_valid(pending):
+        request.session.pop(_PASSKEY_ADD_SESSION_KEY, None)
         raise HTTPException(status_code=400, detail="Passkey registration session expired")
-    if pending["user_id"] != str(user.id):
+    if pending.get("user_id") != str(user.id):
         request.session.pop(_PASSKEY_ADD_SESSION_KEY, None)
         raise HTTPException(status_code=400, detail="Passkey registration session expired")
 
@@ -486,12 +521,14 @@ async def begin_rename_passkey(
         allow_credentials=[_passkey_descriptor(target)],
     )
     request.session[_PASSKEY_RENAME_SESSION_KEY] = {
-        "challenge": bytes_to_base64url(options.challenge),
-        "origin": _origin_for_request(request),
-        "rp_id": _rp_id_for_request(request),
-        "user_id": str(user.id),
-        "passkey_id": str(passkey_id),
-        "name": _validated_passkey_name(payload.name),
+        **_new_auth_flow_session(
+            challenge=bytes_to_base64url(options.challenge),
+            origin=_origin_for_request(request),
+            rp_id=_rp_id_for_request(request),
+            user_id=str(user.id),
+            passkey_id=str(passkey_id),
+            name=_validated_passkey_name(payload.name),
+        )
     }
     return json.loads(options_to_json(options))
 
@@ -506,10 +543,11 @@ async def finish_rename_passkey(
 ) -> Passkey:
     pending = request.session.get(_PASSKEY_RENAME_SESSION_KEY)
     if (
-        pending is None
-        or pending["user_id"] != str(user.id)
-        or pending["passkey_id"] != str(passkey_id)
+        not _auth_flow_session_is_valid(pending)
+        or pending.get("user_id") != str(user.id)
+        or pending.get("passkey_id") != str(passkey_id)
     ):
+        request.session.pop(_PASSKEY_RENAME_SESSION_KEY, None)
         raise HTTPException(status_code=400, detail="Passkey rename session expired")
 
     refreshed = await _load_user_with_passkeys(db, user.id)
@@ -576,11 +614,13 @@ async def begin_delete_passkey(
         user_verification=UserVerificationRequirement.REQUIRED,
     )
     request.session[_PASSKEY_DELETE_SESSION_KEY] = {
-        "challenge": bytes_to_base64url(options.challenge),
-        "origin": _origin_for_request(request),
-        "rp_id": _rp_id_for_request(request),
-        "user_id": str(user.id),
-        "passkey_id": str(passkey_id),
+        **_new_auth_flow_session(
+            challenge=bytes_to_base64url(options.challenge),
+            origin=_origin_for_request(request),
+            rp_id=_rp_id_for_request(request),
+            user_id=str(user.id),
+            passkey_id=str(passkey_id),
+        )
     }
     return json.loads(options_to_json(options))
 
@@ -595,10 +635,11 @@ async def finish_delete_passkey(
 ) -> dict[str, str]:
     pending = request.session.get(_PASSKEY_DELETE_SESSION_KEY)
     if (
-        pending is None
-        or pending["user_id"] != str(user.id)
-        or pending["passkey_id"] != str(passkey_id)
+        not _auth_flow_session_is_valid(pending)
+        or pending.get("user_id") != str(user.id)
+        or pending.get("passkey_id") != str(passkey_id)
     ):
+        request.session.pop(_PASSKEY_DELETE_SESSION_KEY, None)
         raise HTTPException(status_code=400, detail="Passkey deletion session expired")
 
     refreshed = await _load_user_with_passkeys(db, user.id)

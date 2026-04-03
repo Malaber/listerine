@@ -8,7 +8,10 @@ class Settings(BaseSettings):
     app_name: str = "Listerine"
     secret_key: str = "change-me"
     algorithm: str = "HS256"
-    access_token_expire_minutes: int = 60
+    access_token_expire_minutes: int = 60 * 24 * 28
+    session_max_age_seconds: int = 60 * 60 * 24 * 180
+    session_idle_timeout_seconds: int = 60 * 60 * 24 * 28
+    auth_flow_expire_seconds: int = 10 * 60
     database_url: str = "sqlite+aiosqlite:///./listerine.db"
     secure_cookies: bool = False
     webauthn_rp_id: str | None = None

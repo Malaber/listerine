@@ -11,7 +11,7 @@ from webauthn.helpers import bytes_to_base64url
 from app.api.v1.routes.households import _as_utc
 from app.core.database import AsyncSessionLocal
 from app.core.security import create_access_token
-from app.models import HouseholdInvite, HouseholdMember, Passkey, User
+from app.models import AuthSession, HouseholdInvite, HouseholdMember, Passkey, User
 
 REGISTERED_CREDENTIAL_ID = bytes_to_base64url(b"credential-id")
 SECOND_CREDENTIAL_ID = bytes_to_base64url(b"second-credential-id")
@@ -57,9 +57,19 @@ async def _delete_user(user_id: UUID) -> None:
         await session.commit()
 
 
-async def _add_household_member(household_id: UUID, user_id: UUID, role: str = "member") -> None:
+async def _add_household_member(
+    household_id: UUID,
+    user_id: UUID,
+    role: str = "member",
+) -> None:
     async with AsyncSessionLocal() as session:
-        session.add(HouseholdMember(household_id=household_id, user_id=user_id, role=role))
+        session.add(
+            HouseholdMember(
+                household_id=household_id,
+                user_id=user_id,
+                role=role,
+            )
+        )
         await session.commit()
 
 
@@ -81,11 +91,13 @@ def _mock_verified_authentication() -> SimpleNamespace:
     return SimpleNamespace(new_sign_count=2)
 
 
-def _passkey_finish_payload(credential_id: str = REGISTERED_CREDENTIAL_ID) -> dict[str, object]:
+def _passkey_finish_payload(
+    credential_id: str = REGISTERED_CREDENTIAL_ID,
+) -> dict[str, object]:
     return {"credential": {"id": credential_id, "type": "public-key", "response": {}}}
 
 
-def _register_session_user(client, monkeypatch, email: str) -> None:
+def _register_session_user(client, monkeypatch, email: str) -> UUID:
     monkeypatch.setattr(
         "app.api.v1.routes.auth.verify_registration_response",
         lambda **_: _mock_verified_registration(),
@@ -99,6 +111,30 @@ def _register_session_user(client, monkeypatch, email: str) -> None:
         json=_passkey_finish_payload(),
     )
     assert response.status_code == 200
+    return UUID(response.json()["id"])
+
+
+async def _get_auth_session(user_id: UUID) -> AuthSession | None:
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(AuthSession).where(AuthSession.user_id == user_id))
+        return result.scalar_one_or_none()
+
+
+async def _set_auth_session_times(
+    user_id: UUID,
+    *,
+    last_seen_at: datetime | None = None,
+    expires_at: datetime | None = None,
+) -> None:
+    async with AsyncSessionLocal() as session:
+        auth_session = (
+            await session.execute(select(AuthSession).where(AuthSession.user_id == user_id))
+        ).scalar_one()
+        if last_seen_at is not None:
+            auth_session.last_seen_at = last_seen_at
+        if expires_at is not None:
+            auth_session.expires_at = expires_at
+        await session.commit()
 
 
 def test_full_flow(client) -> None:
@@ -1672,6 +1708,49 @@ def test_stale_web_session_redirects_to_login(client, monkeypatch) -> None:
     list_detail = client.get("/lists/abc", follow_redirects=False)
     assert list_detail.status_code == 303
     assert list_detail.headers["location"] == "/login"
+
+
+def test_browser_session_slides_on_use(client, monkeypatch) -> None:
+    user_id = _register_session_user(client, monkeypatch, f"{uuid4()}@example.com")
+    stale_last_seen = datetime.now(UTC) - timedelta(days=7)
+    asyncio.run(_set_auth_session_times(user_id, last_seen_at=stale_last_seen))
+
+    response = client.get("/")
+    assert response.status_code == 200
+
+    auth_session = asyncio.run(_get_auth_session(user_id))
+    assert auth_session is not None
+    assert _as_utc(auth_session.last_seen_at) > stale_last_seen
+
+
+def test_idle_browser_session_redirects_to_login(client, monkeypatch) -> None:
+    user_id = _register_session_user(client, monkeypatch, f"{uuid4()}@example.com")
+    asyncio.run(
+        _set_auth_session_times(
+            user_id,
+            last_seen_at=datetime.now(UTC) - timedelta(days=29),
+        )
+    )
+
+    response = client.get("/", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login"
+    assert asyncio.run(_get_auth_session(user_id)) is None
+
+
+def test_absolute_browser_session_redirects_to_login(client, monkeypatch) -> None:
+    user_id = _register_session_user(client, monkeypatch, f"{uuid4()}@example.com")
+    asyncio.run(
+        _set_auth_session_times(
+            user_id,
+            expires_at=datetime.now(UTC) - timedelta(minutes=1),
+        )
+    )
+
+    response = client.get("/", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login"
+    assert asyncio.run(_get_auth_session(user_id)) is None
 
 
 def test_preview_route_is_removed(client) -> None:
