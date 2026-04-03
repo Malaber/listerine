@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.models import GroceryList, HouseholdMember, User
+from app.services.auth_sessions import get_session_user
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login/verify", auto_error=False)
 
@@ -18,16 +19,23 @@ async def get_current_user(
     db: AsyncSession = Depends(get_db),
     token: str | None = Depends(oauth2_scheme),
 ) -> User:
-    session = getattr(request, "session", {})
-    raw_token = token or session.get("access_token")
-    if not raw_token:
+    if token:
+        raw_token = token
+    else:
+        session_user = await get_session_user(request, db)
+        if session_user is not None:
+            return session_user
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+
     try:
         payload = jwt.decode(raw_token, settings.secret_key, algorithms=[settings.algorithm])
         user_id = payload.get("sub")
-    except JWTError as exc:
+        if not user_id:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+        user_uuid = UUID(user_id)
+    except (JWTError, ValueError, TypeError) as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED) from exc
-    result = await db.execute(select(User).where(User.id == UUID(user_id)))
+    result = await db.execute(select(User).where(User.id == user_uuid))
     user = result.scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)

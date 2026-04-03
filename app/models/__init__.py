@@ -1,3 +1,4 @@
+from app.models.auth_session import AuthSession
 from app.models.category import Category
 from app.models.grocery_item import GroceryItem
 from app.models.grocery_list import GroceryList
@@ -8,6 +9,7 @@ from app.models.user import User
 
 __all__ = [
     "User",
+    "AuthSession",
     "Passkey",
     "Household",
     "HouseholdMember",

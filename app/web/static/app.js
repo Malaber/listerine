@@ -1813,8 +1813,7 @@ async function loadListDetail(root, state) {
 
 function connectListSocket(root, state) {
   const listId = root.dataset.listId;
-  const token = root.dataset.accessToken;
-  if (!listId || !token) {
+  if (!listId) {
     setListSyncStatus(root, "Live updates unavailable.");
     return;
   }
@@ -1823,7 +1822,7 @@ function connectListSocket(root, state) {
 
   const connect = () => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const socketUrl = `${protocol}//${window.location.host}/api/v1/ws/lists/${listId}?token=${encodeURIComponent(token)}`;
+    const socketUrl = `${protocol}//${window.location.host}/api/v1/ws/lists/${listId}`;
     setListSyncStatus(root, "Connecting live updates...");
     state.socket = new WebSocket(socketUrl);
 
