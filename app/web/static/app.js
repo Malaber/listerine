@@ -133,6 +133,33 @@ function toggleButtons(root, disabled) {
   });
 }
 
+function setPasskeyManagementMessage(root, type, message) {
+  const errorNode = root.querySelector("[data-passkey-error]");
+  const successNode = root.querySelector("[data-passkey-success]");
+
+  if (!errorNode || !successNode) {
+    return;
+  }
+
+  errorNode.hidden = true;
+  successNode.hidden = true;
+  errorNode.textContent = "";
+  successNode.textContent = "";
+
+  if (!message) {
+    return;
+  }
+
+  if (type === "error") {
+    errorNode.hidden = false;
+    errorNode.textContent = message;
+    return;
+  }
+
+  successNode.hidden = false;
+  successNode.textContent = message;
+}
+
 function setDashboardMessage(root, type, message) {
   const errorNode = root.querySelector("[data-dashboard-error]");
   const successNode = root.querySelector("[data-dashboard-success]");
@@ -494,7 +521,6 @@ async function copyText(value) {
 
 async function loadDashboardData(root) {
   const households = await fetchJson("/api/v1/households");
-  const passkeys = await fetchJson("/api/v1/auth/passkeys");
   const listResponses = await Promise.all(
     households.map(async (household) => ({
       householdId: household.id,
@@ -508,7 +534,163 @@ async function loadDashboardData(root) {
   updateHouseholdOptions(root, households);
   updateDashboardListOptions(root, households, listsByHousehold);
   renderHouseholds(root, households, listsByHousehold);
+}
+
+async function loadPasskeyManagementData(root) {
+  const passkeys = await fetchJson("/api/v1/auth/passkeys");
   renderPasskeys(root, passkeys);
+}
+
+function togglePasskeyManagementForms(root, disabled) {
+  root
+    .querySelectorAll("[data-passkey-management] button, [data-passkey-management] input")
+    .forEach((node) => {
+      const locked = node.getAttribute("data-passkey-locked") === "true";
+      node.disabled = disabled || locked;
+    });
+}
+
+function initPasskeyManagement(root, options = {}) {
+  if (!root) {
+    return;
+  }
+
+  const {
+    setMessage = setPasskeyManagementMessage,
+    toggleForms = togglePasskeyManagementForms,
+    refreshData = () => loadPasskeyManagementData(root),
+  } = options;
+
+  const refresh = async () => {
+    setMessage(root, "", "");
+    await refreshData();
+  };
+
+  const passkeyNameForm = root.querySelector("[data-passkey-name-form]");
+
+  root.addEventListener("click", async (event) => {
+    const addPasskeyButton = event.target.closest("[data-passkey-add]");
+    if (addPasskeyButton) {
+      if (!window.PublicKeyCredential || !navigator.credentials) {
+        setMessage(root, "error", "This browser does not support passkeys.");
+        return;
+      }
+      setMessage(root, "", "");
+      setPasskeyNameFormState(root, {
+        mode: "add",
+        passkeyId: "",
+        title: "Name this passkey",
+        submitLabel: "Continue",
+        name: suggestedPasskeyName(root),
+      });
+      return;
+    }
+
+    const cancelPasskeyNameButton = event.target.closest("[data-passkey-name-cancel]");
+    if (cancelPasskeyNameButton) {
+      setMessage(root, "", "");
+      setPasskeyNameFormState(root, null);
+      return;
+    }
+
+    const renamePasskeyButton = event.target.closest("[data-passkey-rename]");
+    if (renamePasskeyButton) {
+      if (!window.PublicKeyCredential || !navigator.credentials) {
+        setMessage(root, "error", "This browser does not support passkeys.");
+        return;
+      }
+
+      const passkeyId = renamePasskeyButton.getAttribute("data-passkey-rename");
+      const currentName = renamePasskeyButton.getAttribute("data-passkey-current-name") || "";
+      setMessage(root, "", "");
+      setPasskeyNameFormState(root, {
+        mode: "rename",
+        passkeyId,
+        title: "Rename this passkey",
+        submitLabel: "Save and verify",
+        name: currentName,
+      });
+      return;
+    }
+
+    const deletePasskeyButton = event.target.closest("[data-passkey-delete]");
+    if (deletePasskeyButton) {
+      if (!window.PublicKeyCredential || !navigator.credentials) {
+        setMessage(root, "error", "This browser does not support passkeys.");
+        return;
+      }
+
+      const passkeyId = deletePasskeyButton.getAttribute("data-passkey-delete");
+      toggleForms(root, true);
+      try {
+        await deletePasskey(root, passkeyId);
+        setPasskeyNameFormState(root, null);
+        await refresh();
+        setMessage(root, "success", "Passkey deleted after confirming another one worked.");
+      } catch (error) {
+        setMessage(
+          root,
+          "error",
+          error instanceof Error ? error.message : "Could not delete that passkey."
+        );
+      } finally {
+        toggleForms(root, false);
+      }
+    }
+  });
+
+  if (passkeyNameForm instanceof HTMLFormElement) {
+    passkeyNameForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const formData = new FormData(passkeyNameForm);
+      const passkeyName = String(formData.get("name") || "").trim();
+      const mode = passkeyNameForm.dataset.mode;
+      const passkeyId = passkeyNameForm.dataset.passkeyId;
+      if (!passkeyName) {
+        setMessage(root, "error", "Passkey name is required.");
+        const input = root.querySelector("[data-passkey-name-input]");
+        if (input instanceof HTMLInputElement) {
+          input.focus();
+        }
+        return;
+      }
+
+      toggleForms(root, true);
+      try {
+        if (mode === "rename") {
+          if (!passkeyId) {
+            throw new Error("Choose a passkey to rename first.");
+          }
+          await renamePasskey(root, passkeyId, passkeyName);
+        } else {
+          await addPasskey(root, passkeyName);
+        }
+        setPasskeyNameFormState(root, null);
+        await refresh();
+        setMessage(
+          root,
+          "success",
+          mode === "rename"
+            ? "Passkey renamed after confirming it still works."
+            : "Another passkey is ready to use."
+        );
+      } catch (error) {
+        setMessage(
+          root,
+          "error",
+          error instanceof Error
+            ? error.message
+            : mode === "rename"
+              ? "Could not rename that passkey."
+              : "Could not add another passkey."
+        );
+      } finally {
+        toggleForms(root, false);
+      }
+    });
+  }
+
+  return refresh();
 }
 
 async function addPasskey(root, name) {
@@ -549,7 +731,6 @@ async function initDashboard() {
 
   const householdForm = root.querySelector("[data-household-form]");
   const listForm = root.querySelector("[data-list-form]");
-  const passkeyNameForm = root.querySelector("[data-passkey-name-form]");
 
   const refresh = async () => {
     setDashboardMessage(root, "", "");
@@ -575,76 +756,6 @@ async function initDashboard() {
           root,
           "error",
           error instanceof Error ? error.message : "Could not create the invite link."
-        );
-      } finally {
-        toggleDashboardForms(root, false);
-      }
-      return;
-    }
-
-    const addPasskeyButton = event.target.closest("[data-passkey-add]");
-    if (addPasskeyButton) {
-      if (!window.PublicKeyCredential || !navigator.credentials) {
-        setDashboardMessage(root, "error", "This browser does not support passkeys.");
-        return;
-      }
-      setDashboardMessage(root, "", "");
-      setPasskeyNameFormState(root, {
-        mode: "add",
-        passkeyId: "",
-        title: "Name this passkey",
-        submitLabel: "Continue",
-        name: suggestedPasskeyName(root),
-      });
-      return;
-    }
-
-    const cancelPasskeyNameButton = event.target.closest("[data-passkey-name-cancel]");
-    if (cancelPasskeyNameButton) {
-      setDashboardMessage(root, "", "");
-      setPasskeyNameFormState(root, null);
-      return;
-    }
-
-    const renamePasskeyButton = event.target.closest("[data-passkey-rename]");
-    if (renamePasskeyButton) {
-      if (!window.PublicKeyCredential || !navigator.credentials) {
-        setDashboardMessage(root, "error", "This browser does not support passkeys.");
-        return;
-      }
-
-      const passkeyId = renamePasskeyButton.getAttribute("data-passkey-rename");
-      const currentName = renamePasskeyButton.getAttribute("data-passkey-current-name") || "";
-      setDashboardMessage(root, "", "");
-      setPasskeyNameFormState(root, {
-        mode: "rename",
-        passkeyId,
-        title: "Rename this passkey",
-        submitLabel: "Save and verify",
-        name: currentName,
-      });
-      return;
-    }
-
-    const deletePasskeyButton = event.target.closest("[data-passkey-delete]");
-    if (deletePasskeyButton) {
-      if (!window.PublicKeyCredential || !navigator.credentials) {
-        setDashboardMessage(root, "error", "This browser does not support passkeys.");
-        return;
-      }
-
-      const passkeyId = deletePasskeyButton.getAttribute("data-passkey-delete");
-      toggleDashboardForms(root, true);
-      try {
-        await deletePasskey(root, passkeyId);
-        setPasskeyNameFormState(root, null);
-        await refresh();
-        setDashboardMessage(root, "success", "Passkey deleted after confirming another one worked.");
-      } catch (error) {
-        setDashboardMessage(
-          root,
-          "error",
-          error instanceof Error ? error.message : "Could not delete that passkey."
         );
       } finally {
         toggleDashboardForms(root, false);
@@ -793,57 +904,6 @@ async function initDashboard() {
       toggleDashboardForms(root, false);
     }
   });
-
-  if (passkeyNameForm instanceof HTMLFormElement) {
-    passkeyNameForm.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const formData = new FormData(passkeyNameForm);
-      const passkeyName = String(formData.get("name") || "").trim();
-      const mode = passkeyNameForm.dataset.mode;
-      const passkeyId = passkeyNameForm.dataset.passkeyId;
-      if (!passkeyName) {
-        setDashboardMessage(root, "error", "Passkey name is required.");
-        const input = root.querySelector("[data-passkey-name-input]");
-        if (input instanceof HTMLInputElement) {
-          input.focus();
-        }
-        return;
-      }
-
-      toggleDashboardForms(root, true);
-      try {
-        if (mode === "rename") {
-          if (!passkeyId) {
-            throw new Error("Choose a passkey to rename first.");
-          }
-          await renamePasskey(root, passkeyId, passkeyName);
-        } else {
-          await addPasskey(root, passkeyName);
-        }
-        setPasskeyNameFormState(root, null);
-        await refresh();
-        setDashboardMessage(
-          root,
-          "success",
-          mode === "rename"
-            ? "Passkey renamed after confirming it still works."
-            : "Another passkey is ready to use."
-        );
-      } catch (error) {
-        setDashboardMessage(
-          root,
-          "error",
-          error instanceof Error
-            ? error.message
-            : mode === "rename"
-              ? "Could not rename that passkey."
-              : "Could not add another passkey."
-        );
-      } finally {
-        toggleDashboardForms(root, false);
-      }
-    });
-  }
 
   try {
     await refresh();
@@ -2264,6 +2324,7 @@ async function registerWithPasskey(root, form) {
 }
 
 async function loginWithPasskey(root, form) {
+  void form;
   const options = await postJson("/api/v1/auth/login/options", {});
   const credential = await navigator.credentials.get({
     publicKey: publicKeyFromJSON(options),
@@ -2328,7 +2389,7 @@ function initPasskeyAuth() {
     });
   });
 
-  root.querySelector("[data-passkey-register-button]").addEventListener("click", async () => {
+  root.querySelector("[data-passkey-register-button]")?.addEventListener("click", async () => {
     toggleButtons(root, true);
     try {
       await registerWithPasskey(root, registerForm);
@@ -2339,9 +2400,57 @@ function initPasskeyAuth() {
     }
   });
 
-  root
-    .querySelector("[data-passkey-login-button]")
-    .addEventListener("click", handlePasskeyLoginClick.bind(null, root, loginForm));
+  root.querySelector("[data-passkey-login-button]")?.addEventListener(
+    "click",
+    handlePasskeyLoginClick.bind(null, root, loginForm)
+  );
+}
+
+function setSettingsMessage(root, type, message) {
+  const errorNode = root.querySelector("[data-settings-error]");
+  const successNode = root.querySelector("[data-settings-success]");
+  if (!(errorNode instanceof HTMLElement) || !(successNode instanceof HTMLElement)) {
+    return;
+  }
+
+  errorNode.hidden = true;
+  successNode.hidden = true;
+  errorNode.textContent = "";
+  successNode.textContent = "";
+
+  if (type === "error") {
+    errorNode.hidden = false;
+    errorNode.textContent = message;
+    return;
+  }
+
+  successNode.hidden = false;
+  successNode.textContent = message;
+}
+
+function initUserSettings() {
+  const root = document.querySelector("[data-user-settings]");
+  if (!root) {
+    return;
+  }
+
+  if (!window.PublicKeyCredential || !navigator.credentials) {
+    setPasskeyManagementMessage(root, "error", "This browser does not support passkeys.");
+    toggleButtons(root, true);
+    return;
+  }
+
+  initPasskeyManagement(root, {
+    setMessage: setPasskeyManagementMessage,
+    toggleForms: togglePasskeyManagementForms,
+    refreshData: () => loadPasskeyManagementData(root),
+  }).catch((error) => {
+    setPasskeyManagementMessage(
+      root,
+      "error",
+      error instanceof Error ? error.message : "Could not load your passkeys."
+    );
+  });
 }
 
 function formatInviteExpiry(value) {
@@ -2405,6 +2514,7 @@ async function initHouseholdInvite() {
 
 function initApp() {
   initPasskeyAuth();
+  initUserSettings();
   initDashboard();
   initHouseholdInvite();
   initListDetail();
@@ -2486,8 +2596,9 @@ export {
   registerWithPasskey,
   loginWithPasskey,
   handlePasskeyLoginClick,
-  setAuthTab,
+  setSettingsMessage,
   initPasskeyAuth,
+  initUserSettings,
   formatInviteExpiry,
   initHouseholdInvite,
   initApp,
