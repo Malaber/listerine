@@ -250,6 +250,7 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
 
   await openSettingsPage(page);
   logStep("Deleting the original passkey using the second passkey as confirmation");
+  page.once("dialog", (dialog) => dialog.accept());
   await page.locator(".passkey-row").nth(0).getByRole("button", { name: "Delete" }).click();
   await expectVisible(
     page.locator("[data-passkey-success]", {

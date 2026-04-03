@@ -447,6 +447,11 @@ function renderPasskeys(root, passkeys) {
           class="danger-button"
           data-passkey-delete="${passkey.id}"
           data-passkey-locked="${passkeys.length <= 1 ? "true" : "false"}"
+          ${
+            passkeys.length <= 1
+              ? 'title="Add another passkey before deleting this one." aria-disabled="true"'
+              : ""
+          }
           ${passkeys.length <= 1 ? "disabled" : ""}
         >
           Delete
@@ -500,6 +505,12 @@ function setPasskeyNameFormState(root, state) {
     input.focus();
     input.select();
   }, 0);
+}
+
+function confirmPasskeyDeletion() {
+  return window.confirm(
+    "Before this passkey is removed, you must authenticate with another passkey to confirm it still works.\n\nContinue?"
+  );
 }
 
 async function copyText(value) {
@@ -617,6 +628,11 @@ function initPasskeyManagement(root, options = {}) {
     if (deletePasskeyButton) {
       if (!window.PublicKeyCredential || !navigator.credentials) {
         setMessage(root, "error", "This browser does not support passkeys.");
+        return;
+      }
+
+      if (!confirmPasskeyDeletion()) {
+        setMessage(root, "", "");
         return;
       }
 
@@ -2546,6 +2562,7 @@ export {
   renderPasskeys,
   suggestedPasskeyName,
   setPasskeyNameFormState,
+  confirmPasskeyDeletion,
   addPasskey,
   renamePasskey,
   deletePasskey,

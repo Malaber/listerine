@@ -399,6 +399,14 @@ main {
   background: #f8fafc;
 }
 
+.secondary-button:disabled {
+  border-color: #d7dee8;
+  background: #f8fafc;
+  color: #94a3b8;
+  cursor: not-allowed;
+  opacity: 1;
+}
+
 .primary-button,
 .dashboard-form button {
   border: 0;
@@ -1162,6 +1170,14 @@ main {
 .danger-button:hover {
   background: #ffe4e6;
   border-color: #fb7185;
+}
+
+.danger-button:disabled {
+  border-color: #fecdd3;
+  background: #fff5f6;
+  color: #f43f5e;
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 @media (max-width: 720px) {
