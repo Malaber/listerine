@@ -20,7 +20,7 @@ RUN python docker/export_runtime_requirements.py > docker/runtime-requirements.t
 COPY app ./app
 COPY alembic ./alembic
 COPY docker ./docker
-COPY scripts/export_seed_passkeys.py ./scripts
+COPY scripts/export_seed_passkeys.py ./scripts/export_seed_passkeys.py
 
 RUN SETUPTOOLS_SCM_PRETEND_VERSION=${LISTERINE_VERSION} pip install --no-deps . \
     && printf '%s\n' "${LISTERINE_VERSION}" > VERSION \
