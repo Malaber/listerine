@@ -26,7 +26,7 @@ The CI workflow includes a seeded Playwright browser flow. It:
 - seeds multiple households, lists, categories, checked items, and passkey-backed users
 - opens the app in Chromium with Playwright
 - verifies real passkey login, list interactions, websocket sync, and invite acceptance
-- records browser video and screenshots into the `browser-ui-e2e` artifact
+- runs the flow twice in CI (`desktop` and `iphone`), recording video and screenshots for both under the `browser-ui-e2e` artifact
 
 ## Local review-style seeded testing
 
