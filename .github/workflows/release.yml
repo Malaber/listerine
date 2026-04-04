@@ -34,74 +34,14 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+      - run: python -m pip install invoke
+      - run: python -m invoke bootstrap-ci
       - name: Compute release version
         id: version
         env:
           REF_NAME: ${{ github.ref_name }}
           RUN_NUMBER: ${{ github.run_number }}
-        run: |
-          python - <<'PY'
-          import os
-          import re
-          import subprocess
-
-          def tag_exists(tag: str) -> bool:
-              return subprocess.run(
-                  ["git", "rev-parse", "--verify", "--quiet", tag],
-                  check=False,
-                  stdout=subprocess.DEVNULL,
-                  stderr=subprocess.DEVNULL,
-              ).returncode == 0
-
-          def latest_stable_version() -> str:
-              stable_pattern = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
-              tags = subprocess.run(
-                  ["git", "tag", "--list", "v*"],
-                  check=True,
-                  capture_output=True,
-                  text=True,
-              ).stdout.splitlines()
-              versions = [
-                  tuple(map(int, match.groups()))
-                  for tag in tags
-                  if (match := stable_pattern.fullmatch(tag))
-              ]
-              if not versions:
-                  return "0.1.0"
-              major, minor, patch = max(versions)
-              return f"{major}.{minor}.{patch}"
-
-          def next_stable_version(version: str) -> str:
-              major, minor, patch = map(int, version.split("."))
-              patch += 1
-              candidate = f"{major}.{minor}.{patch}"
-              while tag_exists(f"v{candidate}"):
-                  patch += 1
-                  candidate = f"{major}.{minor}.{patch}"
-              return candidate
-
-          def next_rc_version(version: str, run_number: int) -> str:
-              rc_number = run_number
-              candidate = f"{version}-rc.{rc_number}"
-              while tag_exists(f"v{candidate}"):
-                  rc_number += 1
-                  candidate = f"{version}-rc.{rc_number}"
-              return candidate
-
-          base_version = next_stable_version(latest_stable_version())
-          ref_name = os.environ["REF_NAME"]
-          run_number = int(os.environ["RUN_NUMBER"])
-
-          if ref_name == "main":
-              release_version = base_version
-          else:
-              release_version = next_rc_version(base_version, run_number)
-
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
-              fh.write(f"base_version={base_version}\n")
-              fh.write(f"release_version={release_version}\n")
-              fh.write(f"git_tag=v{release_version}\n")
-          PY
+        run: python -m invoke compute-version
 
   docker_build_platform:
     runs-on: ubuntu-latest

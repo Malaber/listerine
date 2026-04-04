@@ -88,3 +88,35 @@ def test_read_pid_parses_integer_pid(tmp_path):
 
 def test_pid_is_running_reports_missing_process():
     assert tasks._pid_is_running(999999) is False
+
+
+def test_latest_stable_version_from_tags_defaults_when_no_stable_tags():
+    assert tasks._latest_stable_version_from_tags(["v1.2.3-rc.1", "notes"]) == "0.1.0"
+
+
+def test_compute_version_values_for_main_uses_next_stable_tag():
+    values = tasks._compute_version_values(
+        ref_name="main",
+        run_number=42,
+        tags=["v1.2.3", "v1.2.4-rc.1"],
+    )
+
+    assert values == {
+        "base_version": "1.2.4",
+        "release_version": "1.2.4",
+        "git_tag": "v1.2.4",
+    }
+
+
+def test_compute_version_values_for_branch_skips_existing_rc_tags():
+    values = tasks._compute_version_values(
+        ref_name="codex/workflows",
+        run_number=7,
+        tags=["v1.2.3", "v1.2.4-rc.7", "v1.2.4-rc.8"],
+    )
+
+    assert values == {
+        "base_version": "1.2.4",
+        "release_version": "1.2.4-rc.9",
+        "git_tag": "v1.2.4-rc.9",
+    }
