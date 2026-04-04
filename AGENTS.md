@@ -49,21 +49,21 @@ Use this sequence for reliable local verification:
    - If any of those commands print a production JS path, add or update the corresponding Node unit tests and run `npm run test:js`
 6. For the seeded browser e2e flow, prefer a fresh temporary SQLite database instead of reusing an
    old local file, because stale schema or stale seeded data can make the run misleading.
-7. Use the checked-in review seed fixture for browser e2e runs:
-   - `app/fixtures/review_seed.json`
+7. Use the checked-in e2e review seed fixture for browser e2e runs:
+   - `app/fixtures/review_seed_e2e.json`
 8. Local WebAuthn browser checks must use `localhost`, not `127.0.0.1`, for the browser-facing
    URL and RP ID. Chromium rejects passkey auth on `127.0.0.1` with an invalid-domain security
    error even if the server is bound there.
 9. Start the app locally with a dedicated temporary database and the seeded real-auth env vars:
-   - `SEED_DATA_PATH=app/fixtures/review_seed.json WEBAUTHN_RP_ID=localhost DATABASE_URL=sqlite+aiosqlite:///./tmp-ui-e2e-manual.db PYTHONPATH=. .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000`
+   - `SEED_DATA_PATH=app/fixtures/review_seed_e2e.json WEBAUTHN_RP_ID=localhost DATABASE_URL=sqlite+aiosqlite:///./tmp-ui-e2e-manual.db PYTHONPATH=. .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000`
 10. In a separate shell, switch to Node 24 and install the browser dependency if needed:
    - `nvm use 24`
    - `npm install --no-save playwright`
    - `npx playwright install chromium`
 11. Run the browser e2e flow against the normal login and dashboard routes:
-   - `PREVIEW_BASE_URL=http://localhost:8000 WEBAUTHN_RP_ID=localhost node scripts/run_ui_e2e.mjs`
+   - `PREVIEW_BASE_URL=http://localhost:8000 E2E_SEED_PATH=app/fixtures/review_seed_e2e.json WEBAUTHN_RP_ID=localhost node scripts/run_ui_e2e.mjs`
 12. The browser script reads the seeded account and passkey material from
-   `app/fixtures/review_seed.json`, installs those passkeys into Chromium's virtual authenticator,
+   `app/fixtures/review_seed_e2e.json`, installs those passkeys into Chromium's virtual authenticator,
    and signs in through the normal `/login` page.
 13. If you want a completely fresh run, delete `tmp-ui-e2e-manual.db` before restarting the app.
 14. Stop the local app after the e2e run completes.
@@ -71,6 +71,16 @@ Use this sequence for reliable local verification:
 This workflow is the preferred fallback whenever the default setup script or an old local database
 prevents the normal CI-like commands from succeeding.
 
+## Frontend styling
+
+- Shared web styling lives in `app/web/static/app.css`.
+- The site favicon is `app/web/static/img/Favicon.png`.
+- The primary logo/wordmark asset is `app/web/static/img/Listerine.png`.
+- Brand color tokens are defined at the top of `app/web/static/app.css` as CSS custom properties.
+- When updating the site palette, prefer changing those root tokens first so headers, buttons,
+  cards, focus states, and auth screens stay in sync.
+- If you update branding assets, make sure `app/web/templates/base.html` still points at the
+  current favicon and logo paths.
 
 ## Testing expectations
 
