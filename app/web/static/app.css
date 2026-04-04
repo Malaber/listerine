@@ -365,19 +365,23 @@ main {
 }
 
 .dashboard-banner {
+  border: 1px solid transparent;
   border-radius: 16px;
   padding: 0.9rem 1rem;
   font-weight: 700;
+  box-shadow: 0 10px 24px rgba(20, 42, 87, 0.08);
 }
 
 .dashboard-banner-error {
   background: #fff1f2;
+  border-color: rgba(190, 18, 60, 0.18);
   color: #be123c;
 }
 
 .dashboard-banner-success {
-  background: #ecfdf5;
-  color: #166534;
+  background: linear-gradient(180deg, rgba(168, 223, 62, 0.24), rgba(223, 248, 253, 0.92));
+  border-color: rgba(22, 101, 52, 0.22);
+  color: #14532d;
 }
 
 .dashboard-steps {
