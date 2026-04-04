@@ -144,14 +144,14 @@ def setup(c) -> None:
 def setup_venv(c, python_bin="python3.14") -> None:
     venv_dir = ROOT / ".venv"
     if not venv_dir.exists():
-        c.run(f"{shlex.quote(python_bin)} -m venv .venv", pty=False, shell="/bin/zsh")
+        c.run(f"{shlex.quote(python_bin)} -m venv .venv", pty=False, shell="/bin/bash")
 
     pip_path = ROOT / ".venv" / "bin" / "pip"
     c.run(
         f"{shlex.quote(str(pip_path))} install -e '.[dev]'",
         env=_pip_env(),
         pty=False,
-        shell="/bin/zsh",
+        shell="/bin/bash",
     )
 
 
@@ -178,12 +178,12 @@ def check_python(c) -> None:
 
 @task
 def install_js(c) -> None:
-    c.run(_node_command("npm ci"), pty=False, shell="/bin/zsh")
+    c.run(_node_command("npm ci"), pty=False, shell="/bin/bash")
 
 
 @task
 def check_js(c) -> None:
-    c.run(_node_command("npm run test:js"), pty=False, shell="/bin/zsh")
+    c.run(_node_command("npm run test:js"), pty=False, shell="/bin/bash")
 
 
 @task(help={"with_deps": "Use Playwright's system dependency install flow."})
@@ -192,7 +192,7 @@ def install_browser(c, with_deps=False) -> None:
     if with_deps:
         playwright_install = "npx --yes playwright install --with-deps chromium"
 
-    c.run(_node_command(playwright_install), pty=False, shell="/bin/zsh")
+    c.run(_node_command(playwright_install), pty=False, shell="/bin/bash")
 
 
 @task(
@@ -296,7 +296,7 @@ def run_browser_e2e(
             "WEBAUTHN_RP_ID": webauthn_rp_id,
         }
     )
-    c.run(_node_command("node scripts/run_ui_e2e.mjs"), env=env, pty=False, shell="/bin/zsh")
+    c.run(_node_command("node scripts/run_ui_e2e.mjs"), env=env, pty=False, shell="/bin/bash")
 
 
 @task(
