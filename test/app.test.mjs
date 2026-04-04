@@ -122,6 +122,18 @@ function settingsHtml() {
   `;
 }
 
+function passkeyResetHtml(token = "reset-token") {
+  return `
+    <section data-passkey-reset data-passkey-reset-token="${token}">
+      <p data-auth-error hidden></p>
+      <p data-auth-success hidden></p>
+      <form data-passkey-reset-form>
+        <button type="button" data-passkey-reset-button>Reset</button>
+      </form>
+    </section>
+  `;
+}
+
 function listDetailHtml() {
   return `
     <section data-list-detail data-list-id="list-1">
@@ -1761,6 +1773,54 @@ test("passkey login helpers and auth initialization handle supported and unsuppo
     delete globalThis.window.PublicKeyCredential;
     delete globalThis.navigator.credentials;
     await app.initPasskeyAuth();
+    assert.equal(root.querySelector("[data-auth-error]").textContent, "This browser does not support passkeys.");
+  } finally {
+    env.restore();
+  }
+});
+
+test("passkey reset helpers and initialization handle success and unsupported browsers", async () => {
+  const passkeyCalls = [];
+  const env = installDom(passkeyResetHtml(), {
+    fetch: async (url) => {
+      if (url === "/api/v1/auth/passkey-reset/reset-token/options") {
+        return createResponse({ jsonData: { challenge: "AQID", user: { id: "BAUG" } } });
+      }
+      if (url === "/api/v1/auth/passkey-reset/reset-token/verify") {
+        return createResponse({ jsonData: {} });
+      }
+      return createResponse({ jsonData: {} });
+    },
+  });
+
+  try {
+    const app = await loadApp();
+    env.dom.window.PublicKeyCredential = class {};
+    globalThis.window.PublicKeyCredential = env.dom.window.PublicKeyCredential;
+    globalThis.navigator.credentials = {
+      async create(options) {
+        passkeyCalls.push(["create", options.publicKey.challenge.length]);
+        return {
+          id: "cred-reset",
+          rawId: new Uint8Array([1, 2, 3]).buffer,
+          response: { attestationObject: new Uint8Array([4, 5, 6]) },
+        };
+      },
+    };
+
+    const root = document.querySelector("[data-passkey-reset]");
+
+    await app.resetPasskeyWithLink(root);
+    assert.deepEqual(passkeyCalls, [["create", 3]]);
+    assert.deepEqual(env.assigned, ["/"]);
+
+    await app.initPasskeyReset();
+    root.querySelector("[data-passkey-reset-button]").click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    delete globalThis.window.PublicKeyCredential;
+    delete globalThis.navigator.credentials;
+    await app.initPasskeyReset();
     assert.equal(root.querySelector("[data-auth-error]").textContent, "This browser does not support passkeys.");
   } finally {
     env.restore();

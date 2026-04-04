@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="dashboard-shell">
+  <div class="dashboard-hero">
+    <div class="dashboard-copy">
+      <p class="dashboard-kicker">Admin tools</p>
+      <h1>Passkey reset links</h1>
+      <p class="dashboard-intro">
+        Generate a one-time link for a specific account. The link stays valid for 24 hours unless it is used sooner.
+      </p>
+    </div>
+    <aside class="dashboard-card dashboard-card-accent">
+      <h2>Recovery flow</h2>
+      <p>Open the generated link on the target device to register a replacement passkey.</p>
+    </aside>
+  </div>
+
+  <section class="dashboard-card dashboard-account-card">
+    <div class="dashboard-section-heading">
+      <div>
+        <p class="dashboard-label">Generate</p>
+        <h2>Create a reset link</h2>
+      </div>
+      <a class="secondary-button" href="/admin">Back to admin</a>
+    </div>
+
+    {% if error_message %}
+    <div class="dashboard-banner dashboard-banner-error">{{ error_message }}</div>
+    {% endif %}
+
+    <form class="auth-form" method="post" action="/admin/passkey-reset-links">
+      <label class="auth-field">
+        <span>Account email</span>
+        <input type="email" name="email" value="{{ generated_email or '' }}" autocomplete="username" required />
+      </label>
+      <button type="submit">Generate reset link</button>
+    </form>
+
+    {% if generated_link %}
+    <div class="dashboard-banner dashboard-banner-success">
+      Reset link ready for <strong>{{ generated_email }}</strong>.
+    </div>
+    <label class="auth-field">
+      <span>Reset link</span>
+      <input type="text" value="{{ generated_link }}" readonly onclick="this.select()" />
+    </label>
+    <p class="dashboard-helper">Generating a new link for the same account invalidates the previous one.</p>
+    {% endif %}
+  </section>
+</section>
+{% endblock %}

@@ -3,8 +3,8 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from webauthn import (
@@ -28,6 +28,7 @@ from app.core.database import get_db
 from app.core.security import create_access_token
 from app.models import Passkey, User
 from app.services.auth_sessions import create_auth_session, revoke_auth_session
+from app.services.passkey_reset import clear_passkey_reset, get_user_for_passkey_reset_token
 from app.schemas.auth import (
     PasskeyFinishRequest,
     PasskeyLoginStartRequest,
@@ -47,6 +48,7 @@ _SETTINGS_SESSION_KEY = "passkey_settings"
 _PASSKEY_ADD_SESSION_KEY = "passkey_add"
 _PASSKEY_DELETE_SESSION_KEY = "passkey_delete"
 _PASSKEY_RENAME_SESSION_KEY = "passkey_rename"
+_PASSKEY_RESET_SESSION_KEY = "passkey_reset"
 _DEFAULT_INITIAL_PASSKEY_NAME = "Passkey 1"
 _REGISTRATION_FAILURE_DETAIL = (
     "Could not create that account. Try signing in with an existing "
@@ -497,6 +499,88 @@ async def finish_add_passkey(
     await db.refresh(passkey)
     request.session.pop(_PASSKEY_ADD_SESSION_KEY, None)
     return passkey
+
+
+@router.post("/passkey-reset/{token}/options")
+async def begin_passkey_reset(
+    token: str, request: Request, db: AsyncSession = Depends(get_db)
+) -> dict[str, object]:
+    user = await get_user_for_passkey_reset_token(db, token)
+    if user is None:
+        raise HTTPException(status_code=404, detail="Passkey reset link not found")
+
+    options = generate_registration_options(
+        rp_id=_rp_id_for_request(request),
+        rp_name=settings.app_name,
+        user_name=user.email,
+        user_id=user.id.bytes,
+        user_display_name=user.display_name,
+        authenticator_selection=AuthenticatorSelectionCriteria(
+            resident_key=ResidentKeyRequirement.REQUIRED,
+            user_verification=UserVerificationRequirement.REQUIRED,
+        ),
+    )
+    request.session[_PASSKEY_RESET_SESSION_KEY] = {
+        **_new_auth_flow_session(
+            challenge=bytes_to_base64url(options.challenge),
+            origin=_origin_for_request(request),
+            rp_id=_rp_id_for_request(request),
+            user_id=str(user.id),
+            token=token,
+        )
+    }
+    return json.loads(options_to_json(options))
+
+
+@router.post("/passkey-reset/{token}/verify", response_model=UserOut)
+async def finish_passkey_reset(
+    token: str, payload: PasskeyFinishRequest, request: Request, db: AsyncSession = Depends(get_db)
+) -> User:
+    pending = request.session.get(_PASSKEY_RESET_SESSION_KEY)
+    if not _auth_flow_session_is_valid(pending) or pending.get("token") != token:
+        request.session.pop(_PASSKEY_RESET_SESSION_KEY, None)
+        raise HTTPException(status_code=400, detail="Passkey reset session expired")
+
+    user = await get_user_for_passkey_reset_token(db, token, with_passkeys=True)
+    if user is None or pending.get("user_id") != str(user.id):
+        request.session.pop(_PASSKEY_RESET_SESSION_KEY, None)
+        raise HTTPException(status_code=404, detail="Passkey reset link not found")
+
+    try:
+        verified = verify_registration_response(
+            credential=payload.credential,
+            expected_challenge=base64url_to_bytes(pending["challenge"]),
+            expected_rp_id=pending["rp_id"],
+            expected_origin=pending["origin"],
+            require_user_verification=True,
+        )
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=400, detail="Passkey reset failed") from exc
+
+    credential_id = bytes_to_base64url(verified.credential_id)
+    existing_passkey = (
+        await db.execute(select(Passkey).where(Passkey.credential_id == credential_id))
+    ).scalar_one_or_none()
+    if existing_passkey is not None and existing_passkey.user_id != user.id:
+        raise HTTPException(status_code=400, detail="That passkey is already registered")
+
+    await db.execute(delete(Passkey).where(Passkey.user_id == user.id))
+    await db.flush()
+    user.passkeys = [
+        Passkey(
+            user_id=user.id,
+            name=_DEFAULT_INITIAL_PASSKEY_NAME,
+            credential_id=credential_id,
+            public_key=verified.credential_public_key,
+            sign_count=verified.sign_count,
+        )
+    ]
+    clear_passkey_reset(user)
+    await db.commit()
+    await db.refresh(user)
+    request.session.pop(_PASSKEY_RESET_SESSION_KEY, None)
+    await create_auth_session(request, db, user)
+    return user
 
 
 @router.post("/passkeys/{passkey_id}/rename/options")

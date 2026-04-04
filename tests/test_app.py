@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import re
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import UUID, uuid4
@@ -112,6 +113,12 @@ def _register_session_user(client, monkeypatch, email: str) -> UUID:
     )
     assert response.status_code == 200
     return UUID(response.json()["id"])
+
+
+def _extract_passkey_reset_token(html: str) -> str:
+    match = re.search(r'value="https?://[^"]+/passkey-reset/([^"]+)"', html)
+    assert match is not None
+    return match.group(1)
 
 
 async def _get_auth_session(user_id: UUID) -> AuthSession | None:
@@ -1718,6 +1725,121 @@ def test_admin_page_shows_application_link_for_admin(client, monkeypatch) -> Non
     assert "Go to application" in response.text
     assert "Listerine version:" in response.text
     assert "development" in response.text
+    assert 'href="/admin/passkey-reset-links"' in response.text
+    assert "Generate reset link" in response.text
+
+
+def test_admin_can_generate_passkey_reset_link_from_admin_frontend(client, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: _mock_verified_registration(),
+    )
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.settings.bootstrap_admin_email", "admin@example.com"
+    )
+
+    client.post(
+        "/api/v1/auth/register/options",
+        json={"email": "admin@example.com", "display_name": "Admin"},
+    )
+    verify = client.post("/api/v1/auth/register/verify", json=_passkey_finish_payload())
+    assert verify.status_code == 200
+
+    page = client.get("/admin/passkey-reset-links")
+    assert page.status_code == 200
+    assert "Create a reset link" in page.text
+
+    user_id = asyncio.run(_create_user("recover@example.com"))
+    response = client.post("/admin/passkey-reset-links", data={"email": "recover@example.com"})
+    assert response.status_code == 200
+    assert "Reset link ready for" in response.text
+
+    token = _extract_passkey_reset_token(response.text)
+
+    async def _load_user() -> User:
+        async with AsyncSessionLocal() as session:
+            user = await session.get(User, user_id)
+            assert user is not None
+            return user
+
+    user = asyncio.run(_load_user())
+    assert user.passkey_reset_token_hash == hashlib.sha256(token.encode("utf-8")).hexdigest()
+    assert user.passkey_reset_expires_at is not None
+    expires_at = user.passkey_reset_expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    assert expires_at > datetime.now(UTC) + timedelta(hours=23, minutes=59)
+    assert expires_at < datetime.now(UTC) + timedelta(hours=24, minutes=1)
+
+
+def test_passkey_reset_link_replaces_passkeys_and_clears_token(client, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: _mock_verified_registration(),
+    )
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.settings.bootstrap_admin_email", "admin@example.com"
+    )
+
+    client.post(
+        "/api/v1/auth/register/options",
+        json={"email": "admin@example.com", "display_name": "Admin"},
+    )
+    verify = client.post("/api/v1/auth/register/verify", json=_passkey_finish_payload())
+    assert verify.status_code == 200
+
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: SimpleNamespace(
+            credential_id=b"replacement-credential-id",
+            credential_public_key=b"replacement-public-key",
+            sign_count=7,
+        ),
+    )
+
+    target_user_id = asyncio.run(
+        _create_user(
+            "recover@example.com",
+            passkey_credential_ids=[
+                bytes_to_base64url(b"target-original-credential-id"),
+                bytes_to_base64url(b"target-second-credential-id"),
+            ],
+        )
+    )
+    generate = client.post("/admin/passkey-reset-links", data={"email": "recover@example.com"})
+    token = _extract_passkey_reset_token(generate.text)
+
+    reset_page = client.get(f"/passkey-reset/{token}")
+    assert reset_page.status_code == 200
+    assert 'data-passkey-reset-token="' in reset_page.text
+    assert "recover@example.com" in reset_page.text
+
+    options = client.post(f"/api/v1/auth/passkey-reset/{token}/options", json={})
+    assert options.status_code == 200
+
+    finish = client.post(
+        f"/api/v1/auth/passkey-reset/{token}/verify",
+        json=_passkey_finish_payload(bytes_to_base64url(b"replacement-credential-id")),
+    )
+    assert finish.status_code == 200
+    assert finish.json()["email"] == "recover@example.com"
+
+    async def _load_user_and_passkeys() -> tuple[User, list[Passkey]]:
+        async with AsyncSessionLocal() as session:
+            user = await session.get(User, target_user_id)
+            assert user is not None
+            result = await session.execute(select(Passkey).where(Passkey.user_id == target_user_id))
+            return user, list(result.scalars())
+
+    user, passkeys = asyncio.run(_load_user_and_passkeys())
+    assert user.passkey_reset_token_hash is None
+    assert user.passkey_reset_expires_at is None
+    assert len(passkeys) == 1
+    assert passkeys[0].name == "Passkey 1"
+    assert passkeys[0].credential_id == bytes_to_base64url(b"replacement-credential-id")
+
+    assert client.post(f"/api/v1/auth/passkey-reset/{token}/options", json={}).status_code == 404
+    assert client.get("/", follow_redirects=False).status_code == 200
 
 
 def test_admin_page_redirects_for_non_admin(client) -> None:
@@ -1725,6 +1847,149 @@ def test_admin_page_redirects_for_non_admin(client) -> None:
     response = client.get("/admin/", follow_redirects=False)
     assert response.status_code in {302, 303, 307}
     assert response.headers["location"] == "/login"
+
+
+def test_admin_passkey_reset_link_page_requires_admin_session(client, monkeypatch) -> None:
+    anonymous = client.get("/admin/passkey-reset-links", follow_redirects=False)
+    assert anonymous.status_code == 303
+    assert anonymous.headers["location"] == "/login"
+
+    anonymous_post = client.post(
+        "/admin/passkey-reset-links",
+        data={"email": "recover@example.com"},
+        follow_redirects=False,
+    )
+    assert anonymous_post.status_code == 303
+    assert anonymous_post.headers["location"] == "/login"
+
+    _register_session_user(client, monkeypatch, f"{uuid4()}@example.com")
+    non_admin = client.get("/admin/passkey-reset-links", follow_redirects=False)
+    assert non_admin.status_code == 303
+    assert non_admin.headers["location"] == "/"
+
+    non_admin_post = client.post(
+        "/admin/passkey-reset-links",
+        data={"email": "recover@example.com"},
+        follow_redirects=False,
+    )
+    assert non_admin_post.status_code == 303
+    assert non_admin_post.headers["location"] == "/"
+
+
+def test_admin_passkey_reset_link_generation_reports_missing_account(client, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: _mock_verified_registration(),
+    )
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.settings.bootstrap_admin_email", "admin@example.com"
+    )
+
+    client.post(
+        "/api/v1/auth/register/options",
+        json={"email": "admin@example.com", "display_name": "Admin"},
+    )
+    verify = client.post("/api/v1/auth/register/verify", json=_passkey_finish_payload())
+    assert verify.status_code == 200
+
+    response = client.post("/admin/passkey-reset-links", data={"email": "missing@example.com"})
+    assert response.status_code == 404
+    assert "No account found for that email address." in response.text
+
+
+def test_passkey_reset_flow_rejects_expired_or_missing_state(client, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: _mock_verified_registration(),
+    )
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.settings.bootstrap_admin_email", "admin@example.com"
+    )
+
+    client.post(
+        "/api/v1/auth/register/options",
+        json={"email": "admin@example.com", "display_name": "Admin"},
+    )
+    verify = client.post("/api/v1/auth/register/verify", json=_passkey_finish_payload())
+    assert verify.status_code == 200
+
+    target_user_id = asyncio.run(_create_user("recover@example.com"))
+    generate = client.post("/admin/passkey-reset-links", data={"email": "recover@example.com"})
+    token = _extract_passkey_reset_token(generate.text)
+
+    client.cookies.clear()
+    page = client.get(f"/passkey-reset/{token}", follow_redirects=False)
+    assert page.status_code == 200
+    assert "Create replacement passkey" in page.text
+
+    missing_state = client.post(
+        f"/api/v1/auth/passkey-reset/{token}/verify",
+        json=_passkey_finish_payload(),
+    )
+    assert missing_state.status_code == 400
+    assert missing_state.json()["detail"] == "Passkey reset session expired"
+
+    refresh_options = client.post(f"/api/v1/auth/passkey-reset/{token}/options", json={})
+    assert refresh_options.status_code == 200
+
+    async def _expire_link() -> None:
+        async with AsyncSessionLocal() as session:
+            user = await session.get(User, target_user_id)
+            assert user is not None
+            user.passkey_reset_expires_at = datetime.now(UTC) - timedelta(minutes=1)
+            await session.commit()
+
+    asyncio.run(_expire_link())
+
+    expired_verify = client.post(
+        f"/api/v1/auth/passkey-reset/{token}/verify",
+        json=_passkey_finish_payload(),
+    )
+    assert expired_verify.status_code == 404
+    assert expired_verify.json()["detail"] == "Passkey reset link not found"
+
+    expired_page = client.get(f"/passkey-reset/{token}", follow_redirects=False)
+    assert expired_page.status_code == 303
+    assert expired_page.headers["location"] == "/login"
+    assert client.post(f"/api/v1/auth/passkey-reset/{token}/options", json={}).status_code == 404
+
+
+def test_passkey_reset_rejects_credential_registered_to_another_account(
+    client, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: _mock_verified_registration(),
+    )
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.settings.bootstrap_admin_email", "admin@example.com"
+    )
+
+    client.post(
+        "/api/v1/auth/register/options",
+        json={"email": "admin@example.com", "display_name": "Admin"},
+    )
+    verify = client.post("/api/v1/auth/register/verify", json=_passkey_finish_payload())
+    assert verify.status_code == 200
+
+    asyncio.run(
+        _create_user(
+            "recover@example.com",
+            passkey_credential_ids=[bytes_to_base64url(b"target-original-credential-id")],
+        )
+    )
+    generate = client.post("/admin/passkey-reset-links", data={"email": "recover@example.com"})
+    token = _extract_passkey_reset_token(generate.text)
+
+    options = client.post(f"/api/v1/auth/passkey-reset/{token}/options", json={})
+    assert options.status_code == 200
+
+    finish = client.post(
+        f"/api/v1/auth/passkey-reset/{token}/verify",
+        json=_passkey_finish_payload(),
+    )
+    assert finish.status_code == 400
+    assert finish.json()["detail"] == "That passkey is already registered"
 
 
 def test_login_page_localhost_hint(client) -> None:
