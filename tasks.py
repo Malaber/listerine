@@ -176,10 +176,9 @@ def check_python(c) -> None:
     """Run the Python lint and test checks."""
 
 
-@task(help={"ci": "Use npm ci instead of npm install."})
-def install_js(c, ci=False) -> None:
-    install_command = "npm ci" if ci else "npm install"
-    c.run(_node_command(install_command), pty=False, shell="/bin/zsh")
+@task
+def install_js(c) -> None:
+    c.run(_node_command("npm ci"), pty=False, shell="/bin/zsh")
 
 
 @task
@@ -189,11 +188,10 @@ def check_js(c) -> None:
 
 @task(help={"with_deps": "Use Playwright's system dependency install flow."})
 def install_browser(c, with_deps=False) -> None:
-    playwright_install = "npx playwright install chromium"
+    playwright_install = "npx --yes playwright install chromium"
     if with_deps:
-        playwright_install = "npx playwright install --with-deps chromium"
+        playwright_install = "npx --yes playwright install --with-deps chromium"
 
-    c.run(_node_command("npm install --no-save playwright"), pty=False, shell="/bin/zsh")
     c.run(_node_command(playwright_install), pty=False, shell="/bin/zsh")
 
 

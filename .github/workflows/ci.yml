@@ -45,7 +45,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - run: python -m pip install invoke
-      - run: python -m invoke install-js --ci
+      - run: python -m invoke install-js
       - run: python -m invoke check-js
 
   browser_e2e:
@@ -65,7 +65,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - run: ./scripts/setup_env.sh
-      - run: python -m invoke install-js --ci
+      - run: python -m invoke install-js
       - run: python -m invoke install-browser --with-deps
       - name: Run browser ui e2e
         run: >-
