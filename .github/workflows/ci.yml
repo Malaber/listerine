@@ -25,6 +25,7 @@ env:
 
 jobs:
   python_test:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -37,6 +38,7 @@ jobs:
       - run: PYTHONPATH=. pytest
 
   javascript_test:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -47,6 +49,7 @@ jobs:
       - run: npm run test:js
 
   browser_e2e:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     env:
       PYTHON_VERSION: '3.14'
@@ -105,6 +108,7 @@ jobs:
           fi
 
   swift_test:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     container:
       image: swift:6.2
@@ -114,6 +118,7 @@ jobs:
         run: cd ios/ListerineIOS && ./Scripts/check_coverage.sh
 
   version:
+    if: github.event_name == 'pull_request' || github.ref_name == 'main'
     runs-on: ubuntu-latest
     outputs:
       base_version: ${{ steps.version.outputs.base_version }}
