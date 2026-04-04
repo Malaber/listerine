@@ -50,6 +50,12 @@ Run the browser flow:
 PREVIEW_BASE_URL=http://localhost:8000 WEBAUTHN_RP_ID=localhost node scripts/run_ui_e2e.mjs
 ```
 
+Run the same flow in iPhone emulation:
+
+```bash
+PREVIEW_BASE_URL=http://localhost:8000 WEBAUTHN_RP_ID=localhost E2E_DEVICE=iphone PREVIEW_ARTIFACT_DIR=e2e-artifacts/ui-e2e-iphone node scripts/run_ui_e2e.mjs
+```
+
 ## CI-aligned local verification order
 
 When you want a full local pre-push pass, use this order:
