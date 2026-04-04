@@ -188,9 +188,9 @@ def check_js(c) -> None:
 
 @task(help={"with_deps": "Use Playwright's system dependency install flow."})
 def install_browser(c, with_deps=False) -> None:
-    playwright_install = "npx --yes playwright install chromium"
+    playwright_install = "npx playwright install chromium"
     if with_deps:
-        playwright_install = "npx --yes playwright install --with-deps chromium"
+        playwright_install = "npx playwright install --with-deps chromium"
 
     c.run(_node_command(playwright_install), pty=False, shell="/bin/bash")
 
