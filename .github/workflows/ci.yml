@@ -27,19 +27,21 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - run: ./scripts/setup_env.sh
-      - run: PYTHONPATH=. black --check .
-      - run: PYTHONPATH=. flake8 .
-      - run: PYTHONPATH=. pytest
+      - run: python -m invoke check-python
 
   javascript_test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-      - run: npm ci
-      - run: npm run test:js
+      - run: python -m pip install invoke
+      - run: python -m invoke install-js
+      - run: python -m invoke check-js
 
   browser_e2e:
     runs-on: ubuntu-latest
@@ -58,25 +60,15 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - run: ./scripts/setup_env.sh
-      - run: npm install --no-save playwright
-      - run: npx playwright install --with-deps chromium
-      - name: Start review app
-        run: |
-          PYTHONPATH=. uvicorn app.main:app --host 127.0.0.1 --port 8000 > ui-e2e-server.log 2>&1 &
-          echo $! > ui-e2e-server.pid
-      - name: Wait for review app
-        run: |
-          for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:8000/health > /dev/null; then
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "Review app never became healthy" >&2
-          cat ui-e2e-server.log >&2
-          exit 1
+      - run: python -m invoke install-js
+      - run: python -m invoke install-browser --with-deps
       - name: Run browser ui e2e
-        run: PREVIEW_BASE_URL=http://localhost:8000 E2E_SEED_PATH=app/fixtures/review_seed_e2e.json node scripts/run_ui_e2e.mjs
+        run: >-
+          python -m invoke check-browser-e2e
+          --seed-path=${{ env.SEED_DATA_PATH }}
+          --e2e-seed-path=${{ env.SEED_DATA_PATH }}
+          --database-url=${{ env.DATABASE_URL }}
+          --webauthn-rp-id=${{ env.WEBAUTHN_RP_ID }}
       - name: Upload browser artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -91,12 +83,6 @@ jobs:
         run: |
           if [ -f e2e-artifacts/ui-e2e/summary.md ]; then
             cat e2e-artifacts/ui-e2e/summary.md >> "$GITHUB_STEP_SUMMARY"
-          fi
-      - name: Stop review app
-        if: always()
-        run: |
-          if [ -f ui-e2e-server.pid ]; then
-            kill "$(cat ui-e2e-server.pid)" || true
           fi
 
   swift_test:
