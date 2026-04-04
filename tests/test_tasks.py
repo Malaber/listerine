@@ -46,6 +46,7 @@ def test_node_command_wraps_repo_command():
     command = tasks._node_command("npm run test:js")
 
     assert "nvm use 24" in command
+    assert 'elif [ -s "$HOME/.nvm/nvm.sh" ]' in command
     assert "Node 24.x is required" in command
     assert command.endswith("&& npm run test:js")
 

@@ -69,15 +69,15 @@ def _pip_env() -> dict[str, str]:
 
 def _node_bootstrap() -> str:
     version_check = (
-        "node -e \"const major = Number(process.versions.node.split('.')[0]); "
-        "if (major !== 24) { "
-        "console.error('Node 24.x is required. Run `nvm use 24` or equivalent first.'); "
-        "process.exit(1); "
-        '}"'
+        "node -e \"process.exit(Number(process.versions.node.split('.')[0]) === 24 ? 0 : 1)\""
     )
     return (
-        'if [ -s "$HOME/.nvm/nvm.sh" ]; then '
+        f"if {version_check}; then true; "
+        'elif [ -s "$HOME/.nvm/nvm.sh" ]; then '
         'source "$HOME/.nvm/nvm.sh" && nvm use 24 >/dev/null; '
+        "else "
+        "echo 'Node 24.x is required. Run `nvm use 24` or equivalent first.' >&2; "
+        "exit 1; "
         "fi && "
         f"{version_check}"
     )
