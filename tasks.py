@@ -14,6 +14,7 @@ try:
     from invoke import task
     from invoke.exceptions import Exit
 except ModuleNotFoundError:  # pragma: no cover - bootstrap fallback before dev deps are installed.
+
     class Exit(RuntimeError):
         pass
 
@@ -68,10 +69,10 @@ def _pip_env() -> dict[str, str]:
 
 def _node_bootstrap() -> str:
     version_check = (
-        'node -e "const major = Number(process.versions.node.split(\'.\')[0]); '
-        'if (major !== 24) { '
-        'console.error(\'Node 24.x is required. Run `nvm use 24` or equivalent first.\'); '
-        'process.exit(1); '
+        "node -e \"const major = Number(process.versions.node.split('.')[0]); "
+        "if (major !== 24) { "
+        "console.error('Node 24.x is required. Run `nvm use 24` or equivalent first.'); "
+        "process.exit(1); "
         '}"'
     )
     return (
@@ -84,6 +85,10 @@ def _node_bootstrap() -> str:
 
 def _node_command(command: str) -> str:
     return f"{_node_bootstrap()} && {command}"
+
+
+def _black_command(*args: str) -> str:
+    return " ".join([shlex.quote(_tool_path("black")), *args])
 
 
 def _app_env(
@@ -152,13 +157,18 @@ def setup_venv(c, python_bin="python3.14") -> None:
 
 @task
 def lint_python(c) -> None:
-    c.run(f"{shlex.quote(_tool_path('black'))} --check .", env=_python_env(), pty=False)
+    c.run(_black_command("--check", "."), env=_python_env(), pty=False)
     c.run(f"{shlex.quote(_tool_path('flake8'))} .", env=_python_env(), pty=False)
 
 
 @task
 def test_python(c) -> None:
     c.run(f"{shlex.quote(_tool_path('pytest'))} -q", env=_python_env(), pty=False)
+
+
+@task
+def format_python(c) -> None:
+    c.run(_black_command("."), env=_python_env(), pty=False)
 
 
 @task(pre=[lint_python, test_python])

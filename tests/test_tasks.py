@@ -50,6 +50,14 @@ def test_node_command_wraps_repo_command():
     assert command.endswith("&& npm run test:js")
 
 
+def test_black_command_uses_repo_black_binary():
+    command = tasks._black_command("--check", ".")
+
+    assert "--check" in command
+    assert command.endswith(" .")
+    assert "black" in command
+
+
 def test_app_env_sets_ci_aligned_runtime_values(monkeypatch):
     monkeypatch.setenv("EXISTING", "1")
 
