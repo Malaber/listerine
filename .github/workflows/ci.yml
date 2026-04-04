@@ -65,34 +65,12 @@ jobs:
       - run: ./scripts/setup_env.sh
       - run: npm install --no-save playwright
       - run: npx playwright install --with-deps chromium
-      - name: Start review app
+      - name: Run browser ui e2e (desktop + iphone)
         run: |
-          PYTHONPATH=. uvicorn app.main:app --host 127.0.0.1 --port 8000 > ui-e2e-server.log 2>&1 &
-          echo $! > ui-e2e-server.pid
-      - name: Wait for review app
-        run: |
-          for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:8000/health > /dev/null; then
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "Review app never became healthy" >&2
-          cat ui-e2e-server.log >&2
-          exit 1
-      - name: Run browser ui e2e (desktop)
-        run: |
-          PREVIEW_BASE_URL=http://localhost:8000 \
-          E2E_SEED_PATH=app/fixtures/review_seed_e2e.json \
-          PREVIEW_ARTIFACT_DIR=e2e-artifacts/ui-e2e-desktop \
-          node scripts/run_ui_e2e.mjs
-      - name: Run browser ui e2e (iphone)
-        run: |
-          PREVIEW_BASE_URL=http://localhost:8000 \
-          E2E_SEED_PATH=app/fixtures/review_seed_e2e.json \
-          E2E_DEVICE=iphone \
-          PREVIEW_ARTIFACT_DIR=e2e-artifacts/ui-e2e-iphone \
-          node scripts/run_ui_e2e.mjs
+          inv browser-e2e \
+            --base-url=http://localhost:8000 \
+            --seed-path=app/fixtures/review_seed_e2e.json \
+            --artifact-root=e2e-artifacts
       - name: Upload browser artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -115,13 +93,6 @@ jobs:
             echo "### iPhone UI e2e" >> "$GITHUB_STEP_SUMMARY"
             cat e2e-artifacts/ui-e2e-iphone/summary.md >> "$GITHUB_STEP_SUMMARY"
           fi
-      - name: Stop review app
-        if: always()
-        run: |
-          if [ -f ui-e2e-server.pid ]; then
-            kill "$(cat ui-e2e-server.pid)" || true
-          fi
-
   swift_test:
     runs-on: ubuntu-latest
     container:

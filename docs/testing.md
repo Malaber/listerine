@@ -44,16 +44,10 @@ Start the app:
 SEED_DATA_PATH=app/fixtures/review_seed.json WEBAUTHN_RP_ID=localhost DATABASE_URL=sqlite+aiosqlite:///./tmp-ui-e2e.db PYTHONPATH=. .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Run the browser flow:
+Run both desktop and iPhone flows (matching CI):
 
 ```bash
-PREVIEW_BASE_URL=http://localhost:8000 WEBAUTHN_RP_ID=localhost node scripts/run_ui_e2e.mjs
-```
-
-Run the same flow in iPhone emulation:
-
-```bash
-PREVIEW_BASE_URL=http://localhost:8000 WEBAUTHN_RP_ID=localhost E2E_DEVICE=iphone PREVIEW_ARTIFACT_DIR=e2e-artifacts/ui-e2e-iphone node scripts/run_ui_e2e.mjs
+WEBAUTHN_RP_ID=localhost inv browser-e2e --base-url=http://localhost:8000 --seed-path=app/fixtures/review_seed_e2e.json --artifact-root=e2e-artifacts
 ```
 
 ## CI-aligned local verification order
