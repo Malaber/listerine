@@ -106,6 +106,17 @@ function settingsHtml() {
         <div data-passkey-list></div>
         <div data-passkey-error hidden></div>
         <div data-passkey-success hidden></div>
+        <div data-passkey-delete-overlay hidden>
+          <button type="button" data-passkey-delete-close>Close delete</button>
+          <section data-passkey-delete-panel hidden>
+            <strong data-passkey-delete-name></strong>
+            <p data-passkey-delete-copy>
+              You must authenticate with another passkey to confirm you still have a working Passkey after deleting one.
+            </p>
+            <button type="button" data-passkey-delete-confirm>Continue to verification</button>
+            <button type="button" data-passkey-delete-close>Cancel</button>
+          </section>
+        </div>
       </section>
     </section>
   `;
@@ -763,6 +774,87 @@ test("initUserSettings handles passkey naming form cancel and blank input", asyn
     root.querySelector('[data-passkey-rename="passkey-1"]').click();
     assert.equal(root.querySelector("[data-passkey-name-title]").textContent, "Rename this passkey");
     assert.equal(root.querySelector("[data-passkey-name-submit]").textContent, "Save and verify");
+  } finally {
+    env.restore();
+  }
+});
+
+test("initUserSettings explains passkey deletion before WebAuthn and keeps last delete visibly locked", async () => {
+  const fetchLog = [];
+  const env = installDom(settingsHtml(), {
+    fetch: async (url, options = {}) => {
+      fetchLog.push([url, options.method || "GET"]);
+      if (url === "/api/v1/auth/passkeys" && (!options.method || options.method === "GET")) {
+        return createResponse({
+          jsonData:
+            fetchLog.filter(([entry]) => entry === "/api/v1/auth/passkeys").length === 1
+              ? [
+                  { id: "passkey-1", name: "Phone", created_at: "2024-01-01T00:00:00Z", last_used_at: null },
+                  { id: "passkey-2", name: "Laptop", created_at: "2024-01-02T00:00:00Z", last_used_at: null },
+                ]
+              : [{ id: "passkey-2", name: "Laptop", created_at: "2024-01-02T00:00:00Z", last_used_at: null }],
+        });
+      }
+      if (url === "/api/v1/auth/passkeys/passkey-1/delete/options" && options.method === "POST") {
+        return createResponse({ jsonData: { challenge: "AQID", allowCredentials: [{ id: "BwgJ" }] } });
+      }
+      if (url === "/api/v1/auth/passkeys/passkey-1/delete/verify" && options.method === "POST") {
+        return createResponse({ jsonData: { message: "passkey deleted" } });
+      }
+      throw new Error(`Unexpected fetch ${url}`);
+    },
+  });
+
+  try {
+    const app = await loadApp();
+    globalThis.window.PublicKeyCredential = class {};
+    globalThis.navigator.credentials = {
+      get: async () => ({
+        id: "cred-verified",
+        rawId: new Uint8Array([1, 2, 3]).buffer,
+        response: { authenticatorData: new Uint8Array([4, 5, 6]) },
+      }),
+    };
+
+    await app.initUserSettings();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const root = document.querySelector("[data-user-settings]");
+    root.querySelector('[data-passkey-delete="passkey-1"]').click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(root.querySelector("[data-passkey-delete-overlay]").hidden, false);
+    assert.equal(root.querySelector("[data-passkey-delete-panel]").hidden, false);
+    assert.equal(root.querySelector("[data-passkey-delete-name]").textContent, "Phone");
+    assert.match(
+      root.querySelector("[data-passkey-delete-copy]").textContent,
+      /working Passkey after deleting one/,
+    );
+    assert.deepEqual(
+      fetchLog.filter(([url]) => url.includes("/delete/options")),
+      [],
+    );
+
+    root.querySelector("[data-passkey-delete-close]").click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(root.querySelector("[data-passkey-delete-overlay]").hidden, true);
+
+    root.querySelector('[data-passkey-delete="passkey-1"]').click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    root.querySelector("[data-passkey-delete-confirm]").click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.deepEqual(
+      fetchLog.filter(([url]) => url.includes("/delete/options")),
+      [["/api/v1/auth/passkeys/passkey-1/delete/options", "POST"]],
+    );
+    assert.equal(
+      root.querySelector("[data-passkey-success]").textContent,
+      "Passkey deleted after confirming another one worked.",
+    );
+
+    const lockedDeleteButton = root.querySelector('[data-passkey-delete="passkey-2"]');
+    assert.equal(lockedDeleteButton.disabled, true);
+    assert.equal(lockedDeleteButton.getAttribute("title"), "Add another passkey before deleting this one.");
+    assert.equal(lockedDeleteButton.getAttribute("aria-disabled"), "true");
   } finally {
     env.restore();
   }

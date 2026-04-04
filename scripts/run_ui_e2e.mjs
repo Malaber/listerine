@@ -252,6 +252,14 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
   logStep("Deleting the original passkey using the second passkey as confirmation");
   await page.locator(".passkey-row").nth(0).getByRole("button", { name: "Delete" }).click();
   await expectVisible(
+    page.locator("[data-passkey-delete-panel]", {
+      hasText:
+        "You must authenticate with another passkey to confirm you still have a working Passkey after deleting one.",
+    }),
+    "Expected passkey delete confirmation modal",
+  );
+  await page.getByRole("button", { name: "Continue to verification" }).click();
+  await expectVisible(
     page.locator("[data-passkey-success]", {
       hasText: "Passkey deleted after confirming another one worked.",
     }),
