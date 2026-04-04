@@ -122,13 +122,13 @@ function settingsHtml() {
   `;
 }
 
-function passkeyResetHtml(token = "reset-token") {
+function passkeyAddLinkHtml(token = "add-token") {
   return `
-    <section data-passkey-reset data-passkey-reset-token="${token}">
+    <section data-passkey-add-link data-passkey-add-token="${token}">
       <p data-auth-error hidden></p>
       <p data-auth-success hidden></p>
-      <form data-passkey-reset-form>
-        <button type="button" data-passkey-reset-button>Reset</button>
+      <form data-passkey-add-link-form>
+        <button type="button" data-passkey-add-link-button>Add</button>
       </form>
     </section>
   `;
@@ -1779,14 +1779,14 @@ test("passkey login helpers and auth initialization handle supported and unsuppo
   }
 });
 
-test("passkey reset helpers and initialization handle success and unsupported browsers", async () => {
+test("passkey add-link helpers and initialization handle success and unsupported browsers", async () => {
   const passkeyCalls = [];
-  const env = installDom(passkeyResetHtml(), {
+  const env = installDom(passkeyAddLinkHtml(), {
     fetch: async (url) => {
-      if (url === "/api/v1/auth/passkey-reset/reset-token/options") {
+      if (url === "/api/v1/auth/passkey-add/add-token/options") {
         return createResponse({ jsonData: { challenge: "AQID", user: { id: "BAUG" } } });
       }
-      if (url === "/api/v1/auth/passkey-reset/reset-token/verify") {
+      if (url === "/api/v1/auth/passkey-add/add-token/verify") {
         return createResponse({ jsonData: {} });
       }
       return createResponse({ jsonData: {} });
@@ -1808,19 +1808,19 @@ test("passkey reset helpers and initialization handle success and unsupported br
       },
     };
 
-    const root = document.querySelector("[data-passkey-reset]");
+    const root = document.querySelector("[data-passkey-add-link]");
 
-    await app.resetPasskeyWithLink(root);
+    await app.addPasskeyWithLink(root);
     assert.deepEqual(passkeyCalls, [["create", 3]]);
     assert.deepEqual(env.assigned, ["/"]);
 
-    await app.initPasskeyReset();
-    root.querySelector("[data-passkey-reset-button]").click();
+    await app.initPasskeyAddLink();
+    root.querySelector("[data-passkey-add-link-button]").click();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     delete globalThis.window.PublicKeyCredential;
     delete globalThis.navigator.credentials;
-    await app.initPasskeyReset();
+    await app.initPasskeyAddLink();
     assert.equal(root.querySelector("[data-auth-error]").textContent, "This browser does not support passkeys.");
   } finally {
     env.restore();

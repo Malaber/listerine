@@ -132,10 +132,8 @@ async def invite_detail(
     )
 
 
-@router.get("/admin/passkey-reset-links", response_class=HTMLResponse, response_model=None)
-async def admin_passkey_reset_links(
-    request: Request, db: AsyncSession = Depends(get_db)
-) -> Response:
+@router.get("/admin/passkey-add-links", response_class=HTMLResponse, response_model=None)
+async def admin_passkey_add_links(request: Request, db: AsyncSession = Depends(get_db)) -> Response:
     admin_user = await _require_admin_session_user(request, db)
     if isinstance(admin_user, Response):
         return admin_user
@@ -151,8 +149,8 @@ async def admin_passkey_reset_links(
     )
 
 
-@router.post("/admin/passkey-reset-links", response_class=HTMLResponse, response_model=None)
-async def create_admin_passkey_reset_link(
+@router.post("/admin/passkey-add-links", response_class=HTMLResponse, response_model=None)
+async def create_admin_passkey_add_link(
     request: Request,
     email: str = Form(...),
     db: AsyncSession = Depends(get_db),
@@ -180,7 +178,7 @@ async def create_admin_passkey_reset_link(
     token = create_passkey_reset_token()
     set_passkey_reset(user, token)
     await db.commit()
-    reset_link = str(request.base_url).rstrip("/") + f"/passkey-reset/{token}"
+    reset_link = str(request.base_url).rstrip("/") + f"/passkey-add/{token}"
     return templates.TemplateResponse(
         request,
         "admin_passkey_reset_links.html",
@@ -193,8 +191,8 @@ async def create_admin_passkey_reset_link(
     )
 
 
-@router.get("/passkey-reset/{token}", response_class=HTMLResponse, response_model=None)
-async def passkey_reset_page(
+@router.get("/passkey-add/{token}", response_class=HTMLResponse, response_model=None)
+async def passkey_add_page(
     request: Request, token: str, db: AsyncSession = Depends(get_db)
 ) -> Response:
     user = await get_user_for_passkey_reset_token(db, token)

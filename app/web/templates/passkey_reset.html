@@ -1,20 +1,20 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="auth-shell" data-passkey-reset data-passkey-reset-token="{{ token }}">
+<section class="auth-shell" data-passkey-add-link data-passkey-add-token="{{ token }}">
   <div class="auth-copy">
-    <h1>Reset passkey</h1>
-    <p>This recovery link was created for <strong>{{ email }}</strong>.</p>
-    <h2>Register a replacement passkey</h2>
-    <p>Finishing this flow replaces the passkeys currently attached to {{ display_name }}'s account.</p>
+    <h1>Add passkey</h1>
+    <p>This one-time link was created for <strong>{{ email }}</strong>.</p>
+    <h2>Register another passkey</h2>
+    <p>Finishing this flow adds a new passkey to {{ display_name }}'s account. Existing passkeys stay available.</p>
   </div>
 
   <section class="auth-card auth-card-primary">
     <p class="auth-banner auth-banner-error" data-auth-error hidden></p>
     <p class="auth-banner auth-banner-success" data-auth-success hidden></p>
-    <h2>Create replacement passkey</h2>
-    <p>Use the browser or password manager that should keep access to this account going forward.</p>
-    <form class="auth-form" data-passkey-reset-form>
-      <button type="button" data-passkey-reset-button>Create replacement passkey</button>
+    <h2>Create another passkey</h2>
+    <p>Use the browser or password manager that should get access to this account.</p>
+    <form class="auth-form" data-passkey-add-link-form>
+      <button type="button" data-passkey-add-link-button>Create additional passkey</button>
     </form>
   </section>
 </section>

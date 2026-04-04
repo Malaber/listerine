@@ -2411,20 +2411,20 @@ async function loginWithPasskey(root, form) {
   navigateTo(root.getAttribute("data-next-url") || "/");
 }
 
-async function resetPasskeyWithLink(root) {
-  const token = root.getAttribute("data-passkey-reset-token");
+async function addPasskeyWithLink(root) {
+  const token = root.getAttribute("data-passkey-add-token");
   if (!token) {
-    throw new Error("Passkey reset link is missing.");
+    throw new Error("Passkey add link is missing.");
   }
 
-  const options = await postJson(`/api/v1/auth/passkey-reset/${token}/options`, {});
+  const options = await postJson(`/api/v1/auth/passkey-add/${token}/options`, {});
   const credential = await navigator.credentials.create({
     publicKey: publicKeyFromJSON(options),
   });
-  await postJson(`/api/v1/auth/passkey-reset/${token}/verify`, {
+  await postJson(`/api/v1/auth/passkey-add/${token}/verify`, {
     credential: credentialToJSON(credential),
   });
-  setMessage(root, "success", "Replacement passkey created. Redirecting to your dashboard...");
+  setMessage(root, "success", "Additional passkey created. Redirecting to your dashboard...");
   navigateTo("/");
 }
 
@@ -2498,8 +2498,8 @@ function initPasskeyAuth() {
   );
 }
 
-function initPasskeyReset() {
-  const root = document.querySelector("[data-passkey-reset]");
+function initPasskeyAddLink() {
+  const root = document.querySelector("[data-passkey-add-link]");
   if (!root) {
     return;
   }
@@ -2510,12 +2510,12 @@ function initPasskeyReset() {
     return;
   }
 
-  root.querySelector("[data-passkey-reset-button]")?.addEventListener("click", async () => {
+  root.querySelector("[data-passkey-add-link-button]")?.addEventListener("click", async () => {
     toggleButtons(root, true);
     try {
-      await resetPasskeyWithLink(root);
+      await addPasskeyWithLink(root);
     } catch (error) {
-      setMessage(root, "error", error instanceof Error ? error.message : "Passkey reset failed.");
+      setMessage(root, "error", error instanceof Error ? error.message : "Passkey add failed.");
     } finally {
       toggleButtons(root, false);
     }
@@ -2630,7 +2630,7 @@ async function initHouseholdInvite() {
 
 function initApp() {
   initPasskeyAuth();
-  initPasskeyReset();
+  initPasskeyAddLink();
   initUserSettings();
   initDashboard();
   initHouseholdInvite();
@@ -2713,11 +2713,11 @@ export {
   initListDetail,
   registerWithPasskey,
   loginWithPasskey,
-  resetPasskeyWithLink,
+  addPasskeyWithLink,
   handlePasskeyLoginClick,
   setSettingsMessage,
   initPasskeyAuth,
-  initPasskeyReset,
+  initPasskeyAddLink,
   initUserSettings,
   formatInviteExpiry,
   initHouseholdInvite,
