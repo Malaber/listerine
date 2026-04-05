@@ -11,12 +11,13 @@ WORKDIR /app
 RUN addgroup --system app && adduser --system --ingroup app app
 RUN mkdir /data && chown app:app /data
 
-COPY pyproject.toml README.md alembic.ini ./
+COPY pyproject.toml ./
 COPY docker/export_runtime_requirements.py ./docker/export_runtime_requirements.py
 
 RUN python docker/export_runtime_requirements.py > docker/runtime-requirements.txt \
     && pip install -r docker/runtime-requirements.txt
 
+COPY README.md alembic.ini ./
 COPY app ./app
 COPY alembic ./alembic
 COPY docker ./docker

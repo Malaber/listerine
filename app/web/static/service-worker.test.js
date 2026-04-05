@@ -112,18 +112,21 @@ test("service worker precaches shell assets and skips waiting", async () => {
 
   await dispatchExtendableEvent(harness.listeners.get("install"));
 
-  assert.deepEqual(harness.addAllCalls, [
-    [
-      "/manifest.webmanifest",
-      "/static/app.css",
-      "/static/app.js",
-      "/static/img/Favicon.png",
-      "/static/img/Listerine.png",
-      "/static/img/apple-touch-icon.png",
-      "/static/img/pwa-192.png",
-      "/static/img/pwa-512.png",
-    ],
-  ]);
+  assert.equal(
+    JSON.stringify(harness.addAllCalls),
+    JSON.stringify([
+      [
+        "/manifest.webmanifest",
+        "/static/app.css",
+        "/static/app.js",
+        "/static/img/Favicon.png",
+        "/static/img/Listerine.png",
+        "/static/img/apple-touch-icon.png",
+        "/static/img/pwa-192.png",
+        "/static/img/pwa-512.png",
+      ],
+    ]),
+  );
   assert.equal(harness.self.skipWaitingCalled, true);
 });
 
@@ -151,6 +154,20 @@ test("service worker ignores navigation requests so browser redirects stay nativ
     method: "GET",
     mode: "navigate",
     url: "https://example.com/",
+  });
+
+  assert.equal(responsePromise, null);
+  assert.deepEqual(harness.fetchCalls, []);
+  assert.deepEqual(harness.matchedRequests, []);
+});
+
+test("service worker ignores admin navigations", async () => {
+  const harness = createServiceWorkerHarness();
+
+  const responsePromise = await dispatchFetchEvent(harness.listeners.get("fetch"), {
+    method: "GET",
+    mode: "navigate",
+    url: "https://example.com/admin",
   });
 
   assert.equal(responsePromise, null);
