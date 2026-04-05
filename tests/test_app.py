@@ -258,6 +258,30 @@ def test_full_flow(client) -> None:
         assert ws.receive_json()["type"] == "item_updated"
 
         checked = client.post(f"/api/v1/items/{item_id}/check", headers=headers).json()
+
+
+def test_pwa_assets_are_exposed(client) -> None:
+    login_page = client.get("/login")
+    assert login_page.status_code == 200
+    assert 'rel="manifest" href="/manifest.webmanifest"' in login_page.text
+    assert 'name="theme-color" content="#142a57"' in login_page.text
+    assert 'rel="apple-touch-icon" href="/static/img/apple-touch-icon.png"' in login_page.text
+
+    manifest = client.get("/manifest.webmanifest")
+    assert manifest.status_code == 200
+    assert manifest.headers["content-type"].startswith("application/manifest+json")
+    manifest_data = manifest.json()
+    assert manifest_data["name"] == "Listerine"
+    assert manifest_data["display"] == "standalone"
+    assert manifest_data["start_url"] == "/"
+    assert any(icon["src"] == "/static/img/pwa-192.png" for icon in manifest_data["icons"])
+    assert any(icon.get("purpose") == "maskable" for icon in manifest_data["icons"])
+
+    service_worker = client.get("/service-worker.js")
+    assert service_worker.status_code == 200
+    assert service_worker.headers["content-type"].startswith("application/javascript")
+    assert service_worker.headers["cache-control"] == "no-cache"
+    assert "self.addEventListener(\"install\"" in service_worker.text
         assert checked["checked"] is True
         assert ws.receive_json()["type"] == "item_checked"
 
