@@ -135,6 +135,21 @@ def _pid_is_running(pid: int) -> bool:
     return True
 
 
+def _wait_for_pid_exit(pid: int, timeout_seconds: float = 10.0, sleep_seconds: float = 0.1) -> None:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        try:
+            waited_pid, _status = os.waitpid(pid, os.WNOHANG)
+        except ChildProcessError:
+            waited_pid = 0
+        if waited_pid == pid:
+            return
+        if not _pid_is_running(pid):
+            return
+        time.sleep(sleep_seconds)
+    raise Exit(f"Timed out waiting for pid {pid} to exit")
+
+
 def _database_url_for_device(database_url: str, device: str) -> str:
     prefix = "sqlite+aiosqlite:///"
     if not database_url.startswith(prefix):
@@ -279,6 +294,12 @@ def stop_app(c, pid_path=DEFAULT_APP_PID_PATH) -> None:
         os.kill(pid, signal.SIGTERM)
     except ProcessLookupError:
         pass
+    else:
+        try:
+            _wait_for_pid_exit(pid)
+        except Exit:
+            os.kill(pid, signal.SIGKILL)
+            _wait_for_pid_exit(pid, timeout_seconds=5.0)
     finally:
         pid_file.unlink(missing_ok=True)
 
