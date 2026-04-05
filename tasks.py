@@ -289,6 +289,20 @@ def setup_venv(c, python_bin="python3.14") -> None:
     )
 
 
+@task(
+    help={
+        "python_bin": "Python executable to use when creating the repo virtualenv.",
+        "with_browser": "Also install Playwright's Chromium browser bundle.",
+        "browser_with_deps": "Use Playwright's --with-deps flow when installing the browser.",
+    }
+)
+def install_deps(c, python_bin="python3.14", with_browser=False, browser_with_deps=False) -> None:
+    setup_venv.body(c, python_bin=python_bin)
+    install_js.body(c)
+    if with_browser:
+        install_browser.body(c, with_deps=browser_with_deps)
+
+
 @task
 def black_check(c) -> None:
     c.run(_black_command("--check", "."), env=_python_env(), pty=False)
