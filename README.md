@@ -24,6 +24,10 @@ uvicorn app.main:app --reload
 
 Open [http://localhost:8000/docs](http://localhost:8000/docs).
 
+For local development and verification, install dependencies in the repo `.venv` and run the
+shared Invoke tasks from that environment. If `.codex/setup.sh` cannot use the host Python, keep
+using `.venv/bin/...` commands rather than stopping.
+
 ## Documentation
 
 - [Documentation index](docs/README.md)

@@ -236,6 +236,59 @@ jobs:
           docker buildx imagetools create \
             --tag "$IMAGE:$RELEASE_VERSION" \
             "$IMAGE:sha-$GITHUB_SHA"
+      - name: Prepare GitHub release notes
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          GIT_TAG: ${{ needs.version.outputs.git_tag }}
+          IMAGE: ${{ needs.docker_build.outputs.image }}
+          IMAGE_DIGEST: ${{ needs.docker_build.outputs.digest }}
+          RELEASE_VERSION: ${{ needs.version.outputs.release_version }}
+        run: |
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$REPOSITORY/releases/generate-notes" \
+            -f tag_name="$GIT_TAG" \
+            -f target_commitish="$GITHUB_SHA" \
+            > generated-release-notes.json
+
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(Path("generated-release-notes.json").read_text(encoding="utf-8"))
+          generated_notes = payload["body"].rstrip()
+          image = os.environ["IMAGE"]
+          release_version = os.environ["RELEASE_VERSION"]
+          image_digest = os.environ["IMAGE_DIGEST"]
+          notes = "\n\n".join(
+              [
+                  generated_notes,
+                  "## Container image\n"
+                  f"\n- `{image}:{release_version}`"
+                  f"\n- `{image}@{image_digest}`",
+              ]
+          )
+          Path("release-notes.md").write_text(f"{notes}\n", encoding="utf-8")
+          PY
+      - name: Create or update GitHub release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_TAG: ${{ needs.version.outputs.git_tag }}
+        run: |
+          if gh release view "$GIT_TAG" >/dev/null 2>&1; then
+            gh release edit "$GIT_TAG" \
+              --latest \
+              --notes-file release-notes.md
+          else
+            gh release create "$GIT_TAG" \
+              --latest \
+              --notes-file release-notes.md
+          fi
       - name: Add release image summary
         env:
           IMAGE: ${{ needs.docker_build.outputs.image }}
