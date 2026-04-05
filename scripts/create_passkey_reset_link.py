@@ -41,7 +41,12 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-async def _issue_link(database_url: str, base_url: str, email: str | None, user_id: str | None) -> int:
+async def _issue_link(
+    database_url: str,
+    base_url: str,
+    email: str | None,
+    user_id: str | None,
+) -> int:
     engine = create_async_engine(database_url, future=True)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     try:

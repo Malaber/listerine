@@ -128,7 +128,12 @@ def test_install_deps_runs_python_and_js_bootstrap(monkeypatch) -> None:
         lambda c, with_deps=False: calls.append(("install_browser", with_deps)),
     )
 
-    tasks.install_deps.body(None, python_bin="python3.13", with_browser=True, browser_with_deps=True)
+    tasks.install_deps.body(
+        None,
+        python_bin="python3.13",
+        with_browser=True,
+        browser_with_deps=True,
+    )
 
     assert calls == [
         ("setup_venv", "python3.13"),
