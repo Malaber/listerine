@@ -146,6 +146,40 @@ def _pid_is_running(pid: int) -> bool:
     return True
 
 
+def _wait_for_pid_exit(pid: int, timeout_seconds: float = 10.0, sleep_seconds: float = 0.1) -> None:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        try:
+            waited_pid, _status = os.waitpid(pid, os.WNOHANG)
+        except ChildProcessError:
+            waited_pid = 0
+        if waited_pid == pid:
+            return
+        if not _pid_is_running(pid):
+            return
+        time.sleep(sleep_seconds)
+    raise Exit(f"Timed out waiting for pid {pid} to exit")
+
+
+def _database_url_for_device(database_url: str, device: str) -> str:
+    prefix = "sqlite+aiosqlite:///"
+    if not database_url.startswith(prefix):
+        return database_url
+    database_path = database_url.removeprefix(prefix)
+    root, extension = os.path.splitext(database_path)
+    suffix = extension or ".db"
+    return f"{prefix}{root}-{device}{suffix}"
+
+
+def _reset_sqlite_database_file(database_url: str) -> None:
+    prefix = "sqlite+aiosqlite:///"
+    if not database_url.startswith(prefix):
+        return
+    database_path = Path(database_url.removeprefix(prefix))
+    for extra_suffix in ("", "-shm", "-wal"):
+        database_path.with_name(f"{database_path.name}{extra_suffix}").unlink(missing_ok=True)
+
+
 def _latest_stable_version_from_tags(tags: list[str]) -> str:
     versions = [
         tuple(map(int, match.groups()))
@@ -369,6 +403,12 @@ def stop_app(c, pid_path=DEFAULT_APP_PID_PATH) -> None:
         os.kill(pid, signal.SIGTERM)
     except ProcessLookupError:
         pass
+    else:
+        try:
+            _wait_for_pid_exit(pid)
+        except Exit:
+            os.kill(pid, signal.SIGKILL)
+            _wait_for_pid_exit(pid, timeout_seconds=5.0)
     finally:
         pid_file.unlink(missing_ok=True)
 
@@ -389,6 +429,8 @@ def wait_for_app(c, url=DEFAULT_HEALTH_URL, attempts=30, sleep_seconds=1.0) -> N
         "preview_base_url": "Browser-facing base URL used by the Playwright flow.",
         "e2e_seed_path": "Fixture that contains passkey data for the browser flow.",
         "webauthn_rp_id": "WebAuthn relying party ID exposed to the browser.",
+        "artifact_dir": "Artifact directory used by the Playwright flow.",
+        "device": "Playwright device name for the browser flow.",
     }
 )
 def run_browser_e2e(
@@ -396,6 +438,8 @@ def run_browser_e2e(
     preview_base_url=DEFAULT_PREVIEW_BASE_URL,
     e2e_seed_path=DEFAULT_BROWSER_SEED_PATH,
     webauthn_rp_id="localhost",
+    artifact_dir="e2e-artifacts/ui-e2e-desktop",
+    device="desktop",
 ) -> None:
     env = os.environ.copy()
     env.update(
@@ -403,8 +447,11 @@ def run_browser_e2e(
             "PREVIEW_BASE_URL": preview_base_url,
             "E2E_SEED_PATH": e2e_seed_path,
             "WEBAUTHN_RP_ID": webauthn_rp_id,
+            "PREVIEW_ARTIFACT_DIR": artifact_dir,
         }
     )
+    if device != "desktop":
+        env["E2E_DEVICE"] = device
     c.run(_node_command("node scripts/run_ui_e2e.mjs"), env=env, pty=False, shell="/bin/bash")
 
 
@@ -451,6 +498,59 @@ def check_browser_e2e(
         )
     finally:
         stop_app(c, pid_path=pid_path)
+
+
+@task(
+    help={
+        "base_url": "Browser-facing base URL used by the Playwright flow.",
+        "seed_path": "Fixture used to seed the local app database and browser flow.",
+        "database_url": "Base database URL used to derive per-device SQLite files.",
+        "webauthn_rp_id": "WebAuthn relying party ID exposed to the browser.",
+        "host": "Host to bind the local app server to.",
+        "port": "Port to bind the local app server to.",
+        "artifact_root": "Directory used to store per-device browser artifacts.",
+        "log_path": "File used for uvicorn logs.",
+        "pid_path": "File used to store the started server PID.",
+    }
+)
+def browser_e2e(
+    c,
+    base_url=DEFAULT_PREVIEW_BASE_URL,
+    seed_path=DEFAULT_BROWSER_SEED_PATH,
+    database_url=DEFAULT_BROWSER_DATABASE_URL,
+    webauthn_rp_id="localhost",
+    host=DEFAULT_HOST,
+    port=DEFAULT_PORT,
+    artifact_root="e2e-artifacts",
+    log_path=DEFAULT_APP_LOG_PATH,
+    pid_path=DEFAULT_APP_PID_PATH,
+) -> None:
+    """Run seeded browser e2e for desktop and iPhone and store artifacts per device."""
+    for device in ("desktop", "iphone"):
+        device_database_url = _database_url_for_device(database_url, device)
+        _reset_sqlite_database_file(device_database_url)
+        start_app(
+            c,
+            seed_path=seed_path,
+            database_url=device_database_url,
+            webauthn_rp_id=webauthn_rp_id,
+            host=host,
+            port=port,
+            log_path=log_path,
+            pid_path=pid_path,
+        )
+        try:
+            wait_for_app(c, url=f"http://{host}:{port}/health")
+            run_browser_e2e(
+                c,
+                preview_base_url=base_url,
+                e2e_seed_path=seed_path,
+                webauthn_rp_id=webauthn_rp_id,
+                artifact_dir=f"{artifact_root}/ui-e2e-{device}",
+                device=device,
+            )
+        finally:
+            stop_app(c, pid_path=pid_path)
 
 
 @task(pre=[check_python, install_js, check_js, install_browser, check_browser_e2e])

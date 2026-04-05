@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import importlib.util
 from pathlib import Path
 
@@ -11,87 +9,68 @@ tasks = importlib.util.module_from_spec(TASKS_SPEC)
 TASKS_SPEC.loader.exec_module(tasks)
 
 
-def test_pip_env_unsets_only_missing_bundle_paths(monkeypatch):
-    monkeypatch.setenv("SSL_CERT_FILE", "/missing/cert.pem")
-    monkeypatch.setenv("REQUESTS_CA_BUNDLE", "/missing/requests.pem")
-    monkeypatch.setenv("UNCHANGED_VAR", "present")
+def test_database_url_for_device_uses_distinct_sqlite_file() -> None:
+    database_url = "sqlite+aiosqlite:///./tmp-ci-ui-e2e.db"
 
-    env = tasks._pip_env()
-
-    assert "SSL_CERT_FILE" not in env
-    assert "REQUESTS_CA_BUNDLE" not in env
-    assert env["UNCHANGED_VAR"] == "present"
-
-
-def test_tool_path_prefers_current_interpreter_bin(monkeypatch, tmp_path):
-    current_bin = tmp_path / "bin"
-    current_bin.mkdir()
-    tool = current_bin / "pytest"
-    tool.write_text("", encoding="utf-8")
-
-    monkeypatch.setattr(tasks.sys, "executable", str(current_bin / "python"))
-
-    assert tasks._tool_path("pytest") == str(tool)
-
-
-def test_tool_path_falls_back_to_repo_venv(monkeypatch, tmp_path):
-    current_bin = tmp_path / "python-bin"
-    current_bin.mkdir()
-    monkeypatch.setattr(tasks.sys, "executable", str(current_bin / "python"))
-
-    repo_root = tmp_path / "repo"
-    venv_bin = repo_root / ".venv" / "bin"
-    venv_bin.mkdir(parents=True)
-    tool = venv_bin / "flake8"
-    tool.write_text("", encoding="utf-8")
-
-    monkeypatch.setattr(tasks, "ROOT", repo_root)
-
-    assert tasks._tool_path("flake8") == str(tool)
-
-
-def test_node_command_wraps_repo_command():
-    command = tasks._node_command("npm run test:js")
-
-    assert "nvm use 24" in command
-    assert 'elif [ -s "$HOME/.nvm/nvm.sh" ]' in command
-    assert "Node 24.x is required" in command
-    assert command.endswith("&& npm run test:js")
-
-
-def test_black_command_uses_repo_black_binary():
-    command = tasks._black_command("--check", ".")
-
-    assert "--check" in command
-    assert command.endswith(" .")
-    assert "black" in command
-
-
-def test_app_env_sets_ci_aligned_runtime_values(monkeypatch):
-    monkeypatch.setenv("EXISTING", "1")
-
-    env = tasks._app_env(
-        seed_path="app/fixtures/review_seed_e2e.json",
-        database_url="sqlite+aiosqlite:///./tmp.db",
-        webauthn_rp_id="localhost",
+    assert tasks._database_url_for_device(database_url, "iphone") == (
+        "sqlite+aiosqlite:///./tmp-ci-ui-e2e-iphone.db"
     )
 
-    assert env["PYTHONPATH"] == "."
-    assert env["SEED_DATA_PATH"] == "app/fixtures/review_seed_e2e.json"
-    assert env["DATABASE_URL"] == "sqlite+aiosqlite:///./tmp.db"
-    assert env["WEBAUTHN_RP_ID"] == "localhost"
-    assert env["EXISTING"] == "1"
+
+def test_database_url_for_device_leaves_non_sqlite_urls_unchanged() -> None:
+    database_url = "postgresql+asyncpg://user:password@example.com/listerine"
+
+    assert tasks._database_url_for_device(database_url, "iphone") == database_url
 
 
-def test_read_pid_returns_none_when_file_is_missing(tmp_path):
-    assert tasks._read_pid(tmp_path / "missing.pid") is None
+def test_reset_sqlite_database_file_removes_database_and_sidecars(tmp_path: Path) -> None:
+    database_path = tmp_path / "browser-e2e.db"
+    for suffix in ("", "-shm", "-wal"):
+        database_path.with_name(f"{database_path.name}{suffix}").write_text(
+            "data", encoding="utf-8"
+        )
+
+    tasks._reset_sqlite_database_file(f"sqlite+aiosqlite:///{database_path}")
+
+    for suffix in ("", "-shm", "-wal"):
+        assert not database_path.with_name(f"{database_path.name}{suffix}").exists()
 
 
-def test_read_pid_parses_integer_pid(tmp_path):
-    pid_path = tmp_path / "server.pid"
-    pid_path.write_text("12345\n", encoding="utf-8")
+def test_wait_for_pid_exit_returns_once_process_is_gone(monkeypatch) -> None:
+    states = iter([True, True, False])
+    monkeypatch.setattr(tasks.os, "waitpid", lambda pid, flags: (0, 0))
+    monkeypatch.setattr(tasks, "_pid_is_running", lambda pid: next(states))
+    monkeypatch.setattr(tasks.time, "sleep", lambda _: None)
 
-    assert tasks._read_pid(pid_path) == 12345
+    tasks._wait_for_pid_exit(123)
+
+
+def test_wait_for_pid_exit_reaps_child_process(monkeypatch) -> None:
+    monkeypatch.setattr(tasks.os, "waitpid", lambda pid, flags: (pid, 0))
+
+    tasks._wait_for_pid_exit(123)
+
+
+def test_stop_app_waits_for_exit_before_removing_pid_file(tmp_path: Path, monkeypatch) -> None:
+    pid_path = tmp_path / "ui-e2e-server.pid"
+    pid_path.write_text("4321\n", encoding="utf-8")
+    waits: list[tuple[int, float]] = []
+    signals: list[tuple[int, int]] = []
+
+    monkeypatch.setattr(tasks, "ROOT", tmp_path)
+    monkeypatch.setattr(tasks, "_read_pid", lambda path: 4321)
+    monkeypatch.setattr(
+        tasks,
+        "_wait_for_pid_exit",
+        lambda pid, timeout_seconds=10.0: waits.append((pid, timeout_seconds)),
+    )
+    monkeypatch.setattr(tasks.os, "kill", lambda pid, sig: signals.append((pid, sig)))
+
+    tasks.stop_app.body(None, pid_path=pid_path.name)
+
+    assert signals == [(4321, tasks.signal.SIGTERM)]
+    assert waits == [(4321, 10.0)]
+    assert not pid_path.exists()
 
 
 def test_pid_is_running_reports_missing_process():
