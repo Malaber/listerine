@@ -107,3 +107,59 @@ def test_compute_version_values_for_branch_skips_existing_rc_tags():
         "release_version": "1.2.4-rc.9",
         "git_tag": "v1.2.4-rc.9",
     }
+
+
+def test_run_browser_e2e_for_device_uses_derived_database_and_artifact_paths(monkeypatch) -> None:
+    calls: list[tuple[str, dict]] = []
+
+    monkeypatch.setattr(
+        tasks,
+        "_reset_sqlite_database_file",
+        lambda database_url: calls.append(("reset", {"database_url": database_url})),
+    )
+    monkeypatch.setattr(tasks, "start_app", lambda c, **kwargs: calls.append(("start", kwargs)))
+    monkeypatch.setattr(tasks, "wait_for_app", lambda c, **kwargs: calls.append(("wait", kwargs)))
+    monkeypatch.setattr(tasks, "run_browser_e2e", lambda c, **kwargs: calls.append(("run", kwargs)))
+    monkeypatch.setattr(tasks, "stop_app", lambda c, **kwargs: calls.append(("stop", kwargs)))
+
+    tasks._run_browser_e2e_for_device(
+        None,
+        device="iphone",
+        base_url="http://localhost:8000",
+        seed_path="app/fixtures/review_seed_e2e.json",
+        database_url="sqlite+aiosqlite:///./tmp-ui-e2e.db",
+        webauthn_rp_id="localhost",
+        host="127.0.0.1",
+        port=8000,
+        artifact_root="e2e-artifacts",
+        log_path="ui-e2e-server.log",
+        pid_path="ui-e2e-server.pid",
+    )
+
+    assert calls == [
+        ("reset", {"database_url": "sqlite+aiosqlite:///./tmp-ui-e2e-iphone.db"}),
+        (
+            "start",
+            {
+                "seed_path": "app/fixtures/review_seed_e2e.json",
+                "database_url": "sqlite+aiosqlite:///./tmp-ui-e2e-iphone.db",
+                "webauthn_rp_id": "localhost",
+                "host": "127.0.0.1",
+                "port": 8000,
+                "log_path": "ui-e2e-server.log",
+                "pid_path": "ui-e2e-server.pid",
+            },
+        ),
+        ("wait", {"url": "http://127.0.0.1:8000/health"}),
+        (
+            "run",
+            {
+                "preview_base_url": "http://localhost:8000",
+                "e2e_seed_path": "app/fixtures/review_seed_e2e.json",
+                "webauthn_rp_id": "localhost",
+                "artifact_dir": "e2e-artifacts/ui-e2e-iphone",
+                "device": "iphone",
+            },
+        ),
+        ("stop", {"pid_path": "ui-e2e-server.pid"}),
+    ]
