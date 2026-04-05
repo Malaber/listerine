@@ -1,6 +1,5 @@
 import asyncio
 import hashlib
-import re
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
@@ -116,15 +115,10 @@ def _register_session_user(client, monkeypatch, email: str) -> UUID:
     return UUID(response.json()["id"])
 
 
-def _extract_passkey_add_token(html: str) -> str:
-    match = re.search(r'value="https?://[^"]+/passkey-add/([^"]+)"', html)
-    assert match is not None
-    return match.group(1)
-
-
 def _extract_passkey_add_token_from_url(url: str) -> str:
     query = parse_qs(urlparse(url).query)
     link = query["passkey_add_link"][0]
+    assert "/passkey-add/" in link
     return link.rsplit("/", 1)[-1]
 
 

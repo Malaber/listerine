@@ -59,7 +59,7 @@ class UserAdmin(ModelView, model=User):
             set_passkey_reset(user, token)
             await session.commit()
 
-        reset_link = str(request.base_url).rstrip("/") + f"/passkey-reset/{token}"
+        reset_link = str(request.base_url).rstrip("/") + f"/passkey-add/{token}"
         edit_url = request.url_for("admin:edit", identity=self.identity, pk=str(user_id))
         return RedirectResponse(
             url=str(
