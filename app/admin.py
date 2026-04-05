@@ -1,16 +1,18 @@
 from functools import lru_cache
 from pathlib import Path
+from uuid import UUID
 
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse, Response
 from markupsafe import Markup
-from sqladmin import Admin, ModelView
+from sqladmin import Admin, ModelView, expose
 from sqladmin.authentication import AuthenticationBackend
 from sqladmin.authentication import login_required
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, engine
 from app.models import Category, User
+from app.services.passkey_reset import create_passkey_reset_token, set_passkey_reset
 from app.web.routes import _get_session_user
 
 
@@ -43,6 +45,31 @@ class UserAdmin(ModelView, model=User):
     column_list = [User.email, User.display_name, User.is_admin, User.is_active, User.created_at]
     form_columns = [User.email, User.display_name, User.is_admin, User.is_active]
     can_create = False
+    edit_template = "listerine_admin/user_edit.html"
+
+    @expose("/{pk}/passkey-add-link", methods=["POST"], include_in_schema=False)
+    async def generate_passkey_add_link(self, request: Request) -> Response:
+        user_id = UUID(request.path_params["pk"])
+        async with AsyncSessionLocal() as session:
+            user = await session.get(User, user_id)
+            if user is None:
+                return RedirectResponse(url="/admin/user/list", status_code=303)
+
+            token = create_passkey_reset_token()
+            set_passkey_reset(user, token)
+            await session.commit()
+
+        reset_link = str(request.base_url).rstrip("/") + f"/passkey-reset/{token}"
+        edit_url = request.url_for("admin:edit", identity=self.identity, pk=str(user_id))
+        return RedirectResponse(
+            url=str(
+                edit_url.include_query_params(
+                    passkey_add_link=reset_link,
+                    passkey_add_email=user.email,
+                )
+            ),
+            status_code=303,
+        )
 
 
 class CategoryAdmin(ModelView, model=Category):

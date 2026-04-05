@@ -1,17 +1,12 @@
-from fastapi import APIRouter, Depends, Form, Request, Response
+from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import select
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.models import User
 from app.services.auth_sessions import get_session_user, revoke_auth_session
-from app.services.passkey_reset import (
-    create_passkey_reset_token,
-    get_user_for_passkey_reset_token,
-    set_passkey_reset,
-)
+from app.services.passkey_reset import get_user_for_passkey_reset_token
 
 router = APIRouter(tags=["web"])
 templates = Jinja2Templates(directory="app/web/templates")
@@ -33,15 +28,6 @@ def _safe_next_path(request: Request) -> str:
 
 async def _get_session_user(request: Request, db: AsyncSession) -> User | None:
     return await get_session_user(request, db)
-
-
-async def _require_admin_session_user(request: Request, db: AsyncSession) -> User | Response:
-    user = await _get_session_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=303)
-    if not user.is_admin:
-        return RedirectResponse(url="/", status_code=303)
-    return user
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -128,65 +114,6 @@ async def invite_detail(
         {
             "invite_token": token,
             **_template_auth_context(user),
-        },
-    )
-
-
-@router.get("/admin/passkey-add-links", response_class=HTMLResponse, response_model=None)
-async def admin_passkey_add_links(request: Request, db: AsyncSession = Depends(get_db)) -> Response:
-    admin_user = await _require_admin_session_user(request, db)
-    if isinstance(admin_user, Response):
-        return admin_user
-    return templates.TemplateResponse(
-        request,
-        "admin_passkey_reset_links.html",
-        {
-            **_template_auth_context(admin_user),
-            "generated_link": None,
-            "generated_email": None,
-            "error_message": None,
-        },
-    )
-
-
-@router.post("/admin/passkey-add-links", response_class=HTMLResponse, response_model=None)
-async def create_admin_passkey_add_link(
-    request: Request,
-    email: str = Form(...),
-    db: AsyncSession = Depends(get_db),
-) -> Response:
-    admin_user = await _require_admin_session_user(request, db)
-    if isinstance(admin_user, Response):
-        return admin_user
-
-    normalized_email = email.strip().casefold()
-    result = await db.execute(select(User).where(User.email.ilike(normalized_email)))
-    user = result.scalar_one_or_none()
-    if user is None:
-        return templates.TemplateResponse(
-            request,
-            "admin_passkey_reset_links.html",
-            {
-                **_template_auth_context(admin_user),
-                "generated_link": None,
-                "generated_email": email.strip(),
-                "error_message": "No account found for that email address.",
-            },
-            status_code=404,
-        )
-
-    token = create_passkey_reset_token()
-    set_passkey_reset(user, token)
-    await db.commit()
-    reset_link = str(request.base_url).rstrip("/") + f"/passkey-add/{token}"
-    return templates.TemplateResponse(
-        request,
-        "admin_passkey_reset_links.html",
-        {
-            **_template_auth_context(admin_user),
-            "generated_link": reset_link,
-            "generated_email": user.email,
-            "error_message": None,
         },
     )
 

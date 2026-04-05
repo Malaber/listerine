@@ -3,6 +3,7 @@ import hashlib
 import re
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from urllib.parse import parse_qs, urlparse
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
@@ -119,6 +120,20 @@ def _extract_passkey_add_token(html: str) -> str:
     match = re.search(r'value="https?://[^"]+/passkey-add/([^"]+)"', html)
     assert match is not None
     return match.group(1)
+
+
+def _extract_passkey_add_token_from_url(url: str) -> str:
+    query = parse_qs(urlparse(url).query)
+    link = query["passkey_add_link"][0]
+    return link.rsplit("/", 1)[-1]
+
+
+def _admin_user_edit_url(user_id: UUID) -> str:
+    return f"/admin/user/edit/{user_id}"
+
+
+def _admin_user_passkey_add_link_url(user_id: UUID) -> str:
+    return f"/admin/user/{user_id}/passkey-add-link"
 
 
 async def _get_auth_session(user_id: UUID) -> AuthSession | None:
@@ -1725,8 +1740,6 @@ def test_admin_page_shows_application_link_for_admin(client, monkeypatch) -> Non
     assert "Go to application" in response.text
     assert "Listerine version:" in response.text
     assert "development" in response.text
-    assert 'href="/admin/passkey-add-links"' in response.text
-    assert "Generate add-passkey link" in response.text
 
 
 def test_admin_can_generate_passkey_add_link_from_admin_frontend(client, monkeypatch) -> None:
@@ -1745,16 +1758,19 @@ def test_admin_can_generate_passkey_add_link_from_admin_frontend(client, monkeyp
     verify = client.post("/api/v1/auth/register/verify", json=_passkey_finish_payload())
     assert verify.status_code == 200
 
-    page = client.get("/admin/passkey-add-links")
-    assert page.status_code == 200
-    assert "Create an add-passkey link" in page.text
-
     user_id = asyncio.run(_create_user("recover@example.com"))
-    response = client.post("/admin/passkey-add-links", data={"email": "recover@example.com"})
+    page = client.get(_admin_user_edit_url(user_id))
+    assert page.status_code == 200
+    assert "Generate add-passkey link" in page.text
+
+    response = client.post(
+        _admin_user_passkey_add_link_url(user_id),
+        follow_redirects=True,
+    )
     assert response.status_code == 200
     assert "Add-passkey link ready for" in response.text
 
-    token = _extract_passkey_add_token(response.text)
+    token = _extract_passkey_add_token_from_url(str(response.url))
 
     async def _load_user() -> User:
         async with AsyncSessionLocal() as session:
@@ -1806,8 +1822,11 @@ def test_passkey_add_link_adds_passkey_and_clears_token(client, monkeypatch) -> 
             ],
         )
     )
-    generate = client.post("/admin/passkey-add-links", data={"email": "recover@example.com"})
-    token = _extract_passkey_add_token(generate.text)
+    generate = client.post(
+        _admin_user_passkey_add_link_url(target_user_id),
+        follow_redirects=True,
+    )
+    token = _extract_passkey_add_token_from_url(str(generate.url))
 
     add_page = client.get(f"/passkey-add/{token}")
     assert add_page.status_code == 200
@@ -1849,52 +1868,31 @@ def test_admin_page_redirects_for_non_admin(client) -> None:
     assert response.headers["location"] == "/login"
 
 
-def test_admin_passkey_add_link_page_requires_admin_session(client, monkeypatch) -> None:
-    anonymous = client.get("/admin/passkey-add-links", follow_redirects=False)
+def test_admin_passkey_add_link_action_requires_admin_session(client, monkeypatch) -> None:
+    target_user_id = asyncio.run(_create_user("recover@example.com"))
+
+    anonymous = client.get(_admin_user_edit_url(target_user_id), follow_redirects=False)
     assert anonymous.status_code == 303
     assert anonymous.headers["location"] == "/login"
 
     anonymous_post = client.post(
-        "/admin/passkey-add-links",
-        data={"email": "recover@example.com"},
+        _admin_user_passkey_add_link_url(target_user_id),
         follow_redirects=False,
     )
     assert anonymous_post.status_code == 303
     assert anonymous_post.headers["location"] == "/login"
 
     _register_session_user(client, monkeypatch, f"{uuid4()}@example.com")
-    non_admin = client.get("/admin/passkey-add-links", follow_redirects=False)
+    non_admin = client.get(_admin_user_edit_url(target_user_id), follow_redirects=False)
     assert non_admin.status_code == 303
     assert non_admin.headers["location"] == "/"
 
     non_admin_post = client.post(
-        "/admin/passkey-add-links",
-        data={"email": "recover@example.com"},
+        _admin_user_passkey_add_link_url(target_user_id),
         follow_redirects=False,
     )
     assert non_admin_post.status_code == 303
     assert non_admin_post.headers["location"] == "/"
-
-
-def test_admin_passkey_add_link_generation_reports_missing_account(client, monkeypatch) -> None:
-    monkeypatch.setattr(
-        "app.api.v1.routes.auth.verify_registration_response",
-        lambda **_: _mock_verified_registration(),
-    )
-    monkeypatch.setattr(
-        "app.api.v1.routes.auth.settings.bootstrap_admin_email", "admin@example.com"
-    )
-
-    client.post(
-        "/api/v1/auth/register/options",
-        json={"email": "admin@example.com", "display_name": "Admin"},
-    )
-    verify = client.post("/api/v1/auth/register/verify", json=_passkey_finish_payload())
-    assert verify.status_code == 200
-
-    response = client.post("/admin/passkey-add-links", data={"email": "missing@example.com"})
-    assert response.status_code == 404
-    assert "No account found for that email address." in response.text
 
 
 def test_passkey_add_link_flow_rejects_expired_or_missing_state(client, monkeypatch) -> None:
@@ -1914,8 +1912,11 @@ def test_passkey_add_link_flow_rejects_expired_or_missing_state(client, monkeypa
     assert verify.status_code == 200
 
     target_user_id = asyncio.run(_create_user("recover@example.com"))
-    generate = client.post("/admin/passkey-add-links", data={"email": "recover@example.com"})
-    token = _extract_passkey_add_token(generate.text)
+    generate = client.post(
+        _admin_user_passkey_add_link_url(target_user_id),
+        follow_redirects=True,
+    )
+    token = _extract_passkey_add_token_from_url(str(generate.url))
 
     client.cookies.clear()
     page = client.get(f"/passkey-add/{token}", follow_redirects=False)
@@ -1972,14 +1973,12 @@ def test_passkey_add_link_rejects_credential_registered_to_another_account(
     verify = client.post("/api/v1/auth/register/verify", json=_passkey_finish_payload())
     assert verify.status_code == 200
 
-    asyncio.run(
-        _create_user(
-            "recover@example.com",
-            passkey_credential_ids=[bytes_to_base64url(b"target-original-credential-id")],
-        )
+    target_user_id = asyncio.run(_create_user("recover@example.com", with_passkey=False))
+    generate = client.post(
+        _admin_user_passkey_add_link_url(target_user_id),
+        follow_redirects=True,
     )
-    generate = client.post("/admin/passkey-add-links", data={"email": "recover@example.com"})
-    token = _extract_passkey_add_token(generate.text)
+    token = _extract_passkey_add_token_from_url(str(generate.url))
 
     options = client.post(f"/api/v1/auth/passkey-add/{token}/options", json={})
     assert options.status_code == 200
@@ -1990,6 +1989,32 @@ def test_passkey_add_link_rejects_credential_registered_to_another_account(
     )
     assert finish.status_code == 400
     assert finish.json()["detail"] == "That passkey is already registered"
+
+
+def test_admin_passkey_add_link_action_redirects_to_user_list_when_user_is_missing(
+    client, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: _mock_verified_registration(),
+    )
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.settings.bootstrap_admin_email", "admin@example.com"
+    )
+
+    client.post(
+        "/api/v1/auth/register/options",
+        json={"email": "admin@example.com", "display_name": "Admin"},
+    )
+    verify = client.post("/api/v1/auth/register/verify", json=_passkey_finish_payload())
+    assert verify.status_code == 200
+
+    response = client.post(
+        _admin_user_passkey_add_link_url(uuid4()),
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"].endswith("/admin/user/list")
 
 
 def test_login_page_localhost_hint(client) -> None:

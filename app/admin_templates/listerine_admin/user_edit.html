@@ -1,0 +1,76 @@
+{% extends "sqladmin/edit.html" %}
+{% from 'sqladmin/_macros.html' import render_form_fields %}
+{% block content %}
+<div class="col-12">
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Edit {{ model_view.name }}</h3>
+    </div>
+    <div class="card-body border-bottom py-3">
+      <form action="{{ model_view._build_url_for('admin:edit', request, obj) }}" method="POST"
+        enctype="multipart/form-data">
+        <div class="row">
+          {% if error %}
+          <div class="alert alert-danger" role="alert">{{ error }}</div>
+          {% endif %}
+        </div>
+        <fieldset class="form-fieldset">
+          {{ render_form_fields(form, form_opts=form_opts) }}
+        </fieldset>
+        <div class="row">
+          <div class="col-md-2">
+            <a href="{{ url_for('admin:list', identity=model_view.identity) }}" class="btn">
+              Cancel
+            </a>
+          </div>
+          <div class="col-md-6">
+            <div class="btn-group flex-wrap" data-toggle="buttons">
+              <input type="submit" name="save" value="Save" class="btn">
+              <input type="submit" name="save" value="Save and continue editing" class="btn">
+              {% if model_view.can_create %}
+              {% if model_view.save_as %}
+              <input type="submit" name="save" value="Save as new" class="btn">
+              {% else %}
+              <input type="submit" name="save" value="Save and add another" class="btn">
+              {% endif %}
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<div class="col-12 mt-3">
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Passkey add link</h3>
+    </div>
+    <div class="card-body border-bottom py-3">
+      <p class="text-muted">
+        Generate a one-time link that lets this account register another passkey. The link remains
+        valid for 24 hours unless it is used first.
+      </p>
+      <form action="{{ url_for('admin:view-user-generate_passkey_add_link', pk=obj.id) }}" method="POST">
+        <button type="submit" class="btn btn-primary">Generate add-passkey link</button>
+      </form>
+      {% if request.query_params.get("passkey_add_link") %}
+      <div class="alert alert-success mt-3 mb-3" role="alert">
+        Add-passkey link ready for <strong>{{ request.query_params.get("passkey_add_email") or obj.email }}</strong>.
+      </div>
+      <div>
+        <label class="form-label" for="passkey-add-link">Add-passkey link</label>
+        <input
+          id="passkey-add-link"
+          class="form-control"
+          type="text"
+          value="{{ request.query_params.get('passkey_add_link') }}"
+          readonly
+          onclick="this.select()"
+        />
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
