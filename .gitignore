@@ -13,6 +13,10 @@ node_modules/
 *.egg-info/
 
 *.db
+*.log
+*.pid
 
 e2e-artifacts/*
 !e2e-artifacts/.gitkeep
+
+/build
