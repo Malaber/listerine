@@ -1708,11 +1708,13 @@ function renderItems(root, state) {
     heading.appendChild(swatch);
 
     const headingCopy = document.createElement("div");
+    headingCopy.className = "item-category-copy";
     const headingTitle = document.createElement("h3");
     headingTitle.textContent = category?.name || "Uncategorized";
     headingCopy.appendChild(headingTitle);
 
     const headingMeta = document.createElement("p");
+    headingMeta.className = "item-category-meta";
     headingMeta.textContent = `${items.length} ${items.length === 1 ? "item" : "items"}`;
     headingCopy.appendChild(headingMeta);
     heading.appendChild(headingCopy);
@@ -1793,11 +1795,13 @@ function renderItems(root, state) {
     heading.appendChild(swatch);
 
     const headingCopy = document.createElement("div");
+    headingCopy.className = "item-category-copy";
     const headingTitle = document.createElement("h3");
     headingTitle.textContent = "Checked off";
     headingCopy.appendChild(headingTitle);
 
     const headingMeta = document.createElement("p");
+    headingMeta.className = "item-category-meta";
     headingMeta.textContent = `${checkedItems.length} ${checkedItems.length === 1 ? "item" : "items"}`;
     headingCopy.appendChild(headingMeta);
     heading.appendChild(headingCopy);
