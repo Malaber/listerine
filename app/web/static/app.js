@@ -1818,11 +1818,13 @@ function renderItems(root, state) {
     heading.appendChild(swatch);
 
     const headingCopy = document.createElement("div");
+    headingCopy.className = "item-category-copy";
     const headingTitle = document.createElement("h3");
     headingTitle.textContent = category?.name || translate("list_detail.uncategorized", {}, "Uncategorized");
     headingCopy.appendChild(headingTitle);
 
     const headingMeta = document.createElement("p");
+    headingMeta.className = "item-category-meta";
     headingMeta.textContent = translatePlural("list_detail.item_count", items.length, {}, { one: "{count} item", other: "{count} items" });
     headingCopy.appendChild(headingMeta);
     heading.appendChild(headingCopy);
@@ -1905,11 +1907,13 @@ function renderItems(root, state) {
     heading.appendChild(swatch);
 
     const headingCopy = document.createElement("div");
+    headingCopy.className = "item-category-copy";
     const headingTitle = document.createElement("h3");
     headingTitle.textContent = translate("list_detail.checked_off", {}, "Checked off");
     headingCopy.appendChild(headingTitle);
 
     const headingMeta = document.createElement("p");
+    headingMeta.className = "item-category-meta";
     headingMeta.textContent = translatePlural("list_detail.item_count", checkedItems.length, {}, { one: "{count} item", other: "{count} items" });
     headingCopy.appendChild(headingMeta);
     heading.appendChild(headingCopy);

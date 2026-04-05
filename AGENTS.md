@@ -55,18 +55,22 @@ Use this sequence for reliable local verification:
    error even if the server is bound there.
 9. For a one-command browser flow, use `inv check-browser-e2e`. It starts the app, waits for the
    healthcheck, runs `node scripts/run_ui_e2e.mjs`, and stops the app again.
-10. If you need the browser checks separately, use these shared tasks:
+10. To run only one browser form factor locally, use:
+   - `inv browser-e2e-desktop`
+   - `inv browser-e2e-mobile`
+11. If you need the browser checks separately, use these shared tasks:
    - `inv install-browser`
    - `inv start-app`
    - `inv run-browser-e2e`
    - `inv stop-app`
-11. The browser script reads the seeded account and passkey material from
+12. The browser script reads the seeded account and passkey material from
    `app/fixtures/review_seed_e2e.json` by default, installs those passkeys into Chromium's virtual
    authenticator, and signs in through the normal `/login` page.
-12. If you want a completely fresh manual browser run, override the database URL on start-up, for
+13. If you want a completely fresh manual browser run, override the database URL on start-up, for
    example:
    - `inv start-app --database-url=sqlite+aiosqlite:///./tmp-ui-e2e-manual.db`
-13. `inv check-browser-e2e` and `inv verify` stop the local app automatically after the e2e run.
+14. `inv check-browser-e2e`, `inv browser-e2e-desktop`, `inv browser-e2e-mobile`, and `inv verify`
+    stop the local app automatically after the e2e run.
 
 This workflow is the preferred local path whenever the default setup script or host Python prevents
 the normal CI-like commands from succeeding, and it is always acceptable to install dependencies in

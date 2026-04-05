@@ -1,7 +1,5 @@
-const CACHE_NAME = "listerine-shell-v1";
+const CACHE_NAME = "listerine-shell-v3";
 const APP_SHELL_ASSETS = [
-  "/",
-  "/login",
   "/manifest.webmanifest",
   "/static/app.css",
   "/static/app.js",
@@ -28,23 +26,21 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") {
-    return;
+function isCacheableAssetRequest(request) {
+  if (request.method !== "GET") {
+    return false;
   }
 
-  const url = new URL(event.request.url);
+  const url = new URL(request.url);
   if (url.origin !== self.location.origin) {
-    return;
+    return false;
   }
 
-  if (url.pathname.startsWith("/api/")) {
-    event.respondWith(fetch(event.request));
-    return;
-  }
+  return url.pathname === "/manifest.webmanifest" || url.pathname.startsWith("/static/");
+}
 
-  const isStaticAsset = url.pathname.startsWith("/static/");
-  if (!isStaticAsset && event.request.mode !== "navigate") {
+self.addEventListener("fetch", (event) => {
+  if (!isCacheableAssetRequest(event.request)) {
     return;
   }
 
@@ -55,7 +51,7 @@ self.addEventListener("fetch", (event) => {
       }
 
       return fetch(event.request).then((response) => {
-        if (!response.ok || (!isStaticAsset && event.request.mode !== "navigate")) {
+        if (!response.ok || response.redirected) {
           return response;
         }
 
