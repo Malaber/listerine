@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import signal
 import subprocess
@@ -37,6 +38,7 @@ DEFAULT_BROWSER_SEED_PATH = "app/fixtures/review_seed_e2e.json"
 DEFAULT_BROWSER_DATABASE_URL = "sqlite+aiosqlite:///./tmp-ui-e2e-invoke.db"
 DEFAULT_APP_LOG_PATH = "ui-e2e-server.log"
 DEFAULT_APP_PID_PATH = "ui-e2e-server.pid"
+STABLE_TAG_PATTERN = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 
 
 def _tool_path(name: str) -> str:
@@ -49,6 +51,15 @@ def _tool_path(name: str) -> str:
         return str(local_bin)
 
     return name
+
+
+def _git_lines(*args: str) -> list[str]:
+    return subprocess.run(
+        ["git", *args],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
 
 
 def _python_env(**overrides: str) -> dict[str, str]:
@@ -135,9 +146,98 @@ def _pid_is_running(pid: int) -> bool:
     return True
 
 
+def _latest_stable_version_from_tags(tags: list[str]) -> str:
+    versions = [
+        tuple(map(int, match.groups()))
+        for tag in tags
+        if (match := STABLE_TAG_PATTERN.fullmatch(tag))
+    ]
+    if not versions:
+        return "0.1.0"
+    major, minor, patch = max(versions)
+    return f"{major}.{minor}.{patch}"
+
+
+def _next_stable_version(version: str, tags: list[str]) -> str:
+    major, minor, patch = map(int, version.split("."))
+    existing_tags = set(tags)
+    while True:
+        patch += 1
+        candidate = f"{major}.{minor}.{patch}"
+        if f"v{candidate}" not in existing_tags:
+            return candidate
+
+
+def _next_rc_version(version: str, run_number: int, tags: list[str]) -> str:
+    rc_number = run_number
+    existing_tags = set(tags)
+    while True:
+        candidate = f"{version}-rc.{rc_number}"
+        if f"v{candidate}" not in existing_tags:
+            return candidate
+        rc_number += 1
+
+
+def _compute_version_values(ref_name: str, run_number: int, tags: list[str]) -> dict[str, str]:
+    base_version = _next_stable_version(_latest_stable_version_from_tags(tags), tags)
+    if ref_name == "main":
+        release_version = base_version
+    else:
+        release_version = _next_rc_version(base_version, run_number, tags)
+    return {
+        "base_version": base_version,
+        "release_version": release_version,
+        "git_tag": f"v{release_version}",
+    }
+
+
+def _write_github_output(values: dict[str, str]) -> None:
+    output_path = os.environ.get("GITHUB_OUTPUT")
+    if output_path:
+        with Path(output_path).open("a", encoding="utf-8") as fh:
+            for key, value in values.items():
+                fh.write(f"{key}={value}\n")
+        return
+
+    for key, value in values.items():
+        print(f"{key}={value}")
+
+
 @task
 def setup(c) -> None:
     c.run("./scripts/setup_env.sh", pty=False, shell="/bin/bash")
+
+
+@task(pre=[setup])
+def bootstrap_ci(c) -> None:
+    """Install the shared Python tooling CI tasks depend on."""
+
+
+@task(
+    help={
+        "ref_name": "Git ref name used to decide stable vs rc versioning.",
+        "run_number": "Run number used to derive rc suffixes on non-main refs.",
+    }
+)
+def compute_version(c, ref_name="", run_number="") -> None:
+    resolved_ref_name = ref_name or os.environ.get("REF_NAME") or os.environ.get("GITHUB_REF_NAME")
+    resolved_run_number = (
+        str(run_number)
+        if run_number
+        else (os.environ.get("RUN_NUMBER") or os.environ.get("GITHUB_RUN_NUMBER"))
+    )
+    if not resolved_ref_name:
+        raise Exit("compute-version requires ref_name or REF_NAME/GITHUB_REF_NAME.")
+    if not resolved_run_number:
+        raise Exit("compute-version requires run_number or RUN_NUMBER/GITHUB_RUN_NUMBER.")
+
+    tags = _git_lines("tag", "--list", "v*")
+    values = _compute_version_values(
+        ref_name=resolved_ref_name,
+        run_number=int(resolved_run_number),
+        tags=tags,
+    )
+    _write_github_output(values)
 
 
 @task(help={"python_bin": "Python executable to use when creating the repo virtualenv."})
@@ -156,8 +256,12 @@ def setup_venv(c, python_bin="python3.14") -> None:
 
 
 @task
-def lint_python(c) -> None:
+def black_check(c) -> None:
     c.run(_black_command("--check", "."), env=_python_env(), pty=False)
+
+
+@task
+def flake8_check(c) -> None:
     c.run(f"{shlex.quote(_tool_path('flake8'))} .", env=_python_env(), pty=False)
 
 
@@ -169,6 +273,11 @@ def test_python(c) -> None:
 @task
 def format_python(c) -> None:
     c.run(_black_command("."), env=_python_env(), pty=False)
+
+
+@task(pre=[black_check, flake8_check])
+def lint_python(c) -> None:
+    """Run the Python formatter and linter checks."""
 
 
 @task(pre=[lint_python, test_python])
