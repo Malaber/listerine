@@ -107,3 +107,36 @@ def test_compute_version_values_for_branch_skips_existing_rc_tags():
         "release_version": "1.2.4-rc.9",
         "git_tag": "v1.2.4-rc.9",
     }
+
+
+def test_install_deps_runs_python_and_js_bootstrap(monkeypatch) -> None:
+    calls: list[tuple[str, object]] = []
+
+    monkeypatch.setattr(
+        tasks.setup_venv,
+        "body",
+        lambda c, python_bin="python3.14": calls.append(("setup_venv", python_bin)),
+    )
+    monkeypatch.setattr(
+        tasks.install_js,
+        "body",
+        lambda c: calls.append(("install_js", None)),
+    )
+    monkeypatch.setattr(
+        tasks.install_browser,
+        "body",
+        lambda c, with_deps=False: calls.append(("install_browser", with_deps)),
+    )
+
+    tasks.install_deps.body(
+        None,
+        python_bin="python3.13",
+        with_browser=True,
+        browser_with_deps=True,
+    )
+
+    assert calls == [
+        ("setup_venv", "python3.13"),
+        ("install_js", None),
+        ("install_browser", True),
+    ]

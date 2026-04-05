@@ -21,6 +21,7 @@ COPY app ./app
 COPY alembic ./alembic
 COPY docker ./docker
 COPY scripts/export_seed_passkeys.py ./scripts/export_seed_passkeys.py
+COPY scripts/create_passkey_reset_link.py ./scripts/create_passkey_reset_link.py
 
 RUN SETUPTOOLS_SCM_PRETEND_VERSION=${LISTERINE_VERSION} pip install --no-deps . \
     && printf '%s\n' "${LISTERINE_VERSION}" > VERSION \
