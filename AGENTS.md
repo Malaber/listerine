@@ -4,8 +4,9 @@
 
 Always run `.codex/setup.sh` first.
 
-If `.codex/setup.sh` fails because the host Python is externally managed, use the repo virtualenv
-fallback instead of stopping:
+For local dependency installation and verification, prefer the repo virtualenv at `.venv`. If
+`.codex/setup.sh` fails because the host Python is externally managed, continue in `.venv` instead
+of stopping:
 
 - If `.venv` does not exist yet, create it with `python3.14 -m venv .venv`.
 - If `.venv` pip commands fail because `SSL_CERT_FILE` or `REQUESTS_CA_BUNDLE` points at a missing
@@ -63,8 +64,9 @@ Use this sequence for reliable local verification:
    - `inv start-app --database-url=sqlite+aiosqlite:///./tmp-ui-e2e-manual.db`
 13. `inv check-browser-e2e` and `inv verify` stop the local app automatically after the e2e run.
 
-This workflow is the preferred fallback whenever the default setup script or an old local database
-prevents the normal CI-like commands from succeeding.
+This workflow is the preferred local path whenever the default setup script or host Python prevents
+the normal CI-like commands from succeeding, and it is always acceptable to install dependencies in
+the repo `.venv` before running verification.
 
 ## Frontend styling
 
