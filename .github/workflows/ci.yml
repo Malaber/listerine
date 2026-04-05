@@ -19,7 +19,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
-  python_test:
+  python_black:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -28,7 +28,29 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
       - run: python -m pip install invoke
       - run: python -m invoke bootstrap-ci
-      - run: python -m invoke check-python
+      - run: python -m invoke black-check
+
+  python_flake8:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: python -m pip install invoke
+      - run: python -m invoke bootstrap-ci
+      - run: python -m invoke flake8-check
+
+  python_pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: python -m pip install invoke
+      - run: python -m invoke bootstrap-ci
+      - run: python -m invoke test-python
 
   javascript_test:
     runs-on: ubuntu-latest

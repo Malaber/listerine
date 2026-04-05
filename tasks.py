@@ -222,7 +222,9 @@ def bootstrap_ci(c) -> None:
 def compute_version(c, ref_name="", run_number="") -> None:
     resolved_ref_name = ref_name or os.environ.get("REF_NAME") or os.environ.get("GITHUB_REF_NAME")
     resolved_run_number = (
-        str(run_number) if run_number else os.environ.get("RUN_NUMBER") or os.environ.get("GITHUB_RUN_NUMBER")
+        str(run_number)
+        if run_number
+        else (os.environ.get("RUN_NUMBER") or os.environ.get("GITHUB_RUN_NUMBER"))
     )
     if not resolved_ref_name:
         raise Exit("compute-version requires ref_name or REF_NAME/GITHUB_REF_NAME.")
@@ -254,8 +256,12 @@ def setup_venv(c, python_bin="python3.14") -> None:
 
 
 @task
-def lint_python(c) -> None:
+def black_check(c) -> None:
     c.run(_black_command("--check", "."), env=_python_env(), pty=False)
+
+
+@task
+def flake8_check(c) -> None:
     c.run(f"{shlex.quote(_tool_path('flake8'))} .", env=_python_env(), pty=False)
 
 
@@ -267,6 +273,11 @@ def test_python(c) -> None:
 @task
 def format_python(c) -> None:
     c.run(_black_command("."), env=_python_env(), pty=False)
+
+
+@task(pre=[black_check, flake8_check])
+def lint_python(c) -> None:
+    """Run the Python formatter and linter checks."""
 
 
 @task(pre=[lint_python, test_python])

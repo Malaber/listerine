@@ -1,6 +1,14 @@
 from __future__ import annotations
 
-import tasks
+import importlib.util
+from pathlib import Path
+
+TASKS_PATH = Path(__file__).resolve().parents[1] / "tasks.py"
+TASKS_SPEC = importlib.util.spec_from_file_location("tasks", TASKS_PATH)
+assert TASKS_SPEC is not None
+assert TASKS_SPEC.loader is not None
+tasks = importlib.util.module_from_spec(TASKS_SPEC)
+TASKS_SPEC.loader.exec_module(tasks)
 
 
 def test_pip_env_unsets_only_missing_bundle_paths(monkeypatch):
