@@ -315,8 +315,7 @@ webhooker_worker_extra_mounts:
 - Both modes mount the host data directory at `/data` in the container and use `DATABASE_URL=sqlite+aiosqlite:////data/listerine.db`.
 - The rendered `APP_DATA_DIR` should stay relative when possible, for example `./data`, so the Compose bundle remains portable with its sibling folders.
 - Both modes join the external Traefik network `system_traefik_external`.
-- CI publishes `sha-<full git sha>` tags for normal pushes.
-- CI publishes `sha-<pr head sha>` and `pr-<number>-<sha7>` tags for pull requests.
+- CI publishes `sha-<full git sha>` tags on branch pushes, and PR review jobs reuse the matching `sha-<pr head sha>` image.
 - CI sends signed wake requests to `webhooker` after publishing images.
 
 ## GitHub Actions settings
