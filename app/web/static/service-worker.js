@@ -26,17 +26,21 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") {
-    return;
+function isCacheableAssetRequest(request) {
+  if (request.method !== "GET") {
+    return false;
   }
 
-  const url = new URL(event.request.url);
-  const isStaticAsset =
-    url.origin === self.location.origin &&
-    (url.pathname.startsWith("/static/") || url.pathname === "/manifest.webmanifest");
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) {
+    return false;
+  }
 
-  if (!isStaticAsset) {
+  return url.pathname === "/manifest.webmanifest" || url.pathname.startsWith("/static/");
+}
+
+self.addEventListener("fetch", (event) => {
+  if (!isCacheableAssetRequest(event.request)) {
     return;
   }
 
@@ -47,7 +51,7 @@ self.addEventListener("fetch", (event) => {
       }
 
       return fetch(event.request).then((response) => {
-        if (!response.ok) {
+        if (!response.ok || response.redirected) {
           return response;
         }
 

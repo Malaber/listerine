@@ -180,6 +180,46 @@ def _reset_sqlite_database_file(database_url: str) -> None:
         database_path.with_name(f"{database_path.name}{extra_suffix}").unlink(missing_ok=True)
 
 
+def _run_browser_e2e_for_device(
+    c,
+    *,
+    device: str,
+    base_url: str,
+    seed_path: str,
+    database_url: str,
+    webauthn_rp_id: str,
+    host: str,
+    port: int,
+    artifact_root: str,
+    log_path: str,
+    pid_path: str,
+) -> None:
+    device_database_url = _database_url_for_device(database_url, device)
+    _reset_sqlite_database_file(device_database_url)
+    start_app(
+        c,
+        seed_path=seed_path,
+        database_url=device_database_url,
+        webauthn_rp_id=webauthn_rp_id,
+        host=host,
+        port=port,
+        log_path=log_path,
+        pid_path=pid_path,
+    )
+    try:
+        wait_for_app(c, url=f"http://{host}:{port}/health")
+        run_browser_e2e(
+            c,
+            preview_base_url=base_url,
+            e2e_seed_path=seed_path,
+            webauthn_rp_id=webauthn_rp_id,
+            artifact_dir=f"{artifact_root}/ui-e2e-{device}",
+            device=device,
+        )
+    finally:
+        stop_app(c, pid_path=pid_path)
+
+
 def _latest_stable_version_from_tags(tags: list[str]) -> str:
     versions = [
         tuple(map(int, match.groups()))
@@ -541,30 +581,101 @@ def browser_e2e(
 ) -> None:
     """Run seeded browser e2e for desktop and iPhone and store artifacts per device."""
     for device in ("desktop", "iphone"):
-        device_database_url = _database_url_for_device(database_url, device)
-        _reset_sqlite_database_file(device_database_url)
-        start_app(
+        _run_browser_e2e_for_device(
             c,
+            device=device,
+            base_url=base_url,
             seed_path=seed_path,
-            database_url=device_database_url,
+            database_url=database_url,
             webauthn_rp_id=webauthn_rp_id,
             host=host,
             port=port,
+            artifact_root=artifact_root,
             log_path=log_path,
             pid_path=pid_path,
         )
-        try:
-            wait_for_app(c, url=f"http://{host}:{port}/health")
-            run_browser_e2e(
-                c,
-                preview_base_url=base_url,
-                e2e_seed_path=seed_path,
-                webauthn_rp_id=webauthn_rp_id,
-                artifact_dir=f"{artifact_root}/ui-e2e-{device}",
-                device=device,
-            )
-        finally:
-            stop_app(c, pid_path=pid_path)
+
+
+@task(
+    help={
+        "base_url": "Browser-facing base URL used by the Playwright flow.",
+        "seed_path": "Fixture used to seed the local app database and browser flow.",
+        "database_url": "Base database URL used to derive the desktop SQLite file.",
+        "webauthn_rp_id": "WebAuthn relying party ID exposed to the browser.",
+        "host": "Host to bind the local app server to.",
+        "port": "Port to bind the local app server to.",
+        "artifact_root": "Directory used to store browser artifacts.",
+        "log_path": "File used for uvicorn logs.",
+        "pid_path": "File used to store the started server PID.",
+    }
+)
+def browser_e2e_desktop(
+    c,
+    base_url=DEFAULT_PREVIEW_BASE_URL,
+    seed_path=DEFAULT_BROWSER_SEED_PATH,
+    database_url=DEFAULT_BROWSER_DATABASE_URL,
+    webauthn_rp_id="localhost",
+    host=DEFAULT_HOST,
+    port=DEFAULT_PORT,
+    artifact_root="e2e-artifacts",
+    log_path=DEFAULT_APP_LOG_PATH,
+    pid_path=DEFAULT_APP_PID_PATH,
+) -> None:
+    """Run seeded browser e2e for desktop only."""
+    _run_browser_e2e_for_device(
+        c,
+        device="desktop",
+        base_url=base_url,
+        seed_path=seed_path,
+        database_url=database_url,
+        webauthn_rp_id=webauthn_rp_id,
+        host=host,
+        port=port,
+        artifact_root=artifact_root,
+        log_path=log_path,
+        pid_path=pid_path,
+    )
+
+
+@task(
+    help={
+        "base_url": "Browser-facing base URL used by the Playwright flow.",
+        "seed_path": "Fixture used to seed the local app database and browser flow.",
+        "database_url": "Base database URL used to derive the iPhone SQLite file.",
+        "webauthn_rp_id": "WebAuthn relying party ID exposed to the browser.",
+        "host": "Host to bind the local app server to.",
+        "port": "Port to bind the local app server to.",
+        "artifact_root": "Directory used to store browser artifacts.",
+        "log_path": "File used for uvicorn logs.",
+        "pid_path": "File used to store the started server PID.",
+    }
+)
+def browser_e2e_mobile(
+    c,
+    base_url=DEFAULT_PREVIEW_BASE_URL,
+    seed_path=DEFAULT_BROWSER_SEED_PATH,
+    database_url=DEFAULT_BROWSER_DATABASE_URL,
+    webauthn_rp_id="localhost",
+    host=DEFAULT_HOST,
+    port=DEFAULT_PORT,
+    artifact_root="e2e-artifacts",
+    log_path=DEFAULT_APP_LOG_PATH,
+    pid_path=DEFAULT_APP_PID_PATH,
+) -> None:
+    """Run seeded browser e2e for iPhone only."""
+    _run_browser_e2e_for_device(
+        c,
+        device="iphone",
+        base_url=base_url,
+        seed_path=seed_path,
+        database_url=database_url,
+        webauthn_rp_id=webauthn_rp_id,
+        host=host,
+        port=port,
+        artifact_root=artifact_root,
+        log_path=log_path,
+        pid_path=pid_path,
+    )
 
 
 @task(pre=[check_python, install_js, check_js, install_browser, check_browser_e2e])

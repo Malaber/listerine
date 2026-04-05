@@ -1,180 +1,224 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import vm from "node:vm";
 
-function setGlobalProperty(name, value) {
-  Object.defineProperty(globalThis, name, {
-    configurable: true,
-    writable: true,
-    value,
-  });
-}
+const serviceWorkerSourceUrl = new URL("./service-worker.js", import.meta.url);
+const serviceWorkerSource = await import("node:fs/promises").then((fs) =>
+  fs.readFile(serviceWorkerSourceUrl, "utf8"),
+);
 
-async function loadServiceWorkerModule() {
+function createServiceWorkerHarness(options = {}) {
   const listeners = new Map();
-  const originalSelf = globalThis.self;
-  const originalCaches = globalThis.caches;
-  const originalFetch = globalThis.fetch;
+  const deletedKeys = [];
+  const addAllCalls = [];
+  const putCalls = [];
+  const fetchCalls = [];
+  const matchedRequests = [];
 
-  setGlobalProperty("self", {
-    location: { origin: "https://example.com" },
-    skipWaiting() {},
-    clients: { claim() {} },
-    addEventListener(type, listener) {
-      listeners.set(type, listener);
+  const openedCache = {
+    addAll: async (assets) => {
+      addAllCalls.push(assets);
+      if (options.addAllError) {
+        throw options.addAllError;
+      }
     },
-  });
+    put: async (request, response) => {
+      putCalls.push([request, response]);
+    },
+  };
 
-  try {
-    await import(new URL(`./service-worker.js?case=${Date.now()}-${Math.random()}`, import.meta.url));
-    return {
-      listeners,
-      restore() {
-        setGlobalProperty("self", originalSelf);
-        setGlobalProperty("caches", originalCaches);
-        setGlobalProperty("fetch", originalFetch);
+  const context = {
+    URL,
+    caches: {
+      open: async (name) => {
+        assert.equal(name, "listerine-shell-v2");
+        return openedCache;
       },
-    };
-  } catch (error) {
-    setGlobalProperty("self", originalSelf);
-    setGlobalProperty("caches", originalCaches);
-    setGlobalProperty("fetch", originalFetch);
-    throw error;
-  }
-}
-
-test("service worker precaches only static shell assets", async () => {
-  const openedCaches = [];
-  let cachedAssets = null;
-  const { listeners, restore } = await loadServiceWorkerModule();
-
-  setGlobalProperty("caches", {
-    open: async (name) => {
-      openedCaches.push(name);
-      return {
-        addAll: async (assets) => {
-          cachedAssets = assets;
+      match: async (request) => {
+        matchedRequests.push(request);
+        return options.cachedResponse ?? null;
+      },
+      keys: async () => options.cacheKeys ?? [],
+      delete: async (key) => {
+        deletedKeys.push(key);
+        return true;
+      },
+    },
+    fetch: async (request) => {
+      fetchCalls.push(request);
+      return options.fetchResponse ?? {
+        ok: true,
+        redirected: false,
+        clone() {
+          return { cloned: true };
         },
       };
     },
+    self: {
+      location: { origin: "https://example.com" },
+      clients: {
+        claimCalled: false,
+        claim() {
+          this.claimCalled = true;
+        },
+      },
+      skipWaitingCalled: false,
+      skipWaiting() {
+        this.skipWaitingCalled = true;
+      },
+      addEventListener(type, handler) {
+        listeners.set(type, handler);
+      },
+    },
+  };
+
+  vm.runInNewContext(serviceWorkerSource, context, { filename: serviceWorkerSourceUrl.pathname });
+
+  return {
+    addAllCalls,
+    deletedKeys,
+    fetchCalls,
+    listeners,
+    matchedRequests,
+    putCalls,
+    self: context.self,
+  };
+}
+
+async function dispatchExtendableEvent(listener, extras = {}) {
+  const pending = [];
+  listener({
+    ...extras,
+    waitUntil(promise) {
+      pending.push(promise);
+    },
+  });
+  await Promise.all(pending);
+}
+
+async function dispatchFetchEvent(listener, request) {
+  let responsePromise = null;
+  listener({
+    request,
+    respondWith(promise) {
+      responsePromise = promise;
+    },
+  });
+  return responsePromise;
+}
+
+test("service worker precaches shell assets and skips waiting", async () => {
+  const harness = createServiceWorkerHarness();
+
+  await dispatchExtendableEvent(harness.listeners.get("install"));
+
+  assert.equal(
+    JSON.stringify(harness.addAllCalls),
+    JSON.stringify([
+      [
+        "/manifest.webmanifest",
+        "/static/app.css",
+        "/static/app.js",
+        "/static/img/Favicon.png",
+        "/static/img/Listerine.png",
+        "/static/img/apple-touch-icon.png",
+        "/static/img/pwa-192.png",
+        "/static/img/pwa-512.png",
+      ],
+    ]),
+  );
+  assert.equal(harness.self.skipWaitingCalled, true);
+});
+
+test("service worker tolerates precache failures during install", async () => {
+  const harness = createServiceWorkerHarness({ addAllError: new Error("cache unavailable") });
+
+  await dispatchExtendableEvent(harness.listeners.get("install"));
+
+  assert.equal(harness.self.skipWaitingCalled, true);
+});
+
+test("service worker clears old caches and claims clients on activate", async () => {
+  const harness = createServiceWorkerHarness({ cacheKeys: ["listerine-shell-v1", "listerine-shell-v2"] });
+
+  await dispatchExtendableEvent(harness.listeners.get("activate"));
+
+  assert.deepEqual(harness.deletedKeys, ["listerine-shell-v1"]);
+  assert.equal(harness.self.clients.claimCalled, true);
+});
+
+test("service worker ignores navigation requests so browser redirects stay native", async () => {
+  const harness = createServiceWorkerHarness();
+
+  const responsePromise = await dispatchFetchEvent(harness.listeners.get("fetch"), {
+    method: "GET",
+    mode: "navigate",
+    url: "https://example.com/",
   });
 
-  try {
-    const install = listeners.get("install");
-    assert.equal(typeof install, "function");
-
-    let installPromise = null;
-    install({
-      waitUntil(promise) {
-        installPromise = promise;
-      },
-    });
-
-    await installPromise;
-    assert.deepEqual(openedCaches, ["listerine-shell-v2"]);
-    assert.ok(Array.isArray(cachedAssets));
-    assert.ok(cachedAssets.includes("/static/app.css"));
-    assert.ok(cachedAssets.includes("/manifest.webmanifest"));
-    assert.ok(!cachedAssets.includes("/"));
-    assert.ok(!cachedAssets.includes("/login"));
-  } finally {
-    restore();
-  }
+  assert.equal(responsePromise, null);
+  assert.deepEqual(harness.fetchCalls, []);
+  assert.deepEqual(harness.matchedRequests, []);
 });
 
 test("service worker ignores admin navigations", async () => {
-  const { listeners, restore } = await loadServiceWorkerModule();
+  const harness = createServiceWorkerHarness();
 
-  try {
-    const fetchListener = listeners.get("fetch");
-    assert.equal(typeof fetchListener, "function");
-
-    let respondWithCalled = false;
-    fetchListener({
-      request: {
-        method: "GET",
-        url: "https://example.com/admin",
-        mode: "navigate",
-      },
-      respondWith() {
-        respondWithCalled = true;
-      },
-    });
-
-    assert.equal(respondWithCalled, false);
-  } finally {
-    restore();
-  }
-});
-
-test("service worker serves static assets from cache when available", async () => {
-  const cachedResponse = { ok: true, source: "cache" };
-  const { listeners, restore } = await loadServiceWorkerModule();
-
-  setGlobalProperty("caches", {
-    match: async () => cachedResponse,
-  });
-  setGlobalProperty("fetch", async () => {
-    throw new Error("fetch should not run when the asset is cached");
+  const responsePromise = await dispatchFetchEvent(harness.listeners.get("fetch"), {
+    method: "GET",
+    mode: "navigate",
+    url: "https://example.com/admin",
   });
 
-  try {
-    const fetchListener = listeners.get("fetch");
-    let responsePromise = null;
-
-    fetchListener({
-      request: {
-        method: "GET",
-        url: "https://example.com/static/app.css",
-      },
-      respondWith(promise) {
-        responsePromise = promise;
-      },
-    });
-
-    assert.equal(await responsePromise, cachedResponse);
-  } finally {
-    restore();
-  }
+  assert.equal(responsePromise, null);
+  assert.deepEqual(harness.fetchCalls, []);
+  assert.deepEqual(harness.matchedRequests, []);
 });
 
-test("service worker caches successful static fetches", async () => {
-  const puts = [];
+test("service worker serves cached static assets", async () => {
+  const cachedResponse = { cached: true };
+  const harness = createServiceWorkerHarness({ cachedResponse });
+  const request = { method: "GET", url: "https://example.com/static/app.css" };
+
+  const responsePromise = await dispatchFetchEvent(harness.listeners.get("fetch"), request);
+
+  assert.equal(await responsePromise, cachedResponse);
+  assert.deepEqual(harness.fetchCalls, []);
+  assert.deepEqual(harness.matchedRequests, [request]);
+});
+
+test("service worker fetches and caches uncached static assets", async () => {
+  const clonedResponse = { cloned: true };
   const networkResponse = {
     ok: true,
-    clone: () => ({ ok: true, cloned: true }),
+    redirected: false,
+    clone() {
+      return clonedResponse;
+    },
   };
-  const { listeners, restore } = await loadServiceWorkerModule();
+  const harness = createServiceWorkerHarness({ fetchResponse: networkResponse });
+  const request = { method: "GET", url: "https://example.com/static/app.css" };
 
-  setGlobalProperty("caches", {
-    match: async () => undefined,
-    open: async () => ({
-      put(request, response) {
-        puts.push({ request, response });
-      },
-    }),
-  });
-  setGlobalProperty("fetch", async () => networkResponse);
+  const responsePromise = await dispatchFetchEvent(harness.listeners.get("fetch"), request);
 
-  try {
-    const fetchListener = listeners.get("fetch");
-    let responsePromise = null;
-    const request = {
-      method: "GET",
-      url: "https://example.com/static/app.js",
-    };
+  assert.equal(await responsePromise, networkResponse);
+  assert.deepEqual(harness.fetchCalls, [request]);
+  assert.deepEqual(harness.putCalls, [[request, clonedResponse]]);
+});
 
-    fetchListener({
-      request,
-      respondWith(promise) {
-        responsePromise = promise;
-      },
-    });
+test("service worker avoids caching redirected asset responses", async () => {
+  const redirectedResponse = {
+    ok: true,
+    redirected: true,
+    clone() {
+      throw new Error("redirected responses should not be cloned");
+    },
+  };
+  const harness = createServiceWorkerHarness({ fetchResponse: redirectedResponse });
+  const request = { method: "GET", url: "https://example.com/static/app.css" };
 
-    assert.equal(await responsePromise, networkResponse);
-    assert.equal(puts.length, 1);
-    assert.equal(puts[0].request, request);
-    assert.deepEqual(puts[0].response, { ok: true, cloned: true });
-  } finally {
-    restore();
-  }
+  const responsePromise = await dispatchFetchEvent(harness.listeners.get("fetch"), request);
+
+  assert.equal(await responsePromise, redirectedResponse);
+  assert.deepEqual(harness.putCalls, []);
 });
