@@ -38,6 +38,12 @@ using `.venv/bin/...` commands rather than stopping.
 - [Webhooker deployment](docs/deployment/webhooker.md)
 - [iOS starter app](ios/ListerineIOS/README.md)
 
+## Release naming
+
+GitHub Releases created from `main` use merged PR metadata for their title.
+Add a `Release title:` line to the PR description to set an explicit release name.
+If that line is blank or omitted, the workflow uses the PR title instead.
+
 ## Seeded review identities
 
 The checked-in review fixture (`app/fixtures/review_seed.json`) includes deterministic preview users:
