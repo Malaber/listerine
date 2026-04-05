@@ -27,6 +27,29 @@ test("registerServiceWorker skips registration when service workers are unavaila
   }
 });
 
+test("registerServiceWorker skips registration during webdriver automation", async () => {
+  const originalWindow = globalThis.window;
+  const originalNavigator = globalThis.navigator;
+
+  setGlobalProperty("window", {});
+  setGlobalProperty("navigator", {
+    webdriver: true,
+    serviceWorker: {
+      register: async () => {
+        throw new Error("register should not be called during webdriver automation");
+      },
+    },
+  });
+
+  try {
+    const result = await registerServiceWorker();
+    assert.equal(result, null);
+  } finally {
+    setGlobalProperty("window", originalWindow);
+    setGlobalProperty("navigator", originalNavigator);
+  }
+});
+
 test("registerServiceWorker registers the root service worker when available", async () => {
   const originalWindow = globalThis.window;
   const originalNavigator = globalThis.navigator;

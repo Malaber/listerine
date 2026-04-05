@@ -80,6 +80,10 @@ async function registerServiceWorker() {
     return null;
   }
 
+  if (navigator.webdriver) {
+    return null;
+  }
+
   return navigator.serviceWorker.register("/service-worker.js");
 }
 
