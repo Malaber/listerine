@@ -45,11 +45,10 @@ on the Listerine side is:
 The CI workflow is already wired for `webhooker`-managed deployments:
 
 - pushes publish `ghcr.io/<owner>/<repo>:sha-<full git sha>`
-- pull requests publish `ghcr.io/<owner>/<repo>:sha-<pr head sha>`
-- pull requests also publish `ghcr.io/<owner>/<repo>:pr-<number>-<sha7>`
-- pull request builds send a signed wake request to the review deployment endpoint
+- pull request review jobs wait for the already-published `sha-<pr head sha>` image from the branch push
+- pull request review jobs send a signed wake request to the review deployment endpoint
 - pushes to `main` send a signed wake request to the production deployment endpoint
-- pull request builds also update a sticky PR comment with the deterministic review URL
+- pull request review jobs also update a sticky PR comment with the deterministic review URL
 
 ## GitHub Actions settings
 
