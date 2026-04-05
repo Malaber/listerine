@@ -1508,12 +1508,19 @@ main {
     gap: 0.35rem;
     padding: 0.45rem 0.8rem;
     background: rgba(245, 251, 253, 0.72);
+    border-top: 2px solid rgba(167, 203, 223, 0.88);
+    border-bottom: 1px solid rgba(167, 203, 223, 0.58);
+  }
+
+  .item-category-group:first-child .item-category-header {
+    border-top: 0;
   }
 
   .item-card {
     align-items: center;
     gap: 0.55rem;
     border-radius: 0;
+    border-top-color: rgba(167, 203, 223, 0.42);
     padding: 0.62rem 0.8rem;
     background: var(--surface-strong);
   }
