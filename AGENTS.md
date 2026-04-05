@@ -104,3 +104,12 @@ A PR may be created when either:
   - attempted commands are listed,
   - failures are clearly identified as environment-related,
   - and code changes are scoped to the requested fix.
+
+## Release naming
+
+- The release workflow uses merged PR metadata to name GitHub Releases created from `main`.
+- If the PR description contains a line starting with `Release title:`, that value becomes the
+  GitHub Release title.
+- If `Release title:` is blank or omitted, the workflow falls back to the PR title.
+- Prefer setting `Release title:` in the PR description when the release should have a clearer name
+  than the PR title or merge commit subject.
