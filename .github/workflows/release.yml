@@ -1,0 +1,311 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+  pull-requests: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.14'
+  NODE_VERSION: '24'
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      base_version: ${{ steps.version.outputs.base_version }}
+      release_version: ${{ steps.version.outputs.release_version }}
+      git_tag: ${{ steps.version.outputs.git_tag }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: python -m pip install invoke
+      - run: python -m invoke bootstrap-ci
+      - name: Compute release version
+        id: version
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: python -m invoke compute-version
+
+  docker_build_platform:
+    runs-on: ubuntu-latest
+    needs:
+      - version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            artifact_suffix: linux-amd64
+          - platform: linux/arm64
+            artifact_suffix: linux-arm64
+    steps:
+      - uses: actions/checkout@v6
+      - name: Compute image name
+        id: image
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: echo "image=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish platform image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: ${{ matrix.platform }}
+          build-args: |
+            LISTERINE_VERSION=${{ needs.version.outputs.release_version }}
+          outputs: type=image,name=${{ steps.image.outputs.image }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=docker-${{ matrix.artifact_suffix }}
+          cache-to: type=gha,mode=max,scope=docker-${{ matrix.artifact_suffix }}
+      - name: Export image digest
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p /tmp/docker-digests
+          touch "/tmp/docker-digests/${IMAGE_DIGEST#sha256:}"
+      - name: Upload image digest artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: docker-digest-${{ matrix.artifact_suffix }}
+          path: /tmp/docker-digests/*
+          if-no-files-found: error
+          retention-days: 1
+      - name: Add platform build summary
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          {
+            echo "## Docker platform build summary"
+            echo
+            printf 'Published platform image: `%s@%s`\n' "$IMAGE" "$IMAGE_DIGEST"
+            printf 'Platform: `%s`\n' "$PLATFORM"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  docker_build:
+    runs-on: ubuntu-latest
+    needs:
+      - docker_build_platform
+      - version
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+      digest: ${{ steps.merge.outputs.digest }}
+      primary_tag: ${{ steps.tags.outputs.primary_tag }}
+    steps:
+      - name: Compute image name
+        id: image
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: echo "image=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - name: Compute image tags
+        id: tags
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+          PUSH_SHA: ${{ github.sha }}
+        run: |
+          PRIMARY_TAG="sha-$PUSH_SHA"
+          {
+            echo "primary_tag=$PRIMARY_TAG"
+            echo "tags<<EOF"
+            echo "$IMAGE:$PRIMARY_TAG"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download image digest artifacts
+        uses: actions/download-artifact@v6
+        with:
+          pattern: docker-digest-*
+          path: /tmp/docker-digests
+          merge-multiple: true
+      - name: Merge platform images into multi-arch manifest
+        id: merge
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+          TAGS: ${{ steps.tags.outputs.tags }}
+          IMAGE_TAG: ${{ steps.tags.outputs.primary_tag }}
+        run: |
+          tags=()
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            tags+=(--tag "$tag")
+          done <<EOF
+          $TAGS
+          EOF
+
+          sources=()
+          for digest_file in /tmp/docker-digests/*; do
+            [ -e "$digest_file" ] || continue
+            sources+=("$IMAGE@sha256:$(basename "$digest_file")")
+          done
+
+          if [ "${#sources[@]}" -eq 0 ]; then
+            echo "No platform digests were downloaded for manifest creation." >&2
+            exit 1
+          fi
+
+          docker buildx imagetools create "${tags[@]}" "${sources[@]}"
+
+          digest="$(docker buildx imagetools inspect "$IMAGE:$IMAGE_TAG" | awk '/Digest:/ { print $2; exit }')"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Add docker build summary
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+          IMAGE_TAG: ${{ steps.tags.outputs.primary_tag }}
+          IMAGE_DIGEST: ${{ steps.merge.outputs.digest }}
+        run: |
+          docker buildx imagetools inspect "$IMAGE:$IMAGE_TAG" > docker-image-inspect.txt
+          {
+            echo "## Docker image publish summary"
+            echo
+            printf 'Published image: `%s`\n' "$IMAGE:$IMAGE_TAG"
+            printf 'Manifest digest: `%s`\n' "$IMAGE_DIGEST"
+            echo
+            echo "### Published platforms"
+            awk '/Platform:/ { printf "- `%s`\n", $2 }' docker-image-inspect.txt
+            echo
+            echo "### Inspection output"
+            echo '```text'
+            cat docker-image-inspect.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    runs-on: ubuntu-latest
+    needs:
+      - version
+      - docker_build_platform
+      - docker_build
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Create or update git tag
+        env:
+          GIT_TAG: ${{ needs.version.outputs.git_tag }}
+        run: |
+          if git rev-parse "$GIT_TAG" >/dev/null 2>&1; then
+            echo "Tag $GIT_TAG already exists."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag "$GIT_TAG" "$GITHUB_SHA"
+            git push origin "$GIT_TAG"
+          fi
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v3
+      - name: Promote tested image to release tag
+        env:
+          IMAGE: ${{ needs.docker_build.outputs.image }}
+          COMMIT_DIGEST: ${{ needs.docker_build.outputs.digest }}
+          RELEASE_VERSION: ${{ needs.version.outputs.release_version }}
+        run: |
+          docker buildx imagetools create \
+            --tag "$IMAGE:$RELEASE_VERSION" \
+            "$IMAGE:sha-$GITHUB_SHA"
+      - name: Add release image summary
+        env:
+          IMAGE: ${{ needs.docker_build.outputs.image }}
+          COMMIT_DIGEST: ${{ needs.docker_build.outputs.digest }}
+          RELEASE_VERSION: ${{ needs.version.outputs.release_version }}
+        run: |
+          docker buildx imagetools inspect "$IMAGE:$RELEASE_VERSION" > docker-release-inspect.txt
+          {
+            echo "## Docker release summary"
+            echo
+            printf 'Commit image: `%s`\n' "$IMAGE:sha-$GITHUB_SHA"
+            printf 'Commit manifest digest: `%s`\n' "$COMMIT_DIGEST"
+            printf 'Release tag: `%s`\n' "$IMAGE:$RELEASE_VERSION"
+            echo
+            echo "### Published platforms"
+            awk '/Platform:/ { printf "- `%s`\n", $2 }' docker-release-inspect.txt
+            echo
+            echo "### Inspection output"
+            echo '```text'
+            cat docker-release-inspect.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Wake webhooker production deployment
+        if: github.ref == 'refs/heads/main'
+        env:
+          WAKE_URL: ${{ vars.WEBHOOKER_PRODUCTION_WAKE_URL }}
+          WAKE_SECRET: ${{ secrets.WEBHOOKER_WEBHOOK_SECRET }}
+          PUSH_SHA: ${{ github.sha }}
+          REF_NAME: ${{ github.ref_name }}
+          REPOSITORY: ${{ github.repository }}
+          DELIVERY_ID: ci-production-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import hmac
+          import json
+          import os
+          import urllib.request
+
+          if not os.environ["WAKE_URL"] or not os.environ["WAKE_SECRET"]:
+              print("Skipping production wake: WEBHOOKER_PRODUCTION_WAKE_URL or WEBHOOKER_WEBHOOK_SECRET is not configured.")
+              raise SystemExit(0)
+
+          owner, repo = os.environ["REPOSITORY"].split("/", 1)
+          payload = {
+              "ref": f"refs/heads/{os.environ['REF_NAME']}",
+              "after": os.environ["PUSH_SHA"],
+              "repository": {
+                  "name": repo,
+                  "full_name": os.environ["REPOSITORY"],
+                  "owner": {"login": owner},
+              },
+          }
+          body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+          signature = "sha256=" + hmac.new(
+              os.environ["WAKE_SECRET"].encode("utf-8"),
+              body,
+              hashlib.sha256,
+          ).hexdigest()
+          request = urllib.request.Request(
+              os.environ["WAKE_URL"],
+              data=body,
+              method="POST",
+              headers={
+                  "Content-Type": "application/json",
+                  "X-GitHub-Event": "push",
+                  "X-GitHub-Delivery": os.environ["DELIVERY_ID"],
+                  "X-Hub-Signature-256": signature,
+              },
+          )
+          with urllib.request.urlopen(request) as response:
+              print(f"production wake status={response.status}")
+          PY

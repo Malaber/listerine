@@ -18,10 +18,7 @@
 
 html {
   min-height: 100%;
-  background:
-    radial-gradient(circle at top right, rgba(168, 223, 62, 0.28), transparent 30%),
-    radial-gradient(circle at left top, rgba(29, 184, 217, 0.2), transparent 32%),
-    linear-gradient(180deg, #eefafd 0%, #f9feff 46%, #ffffff 100%);
+  background: #fffaf2;
 }
 
 body {
@@ -29,10 +26,24 @@ body {
   margin: 0;
   display: flex;
   flex-direction: column;
+  position: relative;
   font-family: "Avenir Next", "Segoe UI", sans-serif;
   color: var(--text);
   background: transparent;
+  isolation: isolate;
   -webkit-text-size-adjust: 100%;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at top right, rgba(168, 223, 62, 0.28), transparent 30%),
+    radial-gradient(circle at left top, rgba(29, 184, 217, 0.2), transparent 32%),
+    linear-gradient(180deg, #eefafd 0%, #f9feff 46%, #ffffff 100%);
+  pointer-events: none;
 }
 
 body.has-list-modal-open {
