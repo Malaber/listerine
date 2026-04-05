@@ -43,6 +43,8 @@ using `.venv/bin/...` commands rather than stopping.
 GitHub Releases created from `main` use merged PR metadata for their title.
 Add a `Release title:` line to the PR description to set an explicit release name.
 If that line is blank or omitted, the workflow uses the PR title instead.
+The workflow prefixes the final release title with the version automatically, so the PR field should
+contain only the human-readable title.
 
 ## Seeded review identities
 
