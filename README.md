@@ -24,6 +24,10 @@ uvicorn app.main:app --reload
 
 Open [http://localhost:8000/docs](http://localhost:8000/docs).
 
+For local development and verification, install dependencies in the repo `.venv` and run the
+shared Invoke tasks from that environment. If `.codex/setup.sh` cannot use the host Python, keep
+using `.venv/bin/...` commands rather than stopping.
+
 ## Documentation
 
 - [Documentation index](docs/README.md)
@@ -33,6 +37,14 @@ Open [http://localhost:8000/docs](http://localhost:8000/docs).
 - [Docker Compose deployment](docs/deployment/docker-compose.md)
 - [Webhooker deployment](docs/deployment/webhooker.md)
 - [iOS starter app](ios/ListerineIOS/README.md)
+
+## Release naming
+
+GitHub Releases created from `main` use merged PR metadata for their title.
+Add a `Release title:` line to the PR description to set an explicit release name.
+If that line is blank or omitted, the workflow uses the PR title instead.
+The workflow prefixes the final release title with the version automatically, so the PR field should
+contain only the human-readable title.
 
 ## Seeded review identities
 
@@ -58,6 +70,48 @@ Optional flags:
 - `--database-url <url>` to override `DATABASE_URL`
 
 The script prints JSON containing each selected user's passkey `credential_id`, `public_key_b64`, and `sign_count`.
+
+## Install local dependencies
+
+Use the shared Invoke bootstrap task to install local development dependencies:
+
+```bash
+python3.14 -m venv .venv
+.venv/bin/pip install invoke
+.venv/bin/inv install-deps
+```
+
+Optional flags:
+
+- `--python-bin <python>` to choose a different Python executable for the virtualenv
+- `--with-browser` to also install the Playwright Chromium bundle
+- `--browser-with-deps` to use Playwright's `--with-deps` install flow when `--with-browser` is enabled
+
+## Generate a passkey recovery link from the server
+
+If someone loses their passkey, you can generate the same one-time add-passkey link that the admin UI creates directly from inside the Docker container:
+
+```bash
+DATABASE_URL='sqlite+aiosqlite:///./listerine.db' \
+APP_BASE_URL='https://listerine.example.com' \
+python scripts/create_passkey_reset_link.py --email admin@example.com
+```
+
+Optional flags:
+
+- `--user-id <uuid>` to target a user by UUID instead of email
+- `--database-url <url>` to override `DATABASE_URL`
+- `--base-url <url>` to override `APP_BASE_URL`
+
+The script prints the one-time `/passkey-add/...` URL and its expiry timestamp.
+
+For Docker Compose deployments, you can run it directly in the live container:
+
+```bash
+docker compose exec app python scripts/create_passkey_reset_link.py \
+  --email admin@example.com \
+  --base-url https://listerine.example.com
+```
 
 ## Python version
 

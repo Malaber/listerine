@@ -4,13 +4,18 @@
 
 Always run `.codex/setup.sh` first.
 
-If `.codex/setup.sh` fails because the host Python is externally managed, use the repo virtualenv
-fallback instead of stopping:
+For local dependency installation and verification, prefer the repo virtualenv at `.venv`. If
+`.codex/setup.sh` fails because the host Python is externally managed, continue in `.venv` instead
+of stopping:
 
 - If `.venv` does not exist yet, create it with `python3.14 -m venv .venv`.
-- If `.venv` pip commands fail because `SSL_CERT_FILE` or `REQUESTS_CA_BUNDLE` points at a missing
-  local certificate bundle, retry with those variables unset, for example:
-  `env -u SSL_CERT_FILE -u REQUESTS_CA_BUNDLE .venv/bin/pip install -e '.[dev]'`
+- If `.venv/bin/inv` does not exist yet, bootstrap Invoke first with
+  `.venv/bin/pip install invoke`.
+- Use `.venv/bin/inv install-deps` to install the Python and Node dependencies.
+- If either bootstrap step fails because `SSL_CERT_FILE` or `REQUESTS_CA_BUNDLE` points at a
+  missing local certificate bundle, retry with those variables unset, for example:
+  `env -u SSL_CERT_FILE -u REQUESTS_CA_BUNDLE .venv/bin/pip install invoke`
+  `env -u SSL_CERT_FILE -u REQUESTS_CA_BUNDLE .venv/bin/inv install-deps`
 - `.venv/bin/inv check-python`
 - `.venv/bin/inv install-js`
 - `.venv/bin/inv check-js`
@@ -28,9 +33,9 @@ Use this sequence for reliable local verification:
 2. If setup fails with an externally-managed Python error, use the existing `.venv` commands listed
    above for Python checks.
    If `.venv` does not exist, create it with `python3.14 -m venv .venv`, then install deps with
-   `.venv/bin/pip install -e '.[dev]'`.
-   If pip fails because of a broken local CA bundle override, retry with
-   `env -u SSL_CERT_FILE -u REQUESTS_CA_BUNDLE`.
+   `.venv/bin/pip install invoke` followed by `.venv/bin/inv install-deps`.
+   If the bootstrap or Python dependency install fails because of a broken local CA bundle
+   override, retry with `env -u SSL_CERT_FILE -u REQUESTS_CA_BUNDLE`.
 3. Prefer the shared Invoke tasks rather than spelling out individual commands. The default
    local pre-push pass is `inv verify`, which runs the Python checks, JavaScript unit tests,
    Playwright browser dependency install, and the seeded browser e2e flow with the same task
@@ -67,8 +72,9 @@ Use this sequence for reliable local verification:
 14. `inv check-browser-e2e`, `inv browser-e2e-desktop`, `inv browser-e2e-mobile`, and `inv verify`
     stop the local app automatically after the e2e run.
 
-This workflow is the preferred fallback whenever the default setup script or an old local database
-prevents the normal CI-like commands from succeeding.
+This workflow is the preferred local path whenever the default setup script or host Python prevents
+the normal CI-like commands from succeeding, and it is always acceptable to install dependencies in
+the repo `.venv` before running verification.
 
 ## Frontend styling
 
@@ -102,3 +108,14 @@ A PR may be created when either:
   - attempted commands are listed,
   - failures are clearly identified as environment-related,
   - and code changes are scoped to the requested fix.
+
+## Release naming
+
+- The release workflow uses merged PR metadata to name GitHub Releases created from `main`.
+- If the PR description contains a line starting with `Release title:`, that value becomes the
+  GitHub Release title.
+- If `Release title:` is blank or omitted, the workflow falls back to the PR title.
+- The workflow prefixes the final release title with the computed version automatically, so
+  `Release title:` should not include the version number.
+- Prefer setting `Release title:` in the PR description when the release should have a clearer name
+  than the PR title or merge commit subject.

@@ -71,6 +71,22 @@ function navigateTo(url) {
   window.location.assign(url);
 }
 
+async function registerServiceWorker() {
+  if (typeof window === "undefined" || typeof navigator === "undefined") {
+    return null;
+  }
+
+  if (!("serviceWorker" in navigator)) {
+    return null;
+  }
+
+  if (navigator.webdriver) {
+    return null;
+  }
+
+  return navigator.serviceWorker.register("/service-worker.js");
+}
+
 async function postJson(url, payload) {
   const response = await fetch(url, {
     method: "POST",
@@ -2633,6 +2649,7 @@ async function initHouseholdInvite() {
 }
 
 function initApp() {
+  registerServiceWorker().catch(() => undefined);
   initPasskeyAuth();
   initPasskeyAddLink();
   initUserSettings();
@@ -2650,6 +2667,7 @@ export {
   bytesToBase64Url,
   publicKeyFromJSON,
   credentialToJSON,
+  registerServiceWorker,
   navigateTo,
   postJson,
   fetchJson,

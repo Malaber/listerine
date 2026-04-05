@@ -57,6 +57,30 @@ docker compose up -d
 
 Then open `http://YOUR_HOST:8000/health` to confirm the container is healthy.
 
+## Generate a passkey recovery link
+
+If an account owner or admin loses their passkey, you can generate a one-time add-passkey link from the running container:
+
+```bash
+docker compose exec app python scripts/create_passkey_reset_link.py \
+  --email admin@example.com \
+  --base-url https://listerine.example.com
+```
+
+If you prefer to target a user by ID instead of email:
+
+```bash
+docker compose exec app python scripts/create_passkey_reset_link.py \
+  --user-id 00000000-0000-0000-0000-000000000000 \
+  --base-url https://listerine.example.com
+```
+
+Notes:
+
+- `--base-url` should match the public HTTPS URL people use in the browser, not the internal container address.
+- The script reads `DATABASE_URL` from the container environment by default, so you usually do not need to pass `--database-url` when using `docker compose exec`.
+- The printed `/passkey-add/...` URL is single-use and expires automatically.
+
 ## Production notes
 
 - set a strong `SECRET_KEY`

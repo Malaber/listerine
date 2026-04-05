@@ -42,6 +42,20 @@ def set_passkey_reset(user: User, token: str) -> datetime:
     return expires_at
 
 
+async def issue_passkey_reset(db: AsyncSession, user: User) -> tuple[str, datetime]:
+    token = create_passkey_reset_token()
+    expires_at = set_passkey_reset(user, token)
+    await db.commit()
+    return token, expires_at
+
+
+def build_passkey_add_link(base_url: str, token: str) -> str:
+    normalized_base_url = base_url.strip().rstrip("/")
+    if not normalized_base_url:
+        raise ValueError("Base URL is required")
+    return f"{normalized_base_url}/passkey-add/{token}"
+
+
 def clear_passkey_reset(user: User) -> None:
     user.passkey_reset_token_hash = None
     user.passkey_reset_expires_at = None

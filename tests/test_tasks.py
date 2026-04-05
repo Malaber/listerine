@@ -163,3 +163,36 @@ def test_run_browser_e2e_for_device_uses_derived_database_and_artifact_paths(mon
         ),
         ("stop", {"pid_path": "ui-e2e-server.pid"}),
     ]
+
+
+def test_install_deps_runs_python_and_js_bootstrap(monkeypatch) -> None:
+    calls: list[tuple[str, object]] = []
+
+    monkeypatch.setattr(
+        tasks.setup_venv,
+        "body",
+        lambda c, python_bin="python3.14": calls.append(("setup_venv", python_bin)),
+    )
+    monkeypatch.setattr(
+        tasks.install_js,
+        "body",
+        lambda c: calls.append(("install_js", None)),
+    )
+    monkeypatch.setattr(
+        tasks.install_browser,
+        "body",
+        lambda c, with_deps=False: calls.append(("install_browser", with_deps)),
+    )
+
+    tasks.install_deps.body(
+        None,
+        python_bin="python3.13",
+        with_browser=True,
+        browser_with_deps=True,
+    )
+
+    assert calls == [
+        ("setup_venv", "python3.13"),
+        ("install_js", None),
+        ("install_browser", True),
+    ]

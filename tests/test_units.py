@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
 from fastapi import HTTPException
 from jose import jwt
 from starlette.requests import Request
@@ -30,9 +31,11 @@ from app.services.auth_sessions import (
     revoke_auth_session,
 )
 from app.services.passkey_reset import (
+    build_passkey_add_link,
     clear_passkey_reset,
     create_passkey_reset_token,
     hash_passkey_reset_token,
+    issue_passkey_reset,
     passkey_reset_is_active,
     set_passkey_reset,
 )
@@ -133,6 +136,29 @@ def test_passkey_reset_helpers_manage_token_state() -> None:
     assert user.passkey_reset_token_hash is None
     assert user.passkey_reset_expires_at is None
     assert passkey_reset_is_active(user) is False
+
+
+def test_build_passkey_add_link_normalizes_base_url() -> None:
+    assert build_passkey_add_link("https://example.com/", "abc123") == (
+        "https://example.com/passkey-add/abc123"
+    )
+
+
+def test_build_passkey_add_link_requires_base_url() -> None:
+    with pytest.raises(ValueError, match="Base URL is required"):
+        build_passkey_add_link("   ", "abc123")
+
+
+def test_issue_passkey_reset_commits_to_database() -> None:
+    user = SimpleNamespace(passkey_reset_token_hash=None, passkey_reset_expires_at=None)
+    db = DummyDB()
+
+    token, expires_at = asyncio.run(issue_passkey_reset(db, user))
+
+    assert token
+    assert expires_at == user.passkey_reset_expires_at
+    assert user.passkey_reset_token_hash == hash_passkey_reset_token(token)
+    assert db.commit_calls == 1
 
 
 def test_websocket_hub_connect_broadcast_disconnect() -> None:

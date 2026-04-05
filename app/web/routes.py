@@ -1,5 +1,7 @@
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, Request, Response
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +12,7 @@ from app.services.passkey_reset import get_user_for_passkey_reset_token
 
 router = APIRouter(tags=["web"])
 templates = Jinja2Templates(directory="app/web/templates")
+static_root = Path("app/web/static")
 
 
 def _template_auth_context(user: User | None) -> dict[str, bool]:
@@ -28,6 +31,23 @@ def _safe_next_path(request: Request) -> str:
 
 async def _get_session_user(request: Request, db: AsyncSession) -> User | None:
     return await get_session_user(request, db)
+
+
+@router.get("/manifest.webmanifest", include_in_schema=False)
+async def web_manifest() -> FileResponse:
+    return FileResponse(
+        static_root / "manifest.webmanifest",
+        media_type="application/manifest+json",
+    )
+
+
+@router.get("/service-worker.js", include_in_schema=False)
+async def service_worker() -> FileResponse:
+    return FileResponse(
+        static_root / "service-worker.js",
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 @router.get("/login", response_class=HTMLResponse)

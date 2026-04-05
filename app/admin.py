@@ -12,7 +12,7 @@ from sqladmin.authentication import login_required
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, engine
 from app.models import Category, User
-from app.services.passkey_reset import create_passkey_reset_token, set_passkey_reset
+from app.services.passkey_reset import build_passkey_add_link, issue_passkey_reset
 from app.web.routes import _get_session_user
 
 
@@ -55,11 +55,9 @@ class UserAdmin(ModelView, model=User):
             if user is None:
                 return RedirectResponse(url="/admin/user/list", status_code=303)
 
-            token = create_passkey_reset_token()
-            set_passkey_reset(user, token)
-            await session.commit()
+            token, _ = await issue_passkey_reset(session, user)
 
-        reset_link = str(request.base_url).rstrip("/") + f"/passkey-add/{token}"
+        reset_link = build_passkey_add_link(str(request.base_url), token)
         edit_url = request.url_for("admin:edit", identity=self.identity, pk=str(user_id))
         return RedirectResponse(
             url=str(
