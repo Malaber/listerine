@@ -205,6 +205,8 @@ jobs:
       - version
       - docker_build_platform
       - docker_build
+    outputs:
+      release_title: ${{ steps.release_meta.outputs.release_title }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -236,6 +238,43 @@ jobs:
           docker buildx imagetools create \
             --tag "$IMAGE:$RELEASE_VERSION" \
             "$IMAGE:sha-$GITHUB_SHA"
+      - name: Resolve release metadata
+        if: github.ref == 'refs/heads/main'
+        id: release_meta
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          GIT_TAG: ${{ needs.version.outputs.git_tag }}
+        run: |
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$REPOSITORY/commits/$GITHUB_SHA/pulls" \
+            > associated-pulls.json
+
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          pulls = json.loads(Path("associated-pulls.json").read_text(encoding="utf-8"))
+          release_title = os.environ["GIT_TAG"]
+          if pulls:
+              pull = pulls[0]
+              body = pull.get("body") or ""
+              match = re.search(
+                  r"(?im)^release title:\s*(?P<title>\S.*)$",
+                  body,
+              )
+              if match:
+                  release_title = match.group("title").strip()
+              elif pull.get("title"):
+                  release_title = pull["title"].strip()
+
+          output_path = Path(os.environ["GITHUB_OUTPUT"])
+          with output_path.open("a", encoding="utf-8") as fh:
+              fh.write(f"release_title={release_title}\n")
+          PY
       - name: Prepare GitHub release notes
         if: github.ref == 'refs/heads/main'
         env:
@@ -279,14 +318,17 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GIT_TAG: ${{ needs.version.outputs.git_tag }}
+          RELEASE_TITLE: ${{ steps.release_meta.outputs.release_title }}
         run: |
           if gh release view "$GIT_TAG" >/dev/null 2>&1; then
             gh release edit "$GIT_TAG" \
               --latest \
+              --title "$RELEASE_TITLE" \
               --notes-file release-notes.md
           else
             gh release create "$GIT_TAG" \
               --latest \
+              --title "$RELEASE_TITLE" \
               --notes-file release-notes.md
           fi
       - name: Add release image summary
@@ -294,11 +336,13 @@ jobs:
           IMAGE: ${{ needs.docker_build.outputs.image }}
           COMMIT_DIGEST: ${{ needs.docker_build.outputs.digest }}
           RELEASE_VERSION: ${{ needs.version.outputs.release_version }}
+          RELEASE_TITLE: ${{ steps.release_meta.outputs.release_title }}
         run: |
           docker buildx imagetools inspect "$IMAGE:$RELEASE_VERSION" > docker-release-inspect.txt
           {
             echo "## Docker release summary"
             echo
+            printf 'Release title: `%s`\n' "$RELEASE_TITLE"
             printf 'Commit image: `%s`\n' "$IMAGE:sha-$GITHUB_SHA"
             printf 'Commit manifest digest: `%s`\n' "$COMMIT_DIGEST"
             printf 'Release tag: `%s`\n' "$IMAGE:$RELEASE_VERSION"
