@@ -122,6 +122,18 @@ function settingsHtml() {
   `;
 }
 
+function passkeyAddLinkHtml(token = "add-token") {
+  return `
+    <section data-passkey-add-link data-passkey-add-token="${token}">
+      <p data-auth-error hidden></p>
+      <p data-auth-success hidden></p>
+      <form data-passkey-add-link-form>
+        <button type="button" data-passkey-add-link-button>Add</button>
+      </form>
+    </section>
+  `;
+}
+
 function listDetailHtml() {
   return `
     <section data-list-detail data-list-id="list-1">
@@ -1761,6 +1773,54 @@ test("passkey login helpers and auth initialization handle supported and unsuppo
     delete globalThis.window.PublicKeyCredential;
     delete globalThis.navigator.credentials;
     await app.initPasskeyAuth();
+    assert.equal(root.querySelector("[data-auth-error]").textContent, "This browser does not support passkeys.");
+  } finally {
+    env.restore();
+  }
+});
+
+test("passkey add-link helpers and initialization handle success and unsupported browsers", async () => {
+  const passkeyCalls = [];
+  const env = installDom(passkeyAddLinkHtml(), {
+    fetch: async (url) => {
+      if (url === "/api/v1/auth/passkey-add/add-token/options") {
+        return createResponse({ jsonData: { challenge: "AQID", user: { id: "BAUG" } } });
+      }
+      if (url === "/api/v1/auth/passkey-add/add-token/verify") {
+        return createResponse({ jsonData: {} });
+      }
+      return createResponse({ jsonData: {} });
+    },
+  });
+
+  try {
+    const app = await loadApp();
+    env.dom.window.PublicKeyCredential = class {};
+    globalThis.window.PublicKeyCredential = env.dom.window.PublicKeyCredential;
+    globalThis.navigator.credentials = {
+      async create(options) {
+        passkeyCalls.push(["create", options.publicKey.challenge.length]);
+        return {
+          id: "cred-reset",
+          rawId: new Uint8Array([1, 2, 3]).buffer,
+          response: { attestationObject: new Uint8Array([4, 5, 6]) },
+        };
+      },
+    };
+
+    const root = document.querySelector("[data-passkey-add-link]");
+
+    await app.addPasskeyWithLink(root);
+    assert.deepEqual(passkeyCalls, [["create", 3]]);
+    assert.deepEqual(env.assigned, ["/"]);
+
+    await app.initPasskeyAddLink();
+    root.querySelector("[data-passkey-add-link-button]").click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    delete globalThis.window.PublicKeyCredential;
+    delete globalThis.navigator.credentials;
+    await app.initPasskeyAddLink();
     assert.equal(root.querySelector("[data-auth-error]").textContent, "This browser does not support passkeys.");
   } finally {
     env.restore();

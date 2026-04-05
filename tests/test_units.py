@@ -29,6 +29,13 @@ from app.services.auth_sessions import (
     get_session_user,
     revoke_auth_session,
 )
+from app.services.passkey_reset import (
+    clear_passkey_reset,
+    create_passkey_reset_token,
+    hash_passkey_reset_token,
+    passkey_reset_is_active,
+    set_passkey_reset,
+)
 from app.services.websocket_hub import WebSocketHub
 
 
@@ -106,6 +113,26 @@ def test_access_token_expiry_uses_configured_window() -> None:
     delta = expires_at - datetime.now(UTC)
     assert delta > timedelta(days=27, hours=23)
     assert delta < timedelta(days=28, minutes=1)
+
+
+def test_passkey_reset_helpers_manage_token_state() -> None:
+    token = create_passkey_reset_token()
+    user = SimpleNamespace(passkey_reset_token_hash=None, passkey_reset_expires_at=None)
+
+    assert len(hash_passkey_reset_token(token)) == 64
+    assert passkey_reset_is_active(user) is False
+
+    expires_at = set_passkey_reset(user, token)
+    assert user.passkey_reset_token_hash == hash_passkey_reset_token(token)
+    assert passkey_reset_is_active(user) is True
+
+    user.passkey_reset_expires_at = expires_at.replace(tzinfo=None)
+    assert passkey_reset_is_active(user) is True
+
+    clear_passkey_reset(user)
+    assert user.passkey_reset_token_hash is None
+    assert user.passkey_reset_expires_at is None
+    assert passkey_reset_is_active(user) is False
 
 
 def test_websocket_hub_connect_broadcast_disconnect() -> None:

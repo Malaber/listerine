@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.models import User
 from app.services.auth_sessions import get_session_user, revoke_auth_session
+from app.services.passkey_reset import get_user_for_passkey_reset_token
 
 router = APIRouter(tags=["web"])
 templates = Jinja2Templates(directory="app/web/templates")
@@ -113,5 +114,26 @@ async def invite_detail(
         {
             "invite_token": token,
             **_template_auth_context(user),
+        },
+    )
+
+
+@router.get("/passkey-add/{token}", response_class=HTMLResponse, response_model=None)
+async def passkey_add_page(
+    request: Request, token: str, db: AsyncSession = Depends(get_db)
+) -> Response:
+    user = await get_user_for_passkey_reset_token(db, token)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=303)
+
+    session_user = await _get_session_user(request, db)
+    return templates.TemplateResponse(
+        request,
+        "passkey_reset.html",
+        {
+            **_template_auth_context(session_user),
+            "email": user.email,
+            "display_name": user.display_name,
+            "token": token,
         },
     )

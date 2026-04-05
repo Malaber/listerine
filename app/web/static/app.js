@@ -2411,6 +2411,23 @@ async function loginWithPasskey(root, form) {
   navigateTo(root.getAttribute("data-next-url") || "/");
 }
 
+async function addPasskeyWithLink(root) {
+  const token = root.getAttribute("data-passkey-add-token");
+  if (!token) {
+    throw new Error("Passkey add link is missing.");
+  }
+
+  const options = await postJson(`/api/v1/auth/passkey-add/${token}/options`, {});
+  const credential = await navigator.credentials.create({
+    publicKey: publicKeyFromJSON(options),
+  });
+  await postJson(`/api/v1/auth/passkey-add/${token}/verify`, {
+    credential: credentialToJSON(credential),
+  });
+  setMessage(root, "success", "Additional passkey created. Redirecting to your dashboard...");
+  navigateTo("/");
+}
+
 async function handlePasskeyLoginClick(root, loginForm) {
   toggleButtons(root, true);
   try {
@@ -2479,6 +2496,30 @@ function initPasskeyAuth() {
     "click",
     handlePasskeyLoginClick.bind(null, root, loginForm)
   );
+}
+
+function initPasskeyAddLink() {
+  const root = document.querySelector("[data-passkey-add-link]");
+  if (!root) {
+    return;
+  }
+
+  if (!window.PublicKeyCredential || !navigator.credentials) {
+    setMessage(root, "error", "This browser does not support passkeys.");
+    toggleButtons(root, true);
+    return;
+  }
+
+  root.querySelector("[data-passkey-add-link-button]")?.addEventListener("click", async () => {
+    toggleButtons(root, true);
+    try {
+      await addPasskeyWithLink(root);
+    } catch (error) {
+      setMessage(root, "error", error instanceof Error ? error.message : "Passkey add failed.");
+    } finally {
+      toggleButtons(root, false);
+    }
+  });
 }
 
 function setSettingsMessage(root, type, message) {
@@ -2589,6 +2630,7 @@ async function initHouseholdInvite() {
 
 function initApp() {
   initPasskeyAuth();
+  initPasskeyAddLink();
   initUserSettings();
   initDashboard();
   initHouseholdInvite();
@@ -2671,9 +2713,11 @@ export {
   initListDetail,
   registerWithPasskey,
   loginWithPasskey,
+  addPasskeyWithLink,
   handlePasskeyLoginClick,
   setSettingsMessage,
   initPasskeyAuth,
+  initPasskeyAddLink,
   initUserSettings,
   formatInviteExpiry,
   initHouseholdInvite,

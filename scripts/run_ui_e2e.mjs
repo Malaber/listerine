@@ -68,6 +68,12 @@ function fixtureUser(seed, email) {
   return user;
 }
 
+function fixtureAccount(seed, email) {
+  const user = seed.users.find((entry) => entry.email === email);
+  assert(user, `Expected seeded user ${email}`);
+  return user;
+}
+
 function fixturePrimaryList(seed) {
   const household = seed.households.find((entry) => entry.name === seed.e2e.primary_household);
   assert(household, `Expected primary household ${seed.e2e.primary_household}`);
@@ -308,8 +314,21 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
 
 async function loginFromLoginPage(page, expectedUrlPattern) {
   await assertLoginPageTabs(page);
-  await page.getByRole("button", { name: "Sign in with passkey" }).click();
-  await page.waitForURL(expectedUrlPattern, { waitUntil: "commit" });
+  const signInButton = page.getByRole("button", { name: "Sign in with passkey" });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await signInButton.click();
+    try {
+      await page.waitForURL(expectedUrlPattern, {
+        waitUntil: "commit",
+        timeout: 10_000,
+      });
+      return;
+    } catch (error) {
+      if (attempt === 1 || !/\/login(\?|$)/.test(new URL(page.url()).pathname)) {
+        throw error;
+      }
+    }
+  }
 }
 
 async function loginFromRoot(page, user, expectedHeading) {
@@ -321,6 +340,101 @@ async function loginFromRoot(page, user, expectedHeading) {
     page.getByRole("heading", { name: expectedHeading }),
     `Expected heading ${expectedHeading}`,
   );
+}
+
+async function loginAsAdmin(page, user) {
+  await page.goto(new URL("/", baseUrl).toString(), { waitUntil: "networkidle" });
+  await page.waitForURL(/\/login(\?|$)/);
+  await loginFromLoginPage(page, /\/admin\/?$/);
+  await expectVisible(page.getByText("Admin tools"), "Expected admin tools card after admin login");
+}
+
+async function runAdminPasskeyAddLinkFlow(page, seed, rpId) {
+  const adminUser = fixtureUser(seed, "listerine_admin@schaedler.rocks");
+  const targetUser = fixtureAccount(seed, "review-neighbor@example.com");
+
+  logStep("Checking that a normal user cannot access admin user management");
+  await page.goto(new URL("/admin/user/list", baseUrl).toString(), { waitUntil: "networkidle" });
+  await page.waitForURL(new URL("/", baseUrl).toString());
+  await expectHidden(
+    page.getByRole("link", { name: "Admin" }),
+    "Expected no admin link for a normal signed-in user",
+  );
+
+  const adminContext = await page.context().browser().newContext({
+    viewport: { width: 1440, height: 1200 },
+  });
+  const adminPage = await adminContext.newPage();
+  const recipientContext = await page.context().browser().newContext({
+    viewport: { width: 1440, height: 1200 },
+  });
+  const replayContext = await page.context().browser().newContext({
+    viewport: { width: 1440, height: 1200 },
+  });
+
+  try {
+    const adminAuthenticator = await createVirtualAuthenticator(adminPage);
+    await installSeededPasskey(adminAuthenticator, adminUser, rpId);
+
+    logStep("Signing in as admin and generating an add-passkey link from the user edit page");
+    await loginAsAdmin(adminPage, adminUser);
+    await adminPage.goto(new URL("/admin/user/list", baseUrl).toString(), { waitUntil: "networkidle" });
+    const targetUserRow = adminPage.locator("tr", { hasText: targetUser.email }).first();
+    await expectVisible(
+      targetUserRow,
+      `Expected to find an admin user row for ${targetUser.email}`,
+    );
+    await targetUserRow.locator('a[href*="/admin/user/edit/"]').first().click();
+    await adminPage.waitForURL(/\/admin\/user\/edit\/.+$/);
+    await expectVisible(
+      adminPage.getByRole("button", { name: "Generate add-passkey link" }),
+      "Expected add-passkey link generator on the admin user edit page",
+    );
+    await adminPage.getByRole("button", { name: "Generate add-passkey link" }).click();
+    await adminPage.waitForURL(/passkey_add_link=/);
+    const generatedLink = await adminPage.locator("#passkey-add-link").inputValue();
+    assert(
+      generatedLink.includes("/passkey-add/"),
+      `Expected generated admin link to use /passkey-add/, got ${generatedLink}`,
+    );
+
+    const recipientPage = await recipientContext.newPage();
+    const recipientAuthenticator = await createVirtualAuthenticator(recipientPage);
+
+    try {
+      logStep("Following the generated add-passkey link and registering a passkey");
+      await recipientPage.goto(generatedLink, { waitUntil: "networkidle" });
+      await expectVisible(
+        recipientPage.getByRole("heading", { name: "Add passkey" }),
+        "Expected the add-passkey landing page from the generated admin link",
+      );
+      await recipientPage.getByRole("button", { name: "Create additional passkey" }).click();
+      await recipientPage.waitForURL(new URL("/", baseUrl).toString(), { waitUntil: "commit" });
+      await expectVisible(
+        recipientPage.getByRole("heading", { name: "Households and Lists" }),
+        "Expected the generated-link user to land in the normal app after enrollment",
+      );
+    } finally {
+      await removeAuthenticator(recipientAuthenticator);
+      await recipientPage.close();
+    }
+
+    logStep("Ensuring the generated add-passkey link is single-use");
+    const replayPage = await replayContext.newPage();
+    try {
+      await replayPage.goto(generatedLink, { waitUntil: "networkidle" });
+      await replayPage.waitForURL(/\/login(\?|$)/);
+    } finally {
+      await replayPage.close();
+    }
+
+    await screenshot(adminPage, "admin-user-passkey-link");
+  } finally {
+    await adminPage.close();
+    await replayContext.close();
+    await recipientContext.close();
+    await adminContext.close();
+  }
 }
 
 async function scenarioFromSeed(seed, requestContext) {
@@ -470,6 +584,7 @@ async function main() {
     await installSeededPasskey(authenticator, owner, rpId);
     logStep("Signing in with the seeded owner passkey");
     await loginFromRoot(page, owner, "Households and Lists");
+    await runAdminPasskeyAddLinkFlow(page, seed, rpId);
     await runPasskeyManagementFlow(page, context, owner, rpId, authenticator);
 
     const scenario = await scenarioFromSeed(seed, context.request);

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="auth-shell" data-passkey-add-link data-passkey-add-token="{{ token }}">
+  <div class="auth-copy">
+    <h1>Add passkey</h1>
+    <p>This one-time link was created for <strong>{{ email }}</strong>.</p>
+    <h2>Register another passkey</h2>
+    <p>Finishing this flow adds a new passkey to {{ display_name }}'s account. Existing passkeys stay available.</p>
+  </div>
+
+  <section class="auth-card auth-card-primary">
+    <p class="auth-banner auth-banner-error" data-auth-error hidden></p>
+    <p class="auth-banner auth-banner-success" data-auth-success hidden></p>
+    <h2>Create another passkey</h2>
+    <p>Use the browser or password manager that should get access to this account.</p>
+    <form class="auth-form" data-passkey-add-link-form>
+      <button type="button" data-passkey-add-link-button>Create additional passkey</button>
+    </form>
+  </section>
+</section>
+{% endblock %}
