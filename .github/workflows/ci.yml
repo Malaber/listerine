@@ -87,13 +87,14 @@ jobs:
       - run: python -m invoke bootstrap-ci
       - run: python -m invoke install-js
       - run: python -m invoke install-browser --with-deps
-      - name: Run browser ui e2e
+      - name: Run browser ui e2e (desktop + iphone)
         run: >-
-          python -m invoke check-browser-e2e
+          python -m invoke browser-e2e
+          --base-url=http://localhost:8000
           --seed-path=${{ env.SEED_DATA_PATH }}
-          --e2e-seed-path=${{ env.SEED_DATA_PATH }}
           --database-url=${{ env.DATABASE_URL }}
           --webauthn-rp-id=${{ env.WEBAUTHN_RP_ID }}
+          --artifact-root=e2e-artifacts
       - name: Upload browser artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -101,15 +102,21 @@ jobs:
           name: browser-ui-e2e
           retention-days: 2
           path: |
-            e2e-artifacts/ui-e2e
+            e2e-artifacts/ui-e2e-desktop
+            e2e-artifacts/ui-e2e-iphone
             ui-e2e-server.log
       - name: Add browser summary
         if: always()
         run: |
-          if [ -f e2e-artifacts/ui-e2e/summary.md ]; then
-            cat e2e-artifacts/ui-e2e/summary.md >> "$GITHUB_STEP_SUMMARY"
+          if [ -f e2e-artifacts/ui-e2e-desktop/summary.md ]; then
+            echo "### Desktop UI e2e" >> "$GITHUB_STEP_SUMMARY"
+            cat e2e-artifacts/ui-e2e-desktop/summary.md >> "$GITHUB_STEP_SUMMARY"
           fi
-
+          if [ -f e2e-artifacts/ui-e2e-iphone/summary.md ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "### iPhone UI e2e" >> "$GITHUB_STEP_SUMMARY"
+            cat e2e-artifacts/ui-e2e-iphone/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
   swift_test:
     runs-on: ubuntu-latest
     container:

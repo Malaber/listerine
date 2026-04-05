@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { chromium } from "playwright";
+import { chromium, devices } from "playwright";
 
 const baseUrl = process.env.PREVIEW_BASE_URL ?? "http://127.0.0.1:8000";
 const artifactDir = process.env.PREVIEW_ARTIFACT_DIR ?? "e2e-artifacts/ui-e2e";
 const videoDir = path.join(artifactDir, "videos");
 const seedPath = process.env.E2E_SEED_PATH ?? "app/fixtures/review_seed_e2e.json";
+const deviceName = process.env.E2E_DEVICE ?? "desktop";
+const knownDevices = new Map([["iphone", "iPhone 13"]]);
 
 function logStep(message) {
   console.log(`[ui-e2e] ${message}`);
@@ -19,6 +21,29 @@ async function resetDir(dir) {
 
 async function ensureDir(dir) {
   await fs.mkdir(dir, { recursive: true });
+}
+
+function contextOptions() {
+  const preset = knownDevices.get(deviceName);
+  if (!preset) {
+    return {
+      viewport: { width: 1440, height: 1200 },
+      recordVideo: {
+        dir: videoDir,
+        size: { width: 1440, height: 1200 },
+      },
+    };
+  }
+
+  const device = devices[preset];
+  assert(device, `Unknown Playwright device preset ${preset}`);
+  return {
+    ...device,
+    recordVideo: {
+      dir: videoDir,
+      size: device.viewport,
+    },
+  };
 }
 
 function toBase64(value) {
@@ -486,13 +511,7 @@ async function runInviteFlow(ownerPage, browser, scenario, seed, rpId) {
   const inviteToken = extractInviteToken(inviteUrl);
   assert(inviteToken, "Expected invite token");
 
-  const inviteeContext = await browser.newContext({
-    viewport: { width: 1440, height: 1200 },
-    recordVideo: {
-      dir: videoDir,
-      size: { width: 1440, height: 1200 },
-    },
-  });
+  const inviteeContext = await browser.newContext(contextOptions());
   const inviteePage = await inviteeContext.newPage();
   const invitee = fixtureUser(seed, seed.e2e.invitee_email);
 
@@ -556,13 +575,7 @@ async function main() {
   );
 
   const browser = await chromium.launch();
-  const context = await browser.newContext({
-    viewport: { width: 1440, height: 1200 },
-    recordVideo: {
-      dir: videoDir,
-      size: { width: 1440, height: 1200 },
-    },
-  });
+  const context = await browser.newContext(contextOptions());
   const page = await context.newPage();
 
   try {
@@ -605,8 +618,13 @@ async function main() {
     await expectVisible(page.getByRole("button", { name: "Add item" }), "Expected floating add button");
     await expectVisible(page.locator(".item-card", { hasText: "Spaghetti" }), "Expected seeded items to load");
 
-    await page.keyboard.press("Enter");
-    await expectVisible(page.getByRole("heading", { name: "Add an item" }), "Enter should open add modal");
+    if (deviceName === "desktop") {
+      await page.keyboard.press("Enter");
+      await expectVisible(page.getByRole("heading", { name: "Add an item" }), "Enter should open add modal");
+    } else {
+      await page.getByRole("button", { name: "Add item" }).click();
+      await expectVisible(page.getByRole("heading", { name: "Add an item" }), "Add button should open add modal");
+    }
     await addForm.getByLabel("Item name").fill("Spag");
     const activeSuggestion = addForm.locator(".item-suggestion", { hasText: "Spaghetti" });
     await expectVisible(activeSuggestion, "Expected duplicate suggestion for active item");
@@ -797,7 +815,7 @@ async function main() {
   const summary = [
     "## UI E2E",
     "",
-    "Browser UI flow passed using seeded real database data and passkey auth for route rendering, login gating, multi-passkey enrollment and deletion, add/edit flows, duplicate suggestions, undo toasts, category alias search, admin navigation, websocket updates, and household invite acceptance.",
+    `Browser UI flow passed for ${deviceName} using seeded real database data and passkey auth for route rendering, login gating, multi-passkey enrollment and deletion, add/edit flows, duplicate suggestions, undo toasts, category alias search, admin navigation, websocket updates, and household invite acceptance.`,
     "",
   ].join("\n");
   await fs.writeFile(path.join(artifactDir, "summary.md"), summary);

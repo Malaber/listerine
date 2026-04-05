@@ -4,12 +4,19 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Listerine</title>
+    <link rel="icon" type="image/png" href="/static/img/Favicon.png" />
     <link rel="stylesheet" href="/static/app.css" />
   </head>
   <body>
-    {% if is_authenticated %}
     <header class="app-header">
-      <a class="app-wordmark" href="/">Listerine</a>
+      <a class="app-wordmark" href="/" aria-label="Listerine home">
+        <img class="app-wordmark-logo" src="/static/img/Listerine.png" alt="" />
+        <span class="app-wordmark-copy">
+          <strong>Listerine</strong>
+          <span>Households and grocery lists</span>
+        </span>
+      </a>
+      {% if is_authenticated %}
       <div class="app-header-actions">
         <a class="admin-link" href="/settings">Settings</a>
         {% if is_admin %}
@@ -19,8 +26,8 @@
           <button class="logout-button" type="submit">Logout</button>
         </form>
       </div>
+      {% endif %}
     </header>
-    {% endif %}
     <main>{% block content %}{% endblock %}</main>
     <script type="module" src="/static/app.js"></script>
   </body>

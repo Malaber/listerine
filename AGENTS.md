@@ -66,6 +66,16 @@ Use this sequence for reliable local verification:
 This workflow is the preferred fallback whenever the default setup script or an old local database
 prevents the normal CI-like commands from succeeding.
 
+## Frontend styling
+
+- Shared web styling lives in `app/web/static/app.css`.
+- The site favicon is `app/web/static/img/Favicon.png`.
+- The primary logo/wordmark asset is `app/web/static/img/Listerine.png`.
+- Brand color tokens are defined at the top of `app/web/static/app.css` as CSS custom properties.
+- When updating the site palette, prefer changing those root tokens first so headers, buttons,
+  cards, focus states, and auth screens stay in sync.
+- If you update branding assets, make sure `app/web/templates/base.html` still points at the
+  current favicon and logo paths.
 
 ## Testing expectations
 

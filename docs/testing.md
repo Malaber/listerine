@@ -28,7 +28,7 @@ The CI workflow includes a seeded Playwright browser flow. It:
 - seeds multiple households, lists, categories, checked items, and passkey-backed users
 - opens the app in Chromium with Playwright
 - verifies real passkey login, list interactions, websocket sync, and invite acceptance
-- records browser video and screenshots into the `browser-ui-e2e` artifact
+- runs the flow twice in CI (`desktop` and `iphone`), recording video and screenshots for both under the `browser-ui-e2e` artifact
 
 ## Local review-style seeded testing
 
@@ -44,7 +44,13 @@ Run the one-command browser flow:
 
 ```bash
 inv install-browser
-inv check-browser-e2e
+inv browser-e2e
+```
+
+Run both desktop and iPhone flows (matching CI):
+
+```bash
+WEBAUTHN_RP_ID=localhost inv browser-e2e --base-url=http://localhost:8000 --seed-path=app/fixtures/review_seed_e2e.json --artifact-root=e2e-artifacts
 ```
 
 If you want to control the lifecycle manually, use:
