@@ -12,6 +12,7 @@ Release title:
 
 Leave blank to use the PR title for the GitHub Release name on `main` merges.
 Set this line when the release should have a different title.
+Do not include the version number here; the release workflow prefixes it automatically.
 
 ## Validation
 

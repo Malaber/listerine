@@ -111,5 +111,7 @@ A PR may be created when either:
 - If the PR description contains a line starting with `Release title:`, that value becomes the
   GitHub Release title.
 - If `Release title:` is blank or omitted, the workflow falls back to the PR title.
+- The workflow prefixes the final release title with the computed version automatically, so
+  `Release title:` should not include the version number.
 - Prefer setting `Release title:` in the PR description when the release should have a clearer name
   than the PR title or merge commit subject.

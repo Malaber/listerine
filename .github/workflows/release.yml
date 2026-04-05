@@ -245,6 +245,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
           GIT_TAG: ${{ needs.version.outputs.git_tag }}
+          RELEASE_VERSION: ${{ needs.version.outputs.release_version }}
         run: |
           gh api \
             -H "Accept: application/vnd.github+json" \
@@ -258,7 +259,7 @@ jobs:
           from pathlib import Path
 
           pulls = json.loads(Path("associated-pulls.json").read_text(encoding="utf-8"))
-          release_title = os.environ["GIT_TAG"]
+          base_title = os.environ["GIT_TAG"]
           if pulls:
               pull = pulls[0]
               body = pull.get("body") or ""
@@ -267,9 +268,11 @@ jobs:
                   body,
               )
               if match:
-                  release_title = match.group("title").strip()
+                  base_title = match.group("title").strip()
               elif pull.get("title"):
-                  release_title = pull["title"].strip()
+                  base_title = pull["title"].strip()
+
+          release_title = f"v{os.environ['RELEASE_VERSION']}: {base_title}"
 
           output_path = Path(os.environ["GITHUB_OUTPUT"])
           with output_path.open("a", encoding="utf-8") as fh:
