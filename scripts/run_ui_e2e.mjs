@@ -100,6 +100,29 @@ async function expectHidden(locator, message) {
   assert(!(await locator.isVisible().catch(() => false)), message);
 }
 
+async function expectInViewport(locator, message) {
+  await locator.waitFor({ state: "visible" });
+  const isInViewport = await locator.evaluate(async (node) => {
+    const isFullyVisible = () => {
+      const rect = node.getBoundingClientRect();
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+      const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+      return (
+        rect.top >= 0 &&
+        rect.left >= 0 &&
+        rect.bottom <= viewportHeight &&
+        rect.right <= viewportWidth
+      );
+    };
+    if (isFullyVisible()) {
+      return true;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 800));
+    return isFullyVisible();
+  });
+  assert(isInViewport, message);
+}
+
 async function assertHeaderActionsFitTranslatedLabels(page) {
   logStep("Checking mobile header action sizing with German labels");
   const originalViewport = page.viewportSize();
@@ -861,6 +884,7 @@ async function main() {
     await editForm.locator('input[name="note"]').fill("for the weekend");
     await editForm.getByRole("button", { name: "Save changes" }).click();
     await page.locator("[data-item-edit-panel] .add-item-close[data-item-edit-close]").click();
+    await expectHidden(page.locator("[data-item-edit-overlay]"), "Edit modal should close before opening settings");
     await expectVisible(itemCard(page, "Tomaten"), "Updated item should remain visible");
     await expectVisible(
       itemCard(page, "Tomaten").locator(".item-meta", { hasText: "4 loaves" }),
@@ -910,6 +934,11 @@ async function main() {
     await page.locator(".add-item-save-button").click();
     const freshThingCard = itemCard(page, freshThingName);
     await expectVisible(freshThingCard, "Expected newly added item");
+    await expectVisible(
+      page.locator(".item-card.is-highlighted", { hasText: freshThingName }),
+      "New item should be highlighted after saving",
+    );
+    await expectInViewport(freshThingCard, "New item should be scrolled into view after saving");
     await expectVisible(
       page
         .locator(".item-category-group", { hasText: "Backwaren" })

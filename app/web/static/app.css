@@ -226,6 +226,7 @@ main {
   padding: 0.85rem 0.95rem;
   background: var(--surface-strong);
   color: var(--text);
+  font-size: 16px;
 }
 
 .category-radio-group {
@@ -1065,20 +1066,21 @@ main {
 }
 
 .add-item-save-button {
-  border: 1px solid rgba(167, 203, 223, 0.92);
+  border: 0;
   border-radius: 999px;
-  background: var(--surface-strong);
+  background: transparent;
   color: var(--brand-navy);
   cursor: pointer;
   font: inherit;
   font-weight: 800;
-  padding: 0.72rem 1rem;
+  padding: 0.65rem 0.2rem;
   white-space: nowrap;
 }
 
 .add-item-save-button:hover {
-  background: var(--brand-aqua-soft);
-  border-color: rgba(29, 184, 217, 0.45);
+  color: var(--brand-navy-strong);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
 }
 
 .panel-back-button {
@@ -1221,21 +1223,18 @@ main {
 }
 
 .item-more-fields summary::after {
-  content: "+";
-  width: 1.85rem;
-  height: 1.85rem;
-  display: inline-grid;
-  place-items: center;
-  border-radius: 999px;
-  background: var(--brand-aqua-soft);
+  content: "";
+  width: 0.7rem;
+  height: 0.7rem;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
   color: var(--brand-navy);
-  font-size: 1.2rem;
-  line-height: 1;
+  transform: rotate(45deg);
   flex: 0 0 auto;
 }
 
 .item-more-fields[open] summary::after {
-  content: "-";
+  transform: rotate(225deg);
 }
 
 .item-more-fields summary small {
@@ -1739,7 +1738,7 @@ main {
 
   .add-item-save-button {
     min-height: 2.75rem;
-    padding: 0.65rem 1rem;
+    padding: 0.65rem 0.2rem;
   }
 
   .dashboard-field input,
@@ -1888,6 +1887,7 @@ main {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 0.8rem 0.9rem;
+  font-size: 16px;
 }
 
 .auth-form button {
