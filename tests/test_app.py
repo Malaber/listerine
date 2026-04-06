@@ -1716,6 +1716,55 @@ def test_web_pages_render_for_logged_in_user(client, monkeypatch) -> None:
     assert admin_page.status_code in {302, 303, 307}
 
 
+def test_dashboard_redirects_to_last_opened_list(client, monkeypatch) -> None:
+    _register_session_user(client, monkeypatch, f"{uuid4()}@example.com")
+    household = client.post("/api/v1/households", json={"name": "Home"}).json()
+    grocery_list = client.post(
+        f"/api/v1/households/{household['id']}/lists", json={"name": "Weekly"}
+    ).json()
+
+    dashboard = client.get("/")
+    assert dashboard.status_code == 200
+    assert 'href="/?dashboard=1"' in dashboard.text
+
+    list_detail = client.get(f"/lists/{grocery_list['id']}")
+    assert list_detail.status_code == 200
+    assert 'href="/?dashboard=1"' in list_detail.text
+
+    next_open = client.get("/", follow_redirects=False)
+    assert next_open.status_code == 303
+    assert next_open.headers["location"] == f"/lists/{grocery_list['id']}"
+
+    dashboard_link = client.get("/?dashboard=1", follow_redirects=False)
+    assert dashboard_link.status_code == 200
+    assert "data-dashboard-add-toggle" in dashboard_link.text
+
+
+def test_dashboard_ignores_stale_last_opened_list(client, monkeypatch) -> None:
+    _register_session_user(client, monkeypatch, f"{uuid4()}@example.com")
+    household = client.post("/api/v1/households", json={"name": "Home"}).json()
+    grocery_list = client.post(
+        f"/api/v1/households/{household['id']}/lists", json={"name": "Weekly"}
+    ).json()
+
+    assert client.get(f"/lists/{grocery_list['id']}").status_code == 200
+    assert client.delete(f"/api/v1/lists/{grocery_list['id']}").status_code == 200
+
+    dashboard = client.get("/", follow_redirects=False)
+    assert dashboard.status_code == 200
+    assert "data-dashboard-add-toggle" in dashboard.text
+
+
+def test_dashboard_ignores_invalid_last_opened_list(client, monkeypatch) -> None:
+    _register_session_user(client, monkeypatch, f"{uuid4()}@example.com")
+
+    assert client.get("/lists/not-a-list-id").status_code == 200
+
+    dashboard = client.get("/", follow_redirects=False)
+    assert dashboard.status_code == 200
+    assert "data-dashboard-add-toggle" in dashboard.text
+
+
 def test_web_pages_redirect_admin_user_to_admin_frontend(client, monkeypatch) -> None:
     monkeypatch.setattr(
         "app.api.v1.routes.auth.verify_registration_response",
