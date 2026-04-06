@@ -1692,6 +1692,8 @@ def test_web_pages_render_for_logged_in_user(client, monkeypatch) -> None:
     assert settings.status_code == 200
     assert "Account and passkey" in settings.text
     assert "Signed in as" in settings.text
+    assert "Change language" in settings.text
+    assert "data-language-settings" in settings.text
     assert "Your passkeys" in settings.text
     assert "Add another passkey" in settings.text
     assert "data-passkey-list" in settings.text

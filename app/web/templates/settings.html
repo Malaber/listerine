@@ -17,6 +17,75 @@
     </aside>
   </div>
 
+  <section class="dashboard-card dashboard-account-card" data-language-settings>
+    <div class="dashboard-section-heading">
+      <div>
+        <p class="dashboard-label">Display</p>
+        <h2>Language</h2>
+      </div>
+      <button type="button" class="secondary-button" data-language-settings-open>
+        Change language
+      </button>
+    </div>
+    <p class="dashboard-helper">
+      Use your browser default language, or pick a language for this browser.
+    </p>
+    <p class="settings-preference-summary">
+      Current language: <strong data-language-settings-summary>Browser default</strong>
+    </p>
+    <div class="dashboard-banner dashboard-banner-error" data-settings-error hidden></div>
+    <div class="dashboard-banner dashboard-banner-success" data-settings-success hidden></div>
+
+    <div class="item-modal" data-language-settings-overlay hidden>
+      <button
+        class="item-modal-backdrop"
+        type="button"
+        aria-label="Close language settings"
+        data-language-settings-close
+      ></button>
+      <section
+        class="dashboard-card item-edit-panel settings-language-panel"
+        data-language-settings-panel
+        hidden
+      >
+        <div class="add-item-panel-header">
+          <div>
+            <p class="dashboard-label">Display</p>
+            <h3>Choose language</h3>
+          </div>
+          <button
+            class="add-item-close"
+            type="button"
+            aria-label="Close language settings"
+            data-language-settings-close
+          >
+            &times;
+          </button>
+        </div>
+        <p class="dashboard-helper">
+          This changes the language preference saved in this browser. Choose browser default to
+          follow your system settings again.
+        </p>
+        <form class="settings-language-form" data-language-settings-form>
+          <label class="dashboard-field">
+            <span>Language</span>
+            <select name="language" data-language-settings-select>
+              <option value="">Browser default</option>
+              <option value="en">English</option>
+              <option value="de">Deutsch</option>
+            </select>
+          </label>
+          <div class="passkey-name-actions">
+            <button type="submit" class="primary-button">Save language</button>
+            <button type="button" class="secondary-button" data-language-settings-close>
+              Cancel
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  </section>
+
   <section class="dashboard-card dashboard-account-card" data-passkey-management>
     <div class="dashboard-section-heading">
       <div>
