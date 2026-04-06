@@ -78,6 +78,21 @@ def _pip_env() -> dict[str, str]:
     return env
 
 
+def _print_hidden_output(result) -> None:
+    for stream_name in ("stdout", "stderr"):
+        output = getattr(result, stream_name, "") or ""
+        if output:
+            print(output, end="" if output.endswith("\n") else "\n")
+
+
+def _run_quiet(c, command: str, **kwargs):
+    result = c.run(command, hide=True, warn=True, **kwargs)
+    if result.exited != 0:
+        _print_hidden_output(result)
+        raise Exit(f"Command failed with exit code {result.exited}: {command}")
+    return result
+
+
 def _node_bootstrap() -> str:
     version_check = (
         "node -e \"process.exit(Number(process.versions.node.split('.')[0]) === 24 ? 0 : 1)\""
@@ -318,10 +333,11 @@ def compute_version(c, ref_name="", run_number="") -> None:
 def setup_venv(c, python_bin="python3.14") -> None:
     venv_dir = ROOT / ".venv"
     if not venv_dir.exists():
-        c.run(f"{shlex.quote(python_bin)} -m venv .venv", pty=False, shell="/bin/bash")
+        _run_quiet(c, f"{shlex.quote(python_bin)} -m venv .venv", pty=False, shell="/bin/bash")
 
     pip_path = ROOT / ".venv" / "bin" / "pip"
-    c.run(
+    _run_quiet(
+        c,
         f"{shlex.quote(str(pip_path))} install -e '.[dev]'",
         env=_pip_env(),
         pty=False,
@@ -375,7 +391,7 @@ def check_python(c) -> None:
 
 @task
 def install_js(c) -> None:
-    c.run(_node_command("npm ci"), pty=False, shell="/bin/bash")
+    _run_quiet(c, _node_command("npm ci"), pty=False, shell="/bin/bash")
 
 
 @task
@@ -389,7 +405,7 @@ def install_browser(c, with_deps=False) -> None:
     if with_deps:
         playwright_install = "npx playwright install --with-deps chromium"
 
-    c.run(_node_command(playwright_install), pty=False, shell="/bin/bash")
+    _run_quiet(c, _node_command(playwright_install), pty=False, shell="/bin/bash")
 
 
 @task(
