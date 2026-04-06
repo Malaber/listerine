@@ -490,7 +490,7 @@ function extractInviteToken(inviteUrl) {
 
 async function runInviteFlow(ownerPage, browser, scenario, seed, rpId) {
   logStep("Creating and accepting a household invite");
-  await ownerPage.goto(new URL("/", baseUrl).toString(), { waitUntil: "networkidle" });
+  await ownerPage.goto(new URL("/?dashboard=1", baseUrl).toString(), { waitUntil: "networkidle" });
   await expectVisible(
     ownerPage.getByRole("heading", { name: "Households and Lists" }),
     "Expected dashboard heading",
