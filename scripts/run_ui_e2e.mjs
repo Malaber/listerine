@@ -794,6 +794,7 @@ async function main() {
     await editForm.locator('input[name="note"]').fill("for the weekend");
     await editForm.getByRole("button", { name: "Save changes" }).click();
     await page.locator("[data-item-edit-panel] .add-item-close[data-item-edit-close]").click();
+    await expectHidden(page.locator("[data-item-edit-overlay]"), "Edit modal should close before opening settings");
     await expectVisible(itemCard(page, "Tomaten"), "Updated item should remain visible");
     await expectVisible(
       itemCard(page, "Tomaten").locator(".item-meta", { hasText: "4 loaves" }),

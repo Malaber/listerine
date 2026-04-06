@@ -2426,6 +2426,7 @@ async function initListDetail() {
       syncCategoryRadioGroups(root, state);
       renderItems(root, state);
       setItemPanelOpen(root, false);
+      highlightItem(root, state, createdItem.id);
       hideUndoToast(root, state);
       setListMessage(root, "success", translate("list_detail.item_added", {}, "Item added."));
     } catch (error) {
