@@ -532,6 +532,7 @@ def check_browser_e2e(
     log_path=DEFAULT_APP_LOG_PATH,
     pid_path=DEFAULT_APP_PID_PATH,
 ) -> None:
+    _reset_sqlite_database_file(database_url)
     start_app(
         c,
         seed_path=seed_path,
