@@ -55,9 +55,9 @@ Use this sequence for reliable local verification:
    error even if the server is bound there.
 9. For a one-command browser flow, use `inv check-browser-e2e`. It starts the app, waits for the
    healthcheck, runs `node scripts/run_ui_e2e.mjs`, and stops the app again.
-10. To run only one browser form factor locally, use:
+10. To run only one browser form factor locally, use these single Invoke targets:
    - `inv browser-e2e-desktop`
-   - `inv browser-e2e-mobile`
+   - `inv browser-e2e-mobile` for mobile-only browser coverage
 11. If you need the browser checks separately, use these shared tasks:
    - `inv install-browser`
    - `inv start-app`
