@@ -1323,6 +1323,14 @@ function setItemPanelOpen(root, isOpen) {
     return;
   }
 
+  if (
+    !isOpen &&
+    document.activeElement instanceof HTMLElement &&
+    panel.contains(document.activeElement)
+  ) {
+    document.activeElement.blur();
+  }
+
   overlay.hidden = !isOpen;
   panel.hidden = !isOpen;
   if (isOpen && editPanel instanceof HTMLElement && editOverlay instanceof HTMLElement) {
@@ -1814,6 +1822,8 @@ function renderItemSuggestions(root, state) {
 }
 
 function highlightItem(root, state, itemId) {
+  state.highlightedItemId = itemId;
+
   const itemCard = root.querySelector(`[data-item-card="${itemId}"]`);
   if (!(itemCard instanceof HTMLElement)) {
     return;
@@ -1825,9 +1835,19 @@ function highlightItem(root, state, itemId) {
   }
 
   itemCard.classList.add("is-highlighted");
-  itemCard.scrollIntoView({ behavior: "smooth", block: "center" });
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      root.querySelector(`[data-item-card="${itemId}"]`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    });
+  });
   const timeoutId = window.setTimeout(() => {
-    itemCard.classList.remove("is-highlighted");
+    if (state.highlightedItemId === itemId) {
+      state.highlightedItemId = null;
+    }
+    root.querySelector(`[data-item-card="${itemId}"]`)?.classList.remove("is-highlighted");
     state.highlightTimers.delete(itemId);
   }, 1800);
   state.highlightTimers.set(itemId, timeoutId);
@@ -1941,7 +1961,9 @@ function renderItems(root, state) {
 
     items.forEach((item) => {
       const article = document.createElement("article");
-      article.className = `item-card${item.checked ? " is-checked" : ""}`;
+      article.className = `item-card${item.checked ? " is-checked" : ""}${
+        state.highlightedItemId === item.id ? " is-highlighted" : ""
+      }`;
       article.dataset.itemCard = item.id;
       article.dataset.itemEdit = item.id;
 
@@ -2017,7 +2039,9 @@ function renderItems(root, state) {
 
     checkedItems.forEach((item) => {
       const article = document.createElement("article");
-      article.className = "item-card is-checked";
+      article.className = `item-card is-checked${
+        state.highlightedItemId === item.id ? " is-highlighted" : ""
+      }`;
       article.dataset.itemCard = item.id;
       article.dataset.itemEdit = item.id;
 
@@ -2267,6 +2291,7 @@ async function initListDetail() {
     categoryOrder: new Map(),
     categories: new Map(),
     editingItemId: null,
+    highlightedItemId: null,
     highlightTimers: new Map(),
     items: new Map(),
     socket: null,
