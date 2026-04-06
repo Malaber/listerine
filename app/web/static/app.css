@@ -1797,20 +1797,6 @@ main {
   body {
     --app-safe-top: max(env(safe-area-inset-top, 0px), 3.75rem);
   }
-
-  body::after {
-    content: "";
-    position: fixed;
-    top: 0;
-    right: 0;
-    left: 0;
-    height: var(--app-safe-top);
-    z-index: 35;
-    background: rgba(255, 250, 242, 0.78);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    pointer-events: none;
-  }
 }
 
 .auth-shell {
