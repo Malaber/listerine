@@ -11,10 +11,6 @@ permissions:
   packages: write
   pull-requests: write
 
-concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: true
-
 env:
   PYTHON_VERSION: '3.14'
   NODE_VERSION: '24'
