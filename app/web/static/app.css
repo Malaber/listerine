@@ -1694,6 +1694,7 @@ main {
     height: auto;
     max-height: calc(100vh - var(--item-modal-safe-top) - var(--item-modal-safe-bottom));
     max-height: calc(100dvh - var(--item-modal-safe-top) - var(--item-modal-safe-bottom));
+    border-top-color: transparent;
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
     padding-bottom: calc(0.85rem + env(safe-area-inset-bottom));
@@ -1704,7 +1705,7 @@ main {
     position: sticky;
     top: 0;
     z-index: 2;
-    margin: 0 -0.9rem 0.25rem;
+    margin: -0.9rem -0.9rem 0.25rem;
     padding: 0.9rem 0.9rem 0.65rem;
     border-top-left-radius: inherit;
     border-top-right-radius: inherit;
