@@ -127,6 +127,7 @@ test("renderItems only shows loaded checked items before loading more", () => {
   assert.equal(checkedCards.length, 10);
   assert.equal(checkedCards[0].querySelector(".item-name").textContent, "Checked item 0");
   assert.equal(checkedCards[9].querySelector(".item-name").textContent, "Checked item 9");
+  assert.equal(document.querySelector(".item-category-header .item-category-meta").textContent, "120 items");
   assert.equal(document.querySelector(".checked-items-load-more button").textContent, "Load 100 more");
   assert.equal(document.querySelector(".checked-items-load-more .item-category-meta").textContent, "110 older items not loaded");
 });
@@ -158,6 +159,7 @@ test("loadMoreCheckedItems fetches one hundred older checked items per page", as
   assert.deepEqual(calls, ["/api/v1/lists/list-1/items/checked?offset=10&limit=100"]);
   assert.equal(checkedCards.length, 110);
   assert.equal(checkedCards[109].querySelector(".item-name").textContent, "Checked item 109");
+  assert.equal(document.querySelector(".item-category-header .item-category-meta").textContent, "120 items");
   assert.equal(document.querySelector(".checked-items-load-more button").textContent, "Load 10 more");
   assert.equal(document.querySelector(".checked-items-load-more .item-category-meta").textContent, "10 older items not loaded");
 });

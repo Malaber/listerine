@@ -1802,6 +1802,7 @@ function renderItems(root, state) {
   });
 
   if (checkedItems.length > 0) {
+    const checkedTotalCount = checkedItems.length + (state.checkedRemainingCount || 0);
     const section = document.createElement("section");
     section.className = "item-category-group";
 
@@ -1821,7 +1822,7 @@ function renderItems(root, state) {
 
     const headingMeta = document.createElement("p");
     headingMeta.className = "item-category-meta";
-    headingMeta.textContent = `${checkedItems.length} ${checkedItems.length === 1 ? "item" : "items"}`;
+    headingMeta.textContent = `${checkedTotalCount} ${checkedTotalCount === 1 ? "item" : "items"}`;
     headingCopy.appendChild(headingMeta);
     heading.appendChild(headingCopy);
     section.appendChild(heading);

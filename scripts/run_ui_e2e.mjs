@@ -444,7 +444,10 @@ async function scenarioFromSeed(seed, requestContext) {
   const lists = await apiJson(requestContext, `/api/v1/households/${household.id}/lists`);
   const groceryList = lists.find((entry) => entry.name === seed.e2e.primary_list);
   assert(groceryList, `Expected seeded list ${seed.e2e.primary_list}`);
+  const checkedStressList = lists.find((entry) => entry.name === seed.e2e.checked_stress_list);
+  assert(checkedStressList, `Expected seeded list ${seed.e2e.checked_stress_list}`);
   return {
+    checkedStressListId: checkedStressList.id,
     householdId: household.id,
     householdName: household.name,
     listId: groceryList.id,
@@ -498,6 +501,47 @@ async function revealCheckedItemCard(page, text) {
   }
 
   throw new Error(`Could not reveal checked item card for ${text}`);
+}
+
+async function expectCheckedCardCount(group, count) {
+  await group.locator(".item-card").nth(count - 1).waitFor({ state: "visible" });
+  assert.equal(await group.locator(".item-card").count(), count);
+}
+
+async function runCheckedStressListFlow(page, stressListUrl) {
+  logStep("Checking large checked-off list pagination");
+  await page.goto(stressListUrl, { waitUntil: "networkidle" });
+
+  const checkedGroup = page
+    .locator(".item-category-group")
+    .filter({ has: page.locator(".item-category-header h3", { hasText: "Checked off" }) })
+    .first();
+  const headingMeta = checkedGroup.locator(".item-category-header .item-category-meta");
+  const loadMoreButton = checkedGroup.locator(".checked-items-load-more button");
+  const loadMoreMeta = checkedGroup.locator(".checked-items-load-more .item-category-meta");
+
+  await expectVisible(checkedGroup, "Expected checked-off group on large checked list");
+  await expectCheckedCardCount(checkedGroup, 10);
+  assert.equal(await headingMeta.textContent(), "258 items");
+  assert.equal(await loadMoreButton.textContent(), "Load 100 more");
+  assert.equal(await loadMoreMeta.textContent(), "248 older items not loaded");
+
+  await loadMoreButton.click();
+  await expectCheckedCardCount(checkedGroup, 110);
+  assert.equal(await headingMeta.textContent(), "258 items");
+  assert.equal(await loadMoreButton.textContent(), "Load 100 more");
+  assert.equal(await loadMoreMeta.textContent(), "148 older items not loaded");
+
+  await loadMoreButton.click();
+  await expectCheckedCardCount(checkedGroup, 210);
+  assert.equal(await headingMeta.textContent(), "258 items");
+  assert.equal(await loadMoreButton.textContent(), "Load 48 more");
+  assert.equal(await loadMoreMeta.textContent(), "48 older items not loaded");
+
+  await loadMoreButton.click();
+  await expectCheckedCardCount(checkedGroup, 258);
+  assert.equal(await headingMeta.textContent(), "258 items");
+  assert.equal(await checkedGroup.locator(".checked-items-load-more").count(), 0);
 }
 
 function extractInviteToken(inviteUrl) {
@@ -613,6 +657,7 @@ async function main() {
     logStep(`Resetting seeded list state for ${scenario.listName}`);
     await resetFixtureItems(context.request, scenario.listId, expectedChecked);
     const listUrl = new URL(`/lists/${scenario.listId}`, baseUrl).toString();
+    const checkedStressListUrl = new URL(`/lists/${scenario.checkedStressListId}`, baseUrl).toString();
 
     if (owner.is_admin) {
       await expectVisible(page.getByRole("link", { name: "Admin" }), "Expected admin link");
@@ -820,6 +865,8 @@ async function main() {
     await expectVisible(toast, "Expected temporary undo toast");
     await page.waitForTimeout(10500);
     await expectHidden(toast, "Undo toast should disappear after timeout");
+
+    await runCheckedStressListFlow(page, checkedStressListUrl);
 
     await runInviteFlow(page, browser, scenario, seed, rpId);
 

@@ -71,9 +71,21 @@ def test_review_e2e_seed_fixture_contains_private_passkey_material() -> None:
     fixture_path = Path("app/fixtures/review_seed_e2e.json")
     payload = json.loads(fixture_path.read_text(encoding="utf-8"))
     users = {user["email"]: user for user in payload["users"]}
+    primary_household = next(
+        household
+        for household in payload["households"]
+        if household["name"] == payload["e2e"]["primary_household"]
+    )
+    checked_stress_list = next(
+        grocery_list
+        for grocery_list in primary_household["lists"]
+        if grocery_list["name"] == payload["e2e"]["checked_stress_list"]
+    )
 
     assert payload["e2e"]["owner_email"] == "listerine@schaedler.rocks"
     assert payload["e2e"]["invitee_email"] == "preview-invitee@example.com"
+    assert payload["e2e"]["checked_stress_list"] == "Checked History Stress Test"
+    assert sum(1 for item in checked_stress_list["items"] if item["checked"]) == 258
     assert users["listerine@schaedler.rocks"]["passkey"]["private_key_pkcs8_b64"]
     assert users["listerine@schaedler.rocks"]["passkey"]["user_handle_b64"]
     assert users["preview-invitee@example.com"]["passkey"]["private_key_pkcs8_b64"]
