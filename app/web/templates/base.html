@@ -1,13 +1,13 @@
 <!doctype html>
-<html>
+<html lang="{{ locale }}">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Listerine</title>
+    <title>{{ t("common.app_name") }}</title>
     <meta name="theme-color" content="#142a57" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="Listerine" />
+    <meta name="apple-mobile-web-app-title" content="{{ t("common.app_name") }}" />
     <link rel="icon" type="image/png" href="/static/img/Favicon.png" />
     <link rel="apple-touch-icon" href="/static/img/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
@@ -15,26 +15,29 @@
   </head>
   <body>
     <header class="app-header">
-      <a class="app-wordmark" href="/" aria-label="Listerine home">
+      <a class="app-wordmark" href="/" aria-label="{{ t("common.home_aria") }}">
         <img class="app-wordmark-logo" src="/static/img/Listerine.png" alt="" />
         <span class="app-wordmark-copy">
-          <strong>Listerine</strong>
-          <span>Households and grocery lists</span>
+          <strong>{{ t("common.app_name") }}</strong>
+          <span>{{ t("common.app_tagline") }}</span>
         </span>
       </a>
       {% if is_authenticated %}
       <div class="app-header-actions">
-        <a class="admin-link" href="/settings">Settings</a>
+        <a class="admin-link" href="/settings">{{ t("common.settings") }}</a>
         {% if is_admin %}
-        <a class="admin-link" href="/admin">Admin</a>
+        <a class="admin-link" href="/admin">{{ t("common.admin") }}</a>
         {% endif %}
         <form method="post" action="/logout">
-          <button class="logout-button" type="submit">Logout</button>
+          <button class="logout-button" type="submit">{{ t("common.logout") }}</button>
         </form>
       </div>
       {% endif %}
     </header>
     <main>{% block content %}{% endblock %}</main>
+    <script>
+      window.__appI18n = {{ {"locale": locale, "catalogBase64": i18n_catalog_b64}|tojson }};
+    </script>
     <script type="module" src="/static/app.js"></script>
   </body>
 </html>

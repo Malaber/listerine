@@ -103,6 +103,7 @@ test("language preference helpers normalize, store, and apply choices", () => {
   const originalDocument = globalThis.document;
   const originalHTMLElement = globalThis.HTMLElement;
   const originalHTMLSelectElement = globalThis.HTMLSelectElement;
+  const originalI18n = globalThis.__appI18n;
   const originalNavigator = globalThis.navigator;
   const originalWindow = globalThis.window;
   const dom = new JSDOM("<!doctype html><html><body></body></html>", {
@@ -111,14 +112,15 @@ test("language preference helpers normalize, store, and apply choices", () => {
 
   setGlobalProperty("document", dom.window.document);
   setDomGlobals(dom);
+  setGlobalProperty("__appI18n", { locale: "fr", catalog: {} });
   setGlobalProperty("navigator", { language: "fr-FR", languages: ["fr-FR", "en-US"] });
   setGlobalProperty("window", dom.window);
 
   try {
     assert.equal(normalizeLanguagePreference("de"), "de");
     assert.equal(normalizeLanguagePreference("fr"), "");
-    assert.equal(getPreferredLocale(), "fr-FR");
-    assert.equal(languagePreferenceLabel(""), "Browser default (fr-FR)");
+    assert.equal(getPreferredLocale(), "fr");
+    assert.equal(languagePreferenceLabel(""), "Browser default (fr)");
 
     assert.equal(storeLanguagePreference("de"), "de");
     assert.equal(getPreferredLocale(), "de");
@@ -127,15 +129,16 @@ test("language preference helpers normalize, store, and apply choices", () => {
     assert.equal(languagePreferenceLabel("de"), "Deutsch");
 
     assert.equal(storeLanguagePreference("fr"), "");
-    assert.equal(getPreferredLocale(), "fr-FR");
+    assert.equal(getPreferredLocale(), "fr");
     assert.equal(applyLanguagePreference(), "");
-    assert.equal(dom.window.document.documentElement.lang, "fr-FR");
+    assert.equal(dom.window.document.documentElement.lang, "fr");
   } finally {
     setGlobalProperty("document", originalDocument);
     restoreDomGlobals({
       HTMLElement: originalHTMLElement,
       HTMLSelectElement: originalHTMLSelectElement,
     });
+    setGlobalProperty("__appI18n", originalI18n);
     setGlobalProperty("navigator", originalNavigator);
     setGlobalProperty("window", originalWindow);
   }
@@ -145,7 +148,9 @@ test("language settings dialog syncs and saves the selected language", () => {
   const originalDocument = globalThis.document;
   const originalHTMLElement = globalThis.HTMLElement;
   const originalHTMLSelectElement = globalThis.HTMLSelectElement;
+  const originalI18n = globalThis.__appI18n;
   const originalNavigator = globalThis.navigator;
+  const originalNavigate = globalThis.__appNavigateTo;
   const originalWindow = globalThis.window;
   const originalCredential = globalThis.PublicKeyCredential;
   const dom = new JSDOM(
@@ -179,9 +184,17 @@ test("language settings dialog syncs and saves the selected language", () => {
 
   setGlobalProperty("document", dom.window.document);
   setDomGlobals(dom);
+  setGlobalProperty("__appI18n", {
+    locale: "en",
+    catalog: { settings: { language_saved: "Language set to {language}." } },
+  });
   setGlobalProperty("navigator", { language: "en-US", credentials: undefined });
   setGlobalProperty("window", dom.window);
   setGlobalProperty("PublicKeyCredential", undefined);
+  const assigned = [];
+  setGlobalProperty("__appNavigateTo", (url) => {
+    assigned.push(url);
+  });
 
   try {
     const root = dom.window.document.querySelector("[data-user-settings]");
@@ -192,7 +205,7 @@ test("language settings dialog syncs and saves the selected language", () => {
     const success = root.querySelector("[data-settings-success]");
 
     syncLanguageSettings(root);
-    assert.equal(summary.textContent, "Browser default (en-US)");
+    assert.equal(summary.textContent, "Browser default (en)");
 
     setLanguageSettingsOpen(root, true);
     assert.equal(overlay.hidden, false);
@@ -209,14 +222,17 @@ test("language settings dialog syncs and saves the selected language", () => {
     assert.equal(summary.textContent, "Deutsch");
     assert.equal(success.hidden, false);
     assert.equal(success.textContent, "Language set to Deutsch.");
-    assert.equal(dom.window.localStorage.getItem("listerine.language"), "de");
+    assert.equal(dom.window.document.cookie, "listerine_locale=de");
+    assert.deepEqual(assigned, ["/settings?lang=de"]);
   } finally {
     setGlobalProperty("document", originalDocument);
     restoreDomGlobals({
       HTMLElement: originalHTMLElement,
       HTMLSelectElement: originalHTMLSelectElement,
     });
+    setGlobalProperty("__appI18n", originalI18n);
     setGlobalProperty("navigator", originalNavigator);
+    setGlobalProperty("__appNavigateTo", originalNavigate);
     setGlobalProperty("window", originalWindow);
     setGlobalProperty("PublicKeyCredential", originalCredential);
   }
@@ -225,10 +241,12 @@ test("language settings dialog syncs and saves the selected language", () => {
 test("date formatters use the stored language preference", () => {
   const originalNavigator = globalThis.navigator;
   const originalWindow = globalThis.window;
+  const originalDocument = globalThis.document;
   const dom = new JSDOM("<!doctype html><html><body></body></html>", {
     url: "https://example.test/settings",
   });
 
+  setGlobalProperty("document", dom.window.document);
   setGlobalProperty("navigator", { language: "en-US" });
   setGlobalProperty("window", dom.window);
 
@@ -238,6 +256,7 @@ test("date formatters use the stored language preference", () => {
     assert.match(formatPasskeyDate("2026-04-06T12:30:00Z"), /06\.04\.2026|06\. Apr\. 2026/);
     assert.match(formatInviteExpiry("2026-04-06T12:30:00Z"), /06\.04\.2026|06\. Apr\. 2026/);
   } finally {
+    setGlobalProperty("document", originalDocument);
     setGlobalProperty("navigator", originalNavigator);
     setGlobalProperty("window", originalWindow);
   }

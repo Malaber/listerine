@@ -100,6 +100,58 @@ async function expectHidden(locator, message) {
   assert(!(await locator.isVisible().catch(() => false)), message);
 }
 
+async function assertHeaderActionsFitTranslatedLabels(page) {
+  logStep("Checking mobile header action sizing with German labels");
+  const originalViewport = page.viewportSize();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForFunction(() => {
+    const settingsLink = document.querySelector('.app-header-actions .admin-link[href="/settings"]');
+    const logoutButton = document.querySelector(".app-header-actions .logout-button");
+    return Boolean(settingsLink && logoutButton);
+  });
+
+  const measurements = await page.evaluate(() => {
+    const settingsLink = document.querySelector('.app-header-actions .admin-link[href="/settings"]');
+    const logoutButton = document.querySelector(".app-header-actions .logout-button");
+    if (!(settingsLink instanceof HTMLElement) || !(logoutButton instanceof HTMLElement)) {
+      throw new Error("Expected settings and logout controls in the app header");
+    }
+
+    const controls = [
+      [settingsLink, "Einstellungen"],
+      [logoutButton, "Abmelden"],
+    ];
+    const originals = controls.map(([node]) => node.textContent);
+
+    try {
+      for (const [node, label] of controls) {
+        node.textContent = label;
+      }
+      document.body.offsetWidth;
+      return controls.map(([node]) => ({
+        text: node.textContent?.trim() ?? "",
+        clientWidth: node.clientWidth,
+        scrollWidth: node.scrollWidth,
+      }));
+    } finally {
+      controls.forEach(([node], index) => {
+        node.textContent = originals[index];
+      });
+    }
+  });
+
+  if (originalViewport) {
+    await page.setViewportSize(originalViewport);
+  }
+
+  for (const measurement of measurements) {
+    assert(
+      measurement.scrollWidth <= measurement.clientWidth,
+      `${measurement.text} should fit in the mobile header button without clipping`,
+    );
+  }
+}
+
 async function assertLoginPageTabs(page) {
   const signInTab = page.getByRole("tab", { name: "Sign In" });
   const createAccountTab = page.getByRole("tab", { name: "Create Account" });
@@ -584,6 +636,7 @@ async function main() {
     await installSeededPasskey(authenticator, owner, rpId);
     logStep("Signing in with the seeded owner passkey");
     await loginFromRoot(page, owner, "Households and Lists");
+    await assertHeaderActionsFitTranslatedLabels(page);
     await runAdminPasskeyAddLinkFlow(page, seed, rpId);
     await runPasskeyManagementFlow(page, context, owner, rpId, authenticator);
 

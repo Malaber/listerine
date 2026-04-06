@@ -1344,6 +1344,7 @@ main {
 
   .app-header-actions {
     gap: 0.45rem;
+    min-width: 0;
     flex-wrap: wrap;
     justify-content: flex-end;
   }
@@ -1357,12 +1358,13 @@ main {
 
   .app-header-actions .admin-link,
   .app-header-actions .logout-button {
-    width: 5.4rem;
     min-width: 5.4rem;
+    max-width: 100%;
     min-height: 2.2rem;
     justify-content: center;
-    padding: 0.42rem 0.8rem;
+    padding: 0.42rem clamp(0.65rem, 2.4vw, 0.9rem);
     text-align: center;
+    white-space: nowrap;
   }
 
   .list-shell {

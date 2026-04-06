@@ -11,7 +11,9 @@ of stopping:
 - If `.venv` does not exist yet, create it with `python3.14 -m venv .venv`.
 - If `.venv/bin/inv` does not exist yet, bootstrap Invoke first with
   `.venv/bin/pip install invoke`.
-- Use `.venv/bin/inv install-deps` to install the Python and Node dependencies.
+- Use `.venv/bin/inv install-deps` to install the Python and Node dependencies. The install tasks
+  intentionally hide successful dependency installer output and print captured logs only if a
+  command fails, so do not add extra shell redirection for normal runs.
 - If either bootstrap step fails because `SSL_CERT_FILE` or `REQUESTS_CA_BUNDLE` points at a
   missing local certificate bundle, retry with those variables unset, for example:
   `env -u SSL_CERT_FILE -u REQUESTS_CA_BUNDLE .venv/bin/pip install invoke`
@@ -36,6 +38,8 @@ Use this sequence for reliable local verification:
    `.venv/bin/pip install invoke` followed by `.venv/bin/inv install-deps`.
    If the bootstrap or Python dependency install fails because of a broken local CA bundle
    override, retry with `env -u SSL_CERT_FILE -u REQUESTS_CA_BUNDLE`.
+   Keep the shared install tasks' default quiet behavior; they suppress successful `pip`, `npm ci`,
+   and Playwright install logs but still print captured output on failures.
 3. Prefer the shared Invoke tasks rather than spelling out individual commands. The default
    local pre-push pass is `inv verify`, which runs the Python checks, JavaScript unit tests,
    Playwright browser dependency install, and the seeded browser e2e flow with the same task
@@ -55,9 +59,9 @@ Use this sequence for reliable local verification:
    error even if the server is bound there.
 9. For a one-command browser flow, use `inv check-browser-e2e`. It starts the app, waits for the
    healthcheck, runs `node scripts/run_ui_e2e.mjs`, and stops the app again.
-10. To run only one browser form factor locally, use:
+10. To run only one browser form factor locally, use these single Invoke targets:
    - `inv browser-e2e-desktop`
-   - `inv browser-e2e-mobile`
+   - `inv browser-e2e-mobile` for mobile-only browser coverage
 11. If you need the browser checks separately, use these shared tasks:
    - `inv install-browser`
    - `inv start-app`
