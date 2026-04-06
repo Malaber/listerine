@@ -342,6 +342,42 @@ test("conversion and request helpers cover success and failure cases", async () 
   }
 });
 
+test("translation helpers read runtime locale data and fall back cleanly", async () => {
+  const env = installDom("");
+  try {
+    const app = await loadApp();
+
+    delete globalThis.__appI18n;
+    assert.deepEqual(app.getI18nState(), { locale: "en", catalog: {} });
+
+    globalThis.__appI18n = {
+      locale: "de",
+      catalog: {
+        auth: { login: { title: "Anmelden" } },
+        dashboard: { list_count: { one: "{count} Liste", other: "{count} Listen" } },
+      },
+    };
+
+    assert.equal(app.getCurrentLocale(), "de");
+    assert.equal(app.translate("auth.login.title", {}, "Login"), "Anmelden");
+    assert.equal(app.translate("auth.login.missing", { name: "Alex" }, "Hallo {name}"), "Hallo Alex");
+    assert.equal(app.interpolateTranslation("Hi {name}", { name: "Sam" }), "Hi Sam");
+    assert.equal(
+      app.translatePlural("dashboard.list_count", 1, {}, { one: "{count} list", other: "{count} lists" }),
+      "1 Liste",
+    );
+    assert.equal(
+      app.translatePlural("dashboard.missing", 2, {}, { one: "{count} list", other: "{count} lists" }),
+      "2 lists",
+    );
+
+    globalThis.__appI18n = { locale: 7, catalog: null };
+    assert.deepEqual(app.getI18nState(), { locale: "en", catalog: {} });
+  } finally {
+    env.restore();
+  }
+});
+
 test("dashboard helpers render household state and form status", async () => {
   const env = installDom(dashboardHtml());
   try {

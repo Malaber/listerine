@@ -1,4 +1,4 @@
-const CACHE_NAME = "listerine-shell-v2";
+const CACHE_NAME = "listerine-shell-v3";
 const APP_SHELL_ASSETS = [
   "/manifest.webmanifest",
   "/static/app.css",

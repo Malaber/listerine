@@ -62,6 +62,63 @@ function credentialToJSON(value) {
   return value;
 }
 
+function getI18nState() {
+  const state = globalThis.__appI18n;
+  if (!state || typeof state !== "object") {
+    return { locale: "en", catalog: {} };
+  }
+  if ((!state.catalog || typeof state.catalog !== "object") && typeof state.catalogBase64 === "string") {
+    try {
+      state.catalog = JSON.parse(atob(state.catalogBase64));
+    } catch {
+      state.catalog = {};
+    }
+  }
+  return {
+    locale: typeof state.locale === "string" ? state.locale : "en",
+    catalog: state.catalog && typeof state.catalog === "object" ? state.catalog : {},
+  };
+}
+
+function getCurrentLocale() {
+  return getI18nState().locale || "en";
+}
+
+function resolveTranslation(key) {
+  return key.split(".").reduce((current, part) => {
+    if (!current || typeof current !== "object") {
+      return undefined;
+    }
+    return current[part];
+  }, getI18nState().catalog);
+}
+
+function interpolateTranslation(template, params = {}) {
+  return template.replace(/\{(\w+)\}/g, (_, key) => String(params[key] ?? `{${key}}`));
+}
+
+function translate(key, params = {}, fallback = key) {
+  const value = resolveTranslation(key);
+  if (typeof value !== "string") {
+    return interpolateTranslation(fallback, params);
+  }
+  return interpolateTranslation(value, params);
+}
+
+function translatePlural(key, count, params = {}, fallback = {}) {
+  const locale = getCurrentLocale();
+  const category = new Intl.PluralRules(locale).select(count);
+  const entry = resolveTranslation(key);
+  if (entry && typeof entry === "object") {
+    const template = entry[category] || entry.other;
+    if (typeof template === "string") {
+      return interpolateTranslation(template, { count, ...params });
+    }
+  }
+  const template = count === 1 ? fallback.one : fallback.other;
+  return interpolateTranslation(template || "{count}", { count, ...params });
+}
+
 function navigateTo(url) {
   if (typeof globalThis.__appNavigateTo === "function") {
     globalThis.__appNavigateTo(url);
@@ -96,12 +153,14 @@ async function postJson(url, payload) {
 
   if (response.status === 401) {
     navigateTo("/login");
-    throw new Error("Unauthorized");
+    throw new Error(translate("common.errors.unauthorized", {}, "Unauthorized"));
   }
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const message = typeof data.detail === "string" ? data.detail : "Passkey request failed.";
+    const message = typeof data.detail === "string"
+      ? data.detail
+      : translate("common.errors.passkey_request_failed", {}, "Passkey request failed.");
     throw new Error(message);
   }
 
@@ -112,12 +171,14 @@ async function fetchJson(url, options) {
   const response = await fetch(url, options);
   if (response.status === 401) {
     navigateTo("/login");
-    throw new Error("Unauthorized");
+    throw new Error(translate("common.errors.unauthorized", {}, "Unauthorized"));
   }
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    const message = typeof data.detail === "string" ? data.detail : "Request failed.";
+    const message = typeof data.detail === "string"
+      ? data.detail
+      : translate("common.errors.request_failed", {}, "Request failed.");
     throw new Error(message);
   }
 
@@ -305,7 +366,9 @@ function updateHouseholdOptions(root, households) {
 
   const placeholder = document.createElement("option");
   placeholder.value = "";
-  placeholder.textContent = households.length ? "Select a household" : "Create a household first";
+  placeholder.textContent = households.length
+    ? translate("dashboard.select_household", {}, "Select a household")
+    : translate("dashboard.create_household_first", {}, "Create a household first");
   select.appendChild(placeholder);
 
   households.forEach((household) => {
@@ -376,18 +439,18 @@ function renderHouseholds(root, households, listsByHousehold) {
       <div class="household-card-header">
         <div>
           <h3>${household.name}</h3>
-          <p class="household-meta">${lists.length} ${lists.length === 1 ? "list" : "lists"}</p>
+          <p class="household-meta">${translatePlural("dashboard.list_count", lists.length, {}, { one: "{count} list", other: "{count} lists" })}</p>
         </div>
         <button type="button" class="secondary-button" data-create-invite="${household.id}">
-          Create invite link
+          ${translate("dashboard.create_invite_link", {}, "Create invite link")}
         </button>
       </div>
       <div class="household-invite-output" data-invite-output="${household.id}" hidden>
-        <p class="dashboard-helper">Share this link within 24 hours:</p>
+        <p class="dashboard-helper">${translate("dashboard.share_invite_hint", {}, "Share this link within 24 hours:")}</p>
         <div class="household-invite-row">
           <input type="text" readonly data-invite-link-input="${household.id}" />
           <button type="button" class="secondary-button" data-copy-invite="${household.id}">
-            Copy
+            ${translate("common.copy", {}, "Copy")}
           </button>
         </div>
       </div>
@@ -399,7 +462,11 @@ function renderHouseholds(root, households, listsByHousehold) {
     if (lists.length === 0) {
       const emptyListState = document.createElement("p");
       emptyListState.className = "dashboard-helper";
-      emptyListState.textContent = "No lists yet. Use the form above to create the first one.";
+      emptyListState.textContent = translate(
+        "dashboard.no_lists_yet",
+        {},
+        "No lists yet. Use the form above to create the first one."
+      );
       card.appendChild(emptyListState);
     } else {
       lists.forEach((list) => {
@@ -407,7 +474,7 @@ function renderHouseholds(root, households, listsByHousehold) {
         item.innerHTML = `
           <a href="/lists/${list.id}">
             <strong>${list.name}</strong>
-            <small>Open list</small>
+            <small>${translate("dashboard.open_list", {}, "Open list")}</small>
           </a>
         `;
         listGrid.appendChild(item);
@@ -421,10 +488,10 @@ function renderHouseholds(root, households, listsByHousehold) {
 
 function formatPasskeyDate(value) {
   if (!value) {
-    return "Never used yet";
+    return translate("settings.never_used", {}, "Never used yet");
   }
 
-  return new Date(value).toLocaleString([], {
+  return new Date(value).toLocaleString(getCurrentLocale(), {
     dateStyle: "medium",
     timeStyle: "short",
   });
@@ -446,8 +513,8 @@ function renderPasskeys(root, passkeys) {
     row.innerHTML = `
       <div class="passkey-copy">
         <strong>${passkey.name}</strong>
-        <span>Added ${formatPasskeyDate(passkey.created_at)}</span>
-        <span>Last used ${formatPasskeyDate(passkey.last_used_at)}</span>
+        <span>${translate("settings.added_on", { date: formatPasskeyDate(passkey.created_at) }, "Added {date}")}</span>
+        <span>${translate("settings.last_used", { date: formatPasskeyDate(passkey.last_used_at) }, "Last used {date}")}</span>
       </div>
       <div class="passkey-actions">
         <button
@@ -456,7 +523,7 @@ function renderPasskeys(root, passkeys) {
           data-passkey-rename="${passkey.id}"
           data-passkey-current-name="${passkey.name}"
         >
-          Rename
+          ${translate("settings.rename", {}, "Rename")}
         </button>
         <button
           type="button"
@@ -465,12 +532,12 @@ function renderPasskeys(root, passkeys) {
           data-passkey-locked="${passkeys.length <= 1 ? "true" : "false"}"
           ${
             passkeys.length <= 1
-              ? 'title="Add another passkey before deleting this one." aria-disabled="true"'
+              ? `title="${translate("settings.delete_disabled", {}, "Add another passkey before deleting this one.")}" aria-disabled="true"`
               : ""
           }
           ${passkeys.length <= 1 ? "disabled" : ""}
         >
-          Delete
+          ${translate("common.delete", {}, "Delete")}
         </button>
       </div>
     `;
@@ -479,7 +546,11 @@ function renderPasskeys(root, passkeys) {
 }
 
 function suggestedPasskeyName(root) {
-  return `Passkey ${root.querySelectorAll(".passkey-row").length + 1}`;
+  return translate(
+    "settings.suggested_name",
+    { number: root.querySelectorAll(".passkey-row").length + 1 },
+    "Passkey {number}"
+  );
 }
 
 function setPasskeyNameFormState(root, state) {
@@ -506,8 +577,8 @@ function setPasskeyNameFormState(root, state) {
   if (!isOpen) {
     form.dataset.mode = "";
     form.dataset.passkeyId = "";
-    title.textContent = "Name this passkey";
-    submitButton.textContent = "Continue";
+    title.textContent = translate("settings.name_this_passkey", {}, "Name this passkey");
+    submitButton.textContent = translate("common.continue", {}, "Continue");
     form.reset();
     return;
   }
@@ -582,10 +653,10 @@ function setPasskeyDeleteConfirmState(root, state) {
   const panel = root.querySelector("[data-passkey-delete-panel]");
   const nameNode = root.querySelector("[data-passkey-delete-name]");
   const confirmButton = root.querySelector("[data-passkey-delete-confirm]");
+  const copyNode = root.querySelector("[data-passkey-delete-copy]");
   if (
     !(overlay instanceof HTMLElement)
     || !(panel instanceof HTMLElement)
-    || !(nameNode instanceof HTMLElement)
     || !(confirmButton instanceof HTMLButtonElement)
   ) {
     return;
@@ -594,7 +665,16 @@ function setPasskeyDeleteConfirmState(root, state) {
   const isOpen = Boolean(state);
   overlay.hidden = !isOpen;
   panel.hidden = !isOpen;
-  nameNode.textContent = state?.name || "this passkey";
+  if (nameNode instanceof HTMLElement) {
+    nameNode.textContent = state?.name || translate("settings.delete_target_fallback", {}, "this passkey");
+  }
+  if (copyNode instanceof HTMLElement) {
+    copyNode.childNodes[0].textContent = `${translate(
+      "settings.delete_help_generic",
+      {},
+      "You must authenticate with another passkey to confirm you still have a working Passkey after deleting one."
+    )} `;
+  }
   confirmButton.dataset.passkeyId = state?.passkeyId || "";
   syncPasskeyManagementModalState(root);
 
@@ -627,15 +707,15 @@ function initPasskeyManagement(root, options = {}) {
     const addPasskeyButton = event.target.closest("[data-passkey-add]");
     if (addPasskeyButton) {
       if (!window.PublicKeyCredential || !navigator.credentials) {
-        setMessage(root, "error", "This browser does not support passkeys.");
+        setMessage(root, "error", translate("common.errors.unsupported_passkeys", {}, "This browser does not support passkeys."));
         return;
       }
       setMessage(root, "", "");
       setPasskeyNameFormState(root, {
         mode: "add",
         passkeyId: "",
-        title: "Name this passkey",
-        submitLabel: "Continue",
+        title: translate("settings.name_this_passkey", {}, "Name this passkey"),
+        submitLabel: translate("common.continue", {}, "Continue"),
         name: suggestedPasskeyName(root),
       });
       return;
@@ -651,7 +731,7 @@ function initPasskeyManagement(root, options = {}) {
     const renamePasskeyButton = event.target.closest("[data-passkey-rename]");
     if (renamePasskeyButton) {
       if (!window.PublicKeyCredential || !navigator.credentials) {
-        setMessage(root, "error", "This browser does not support passkeys.");
+        setMessage(root, "error", translate("common.errors.unsupported_passkeys", {}, "This browser does not support passkeys."));
         return;
       }
 
@@ -661,8 +741,8 @@ function initPasskeyManagement(root, options = {}) {
       setPasskeyNameFormState(root, {
         mode: "rename",
         passkeyId,
-        title: "Rename this passkey",
-        submitLabel: "Save and verify",
+        title: translate("settings.rename_this_passkey", {}, "Rename this passkey"),
+        submitLabel: translate("settings.save_and_verify", {}, "Save and verify"),
         name: currentName,
       });
       return;
@@ -671,7 +751,7 @@ function initPasskeyManagement(root, options = {}) {
     const deletePasskeyButton = event.target.closest("[data-passkey-delete]");
     if (deletePasskeyButton) {
       if (!window.PublicKeyCredential || !navigator.credentials) {
-        setMessage(root, "error", "This browser does not support passkeys.");
+        setMessage(root, "error", translate("common.errors.unsupported_passkeys", {}, "This browser does not support passkeys."));
         return;
       }
 
@@ -680,7 +760,7 @@ function initPasskeyManagement(root, options = {}) {
         passkeyId: deletePasskeyButton.getAttribute("data-passkey-delete"),
         name:
           deletePasskeyButton.closest(".passkey-row")?.querySelector(".passkey-copy strong")
-            ?.textContent?.trim() || "this passkey",
+            ?.textContent?.trim() || translate("settings.delete_target_fallback", {}, "this passkey"),
       });
       return;
     }
@@ -696,7 +776,7 @@ function initPasskeyManagement(root, options = {}) {
       const passkeyId = confirmDeletePasskeyButton.getAttribute("data-passkey-id");
       if (!passkeyId) {
         setPasskeyDeleteConfirmState(root, null);
-        setMessage(root, "error", "Choose a passkey to delete first.");
+        setMessage(root, "error", translate("settings.delete_choose_first", {}, "Choose a passkey to delete first."));
         return;
       }
 
@@ -706,12 +786,12 @@ function initPasskeyManagement(root, options = {}) {
         setPasskeyDeleteConfirmState(root, null);
         setPasskeyNameFormState(root, null);
         await refresh();
-        setMessage(root, "success", "Passkey deleted after confirming another one worked.");
+        setMessage(root, "success", translate("settings.deleted_success", {}, "Passkey deleted after confirming another one worked."));
       } catch (error) {
         setMessage(
           root,
           "error",
-          error instanceof Error ? error.message : "Could not delete that passkey."
+          error instanceof Error ? error.message : translate("settings.delete_failed", {}, "Could not delete that passkey.")
         );
       } finally {
         toggleForms(root, false);
@@ -738,7 +818,7 @@ function initPasskeyManagement(root, options = {}) {
       const mode = passkeyNameForm.dataset.mode;
       const passkeyId = passkeyNameForm.dataset.passkeyId;
       if (!passkeyName) {
-        setMessage(root, "error", "Passkey name is required.");
+        setMessage(root, "error", translate("settings.name_required", {}, "Passkey name is required."));
         const input = root.querySelector("[data-passkey-name-input]");
         if (input instanceof HTMLInputElement) {
           input.focus();
@@ -750,7 +830,7 @@ function initPasskeyManagement(root, options = {}) {
       try {
         if (mode === "rename") {
           if (!passkeyId) {
-            throw new Error("Choose a passkey to rename first.");
+            throw new Error(translate("settings.rename_choose_first", {}, "Choose a passkey to rename first."));
           }
           await renamePasskey(root, passkeyId, passkeyName);
         } else {
@@ -762,8 +842,8 @@ function initPasskeyManagement(root, options = {}) {
           root,
           "success",
           mode === "rename"
-            ? "Passkey renamed after confirming it still works."
-            : "Another passkey is ready to use."
+            ? translate("settings.renamed_success", {}, "Passkey renamed after confirming it still works.")
+            : translate("settings.added_success", {}, "Another passkey is ready to use.")
         );
       } catch (error) {
         setMessage(
@@ -772,8 +852,8 @@ function initPasskeyManagement(root, options = {}) {
           error instanceof Error
             ? error.message
             : mode === "rename"
-              ? "Could not rename that passkey."
-              : "Could not add another passkey."
+              ? translate("settings.rename_failed", {}, "Could not rename that passkey.")
+              : translate("settings.add_failed", {}, "Could not add another passkey.")
         );
       } finally {
         toggleForms(root, false);
@@ -841,12 +921,12 @@ async function initDashboard() {
           input.value = invite.invite_url;
           output.hidden = false;
         }
-        setDashboardMessage(root, "success", "Invite link created. It stays valid for 24 hours.");
+        setDashboardMessage(root, "success", translate("dashboard.invite_link_created", {}, "Invite link created. It stays valid for 24 hours."));
       } catch (error) {
         setDashboardMessage(
           root,
           "error",
-          error instanceof Error ? error.message : "Could not create the invite link."
+          error instanceof Error ? error.message : translate("dashboard.invite_link_create_failed", {}, "Could not create the invite link.")
         );
       } finally {
         toggleDashboardForms(root, false);
@@ -863,12 +943,12 @@ async function initDashboard() {
       }
       try {
         await copyText(input.value);
-        setDashboardMessage(root, "success", "Invite link copied.");
+        setDashboardMessage(root, "success", translate("dashboard.invite_link_copied", {}, "Invite link copied."));
       } catch (error) {
         setDashboardMessage(
           root,
           "error",
-          error instanceof Error ? error.message : "Could not copy the invite link."
+          error instanceof Error ? error.message : translate("dashboard.invite_link_copy_failed", {}, "Could not copy the invite link.")
         );
       }
       return;
@@ -878,7 +958,7 @@ async function initDashboard() {
     if (openListButton) {
       const listId = openListButton.getAttribute("data-dashboard-open-list");
       if (!listId) {
-        setDashboardMessage(root, "error", "Create or choose a list before adding an item.");
+        setDashboardMessage(root, "error", translate("dashboard.choose_list_before_adding", {}, "Create or choose a list before adding an item."));
         return;
       }
 
@@ -949,18 +1029,18 @@ async function initDashboard() {
     try {
       const name = String(formData.get("name") || "").trim();
       if (!name) {
-        throw new Error("Please enter a household name.");
+        throw new Error(translate("dashboard.household_name_required", {}, "Please enter a household name."));
       }
       await postJson("/api/v1/households", { name });
       householdForm.reset();
       await refresh();
       setDashboardPanelOpen(root, "household", false);
-      setDashboardMessage(root, "success", "Household created. You can add a list now.");
+      setDashboardMessage(root, "success", translate("dashboard.household_created", {}, "Household created. You can add a list now."));
     } catch (error) {
       setDashboardMessage(
         root,
         "error",
-        error instanceof Error ? error.message : "Could not create the household."
+        error instanceof Error ? error.message : translate("dashboard.household_create_failed", {}, "Could not create the household.")
       );
     } finally {
       toggleDashboardForms(root, false);
@@ -975,10 +1055,10 @@ async function initDashboard() {
       const householdId = String(formData.get("household_id") || "");
       const name = String(formData.get("name") || "").trim();
       if (!householdId) {
-        throw new Error("Create or choose a household before creating a list.");
+        throw new Error(translate("dashboard.choose_household_before_list", {}, "Create or choose a household before creating a list."));
       }
       if (!name) {
-        throw new Error("Please enter a list name.");
+        throw new Error(translate("dashboard.list_name_required", {}, "Please enter a list name."));
       }
       const groceryList = await postJson(`/api/v1/households/${householdId}/lists`, { name });
       listForm.reset();
@@ -989,7 +1069,7 @@ async function initDashboard() {
       setDashboardMessage(
         root,
         "error",
-        error instanceof Error ? error.message : "Could not create the list."
+        error instanceof Error ? error.message : translate("dashboard.list_create_failed", {}, "Could not create the list.")
       );
     } finally {
       toggleDashboardForms(root, false);
@@ -1002,7 +1082,7 @@ async function initDashboard() {
     setDashboardMessage(
       root,
       "error",
-      error instanceof Error ? error.message : "Could not load your households."
+      error instanceof Error ? error.message : translate("dashboard.load_failed", {}, "Could not load your households.")
     );
   }
 }
@@ -1090,7 +1170,7 @@ async function runUndoAction(root, state, undoAction) {
   try {
     await undoAction();
   } catch (error) {
-    setListMessage(root, "error", error instanceof Error ? error.message : "Could not undo action.");
+    setListMessage(root, "error", error instanceof Error ? error.message : translate("list_detail.undo_failed", {}, "Could not undo action."));
   }
 }
 
@@ -1170,7 +1250,9 @@ function formatSuggestionMeta(state, item) {
   if (item.note) {
     meta.push(item.note);
   }
-  meta.push(item.checked ? "checked earlier" : "already on this list");
+  meta.push(item.checked
+    ? translate("list_detail.checked_earlier", {}, "checked earlier")
+    : translate("list_detail.already_on_list", {}, "already on this list"));
   return meta.join(" / ");
 }
 
@@ -1178,7 +1260,7 @@ function categorySortKey(state, categoryId) {
   if (!categoryId) {
     return {
       color: "",
-      name: "Uncategorized",
+      name: translate("list_detail.uncategorized", {}, "Uncategorized"),
       isExplicit: false,
       sortOrder: Number.MAX_SAFE_INTEGER,
     };
@@ -1188,7 +1270,7 @@ function categorySortKey(state, categoryId) {
   if (!category) {
     return {
       color: "",
-      name: "Uncategorized",
+      name: translate("list_detail.uncategorized", {}, "Uncategorized"),
       isExplicit: false,
       sortOrder: Number.MAX_SAFE_INTEGER,
     };
@@ -1241,8 +1323,8 @@ function syncCategoryRadioGroup(container, groupName, currentValue, state, searc
     {
       color: "",
       id: "",
-      name: "No category",
-      hint: "Keep this item above the category sections.",
+      name: translate("list_detail.no_category", {}, "No category"),
+      hint: translate("list_detail.no_category_hint", {}, "Keep this item above the category sections."),
     },
     ...categories,
   ].filter(
@@ -1448,7 +1530,11 @@ function renderCategoryOrderSettings(root, state) {
   if (orderedCategories.length === 0) {
     const emptyState = document.createElement("p");
     emptyState.className = "dashboard-helper";
-    emptyState.textContent = "Create categories in admin to customize the order for this list.";
+    emptyState.textContent = translate(
+      "list_detail.create_categories_admin",
+      {},
+      "Create categories in admin to customize the order for this list."
+    );
     container.appendChild(emptyState);
     return;
   }
@@ -1471,8 +1557,8 @@ function renderCategoryOrderSettings(root, state) {
 
     const meta = document.createElement("span");
     meta.textContent = state.categoryOrder.has(category.id)
-      ? "Pinned in this list order"
-      : "Alphabetical until you move it";
+      ? translate("list_detail.pinned_in_order", {}, "Pinned in this list order")
+      : translate("list_detail.alphabetical_until_moved", {}, "Alphabetical until you move it");
     copy.appendChild(meta);
     row.appendChild(copy);
 
@@ -1483,7 +1569,10 @@ function renderCategoryOrderSettings(root, state) {
     moveUp.type = "button";
     moveUp.dataset.settingsCategoryMove = "up";
     moveUp.dataset.categoryId = category.id;
-    moveUp.setAttribute("aria-label", `Move ${category.name} up`);
+    moveUp.setAttribute(
+      "aria-label",
+      translate("list_detail.move_category_up", { name: category.name }, "Move {name} up")
+    );
     moveUp.disabled = index === 0;
     moveUp.textContent = "↑";
     actions.appendChild(moveUp);
@@ -1492,7 +1581,10 @@ function renderCategoryOrderSettings(root, state) {
     moveDown.type = "button";
     moveDown.dataset.settingsCategoryMove = "down";
     moveDown.dataset.categoryId = category.id;
-    moveDown.setAttribute("aria-label", `Move ${category.name} down`);
+    moveDown.setAttribute(
+      "aria-label",
+      translate("list_detail.move_category_down", { name: category.name }, "Move {name} down")
+    );
     moveDown.disabled = index === orderedCategories.length - 1;
     moveDown.textContent = "↓";
     actions.appendChild(moveDown);
@@ -1600,7 +1692,9 @@ function renderItemSuggestions(root, state) {
     button.dataset.itemReuse = item.id;
     button.setAttribute(
       "aria-label",
-      item.checked ? `Add ${item.name} back to the list` : `Jump to ${item.name} in the list`
+      item.checked
+        ? translate("list_detail.suggestion_add_back", { name: item.name }, "Add {name} back to the list")
+        : translate("list_detail.suggestion_jump_to", { name: item.name }, "Jump to {name} in the list")
     );
     button.textContent = "+";
 
@@ -1726,12 +1820,12 @@ function renderItems(root, state) {
     const headingCopy = document.createElement("div");
     headingCopy.className = "item-category-copy";
     const headingTitle = document.createElement("h3");
-    headingTitle.textContent = category?.name || "Uncategorized";
+    headingTitle.textContent = category?.name || translate("list_detail.uncategorized", {}, "Uncategorized");
     headingCopy.appendChild(headingTitle);
 
     const headingMeta = document.createElement("p");
     headingMeta.className = "item-category-meta";
-    headingMeta.textContent = `${items.length} ${items.length === 1 ? "item" : "items"}`;
+    headingMeta.textContent = translatePlural("list_detail.item_count", items.length, {}, { one: "{count} item", other: "{count} items" });
     headingCopy.appendChild(headingMeta);
     heading.appendChild(headingCopy);
 
@@ -1752,7 +1846,9 @@ function renderItems(root, state) {
       checkButton.dataset.itemToggle = item.id;
       checkButton.setAttribute(
         "aria-label",
-        item.checked ? `Uncheck ${item.name}` : `Check ${item.name}`
+        item.checked
+          ? translate("list_detail.uncheck_item", { name: item.name }, "Uncheck {name}")
+          : translate("list_detail.check_item", { name: item.name }, "Check {name}")
       );
       main.appendChild(checkButton);
 
@@ -1767,7 +1863,7 @@ function renderItems(root, state) {
       if (item.quantity_text) {
         const quantity = document.createElement("p");
         quantity.className = "item-meta";
-        quantity.textContent = `Qty: ${item.quantity_text}`;
+        quantity.textContent = translate("list_detail.quantity_prefix", { quantity: item.quantity_text }, "Qty: {quantity}");
         copy.appendChild(quantity);
       }
 
@@ -1801,12 +1897,12 @@ function renderItems(root, state) {
     const headingCopy = document.createElement("div");
     headingCopy.className = "item-category-copy";
     const headingTitle = document.createElement("h3");
-    headingTitle.textContent = "Checked off";
+    headingTitle.textContent = translate("list_detail.checked_off", {}, "Checked off");
     headingCopy.appendChild(headingTitle);
 
     const headingMeta = document.createElement("p");
     headingMeta.className = "item-category-meta";
-    headingMeta.textContent = `${checkedItems.length} ${checkedItems.length === 1 ? "item" : "items"}`;
+    headingMeta.textContent = translatePlural("list_detail.item_count", checkedItems.length, {}, { one: "{count} item", other: "{count} items" });
     headingCopy.appendChild(headingMeta);
     heading.appendChild(headingCopy);
     section.appendChild(heading);
@@ -1824,7 +1920,10 @@ function renderItems(root, state) {
       checkButton.className = "item-check is-checked";
       checkButton.type = "button";
       checkButton.dataset.itemToggle = item.id;
-      checkButton.setAttribute("aria-label", `Uncheck ${item.name}`);
+      checkButton.setAttribute(
+        "aria-label",
+        translate("list_detail.uncheck_item", { name: item.name }, "Uncheck {name}")
+      );
       main.appendChild(checkButton);
 
       const copy = document.createElement("div");
@@ -1838,7 +1937,7 @@ function renderItems(root, state) {
       if (item.quantity_text) {
         const quantity = document.createElement("p");
         quantity.className = "item-meta";
-        quantity.textContent = `Qty: ${item.quantity_text}`;
+        quantity.textContent = translate("list_detail.quantity_prefix", { quantity: item.quantity_text }, "Qty: {quantity}");
         copy.appendChild(quantity);
       }
 
@@ -1901,16 +2000,16 @@ async function restoreDeletedItem(root, state, listId, deletedItem) {
 async function deleteItem(root, state, listId, itemId) {
   const deletedItem = state.items.get(itemId);
   if (!deletedItem) {
-    throw new Error("Could not find that item.");
+    throw new Error(translate("list_detail.item_not_found", {}, "Could not find that item."));
   }
 
   const response = await fetch(`/api/v1/items/${itemId}`, { method: "DELETE" });
   if (response.status === 401) {
     navigateTo("/login");
-    throw new Error("Unauthorized");
+    throw new Error(translate("common.errors.unauthorized", {}, "Unauthorized"));
   }
   if (!response.ok) {
-    throw new Error("Could not delete item.");
+    throw new Error(translate("list_detail.item_delete_failed", {}, "Could not delete item."));
   }
 
   removeItem(state, itemId);
@@ -1918,13 +2017,13 @@ async function deleteItem(root, state, listId, itemId) {
   showUndoToast(
     root,
     state,
-    `${deletedItem.name} deleted.`,
+    translate("list_detail.item_deleted_named", { name: deletedItem.name }, "{name} deleted."),
     restoreDeletedItem.bind(null, root, state, listId, deletedItem),
   );
   if (state.editingItemId === itemId) {
     setItemEditPanelOpen(root, state, null);
   }
-  setListMessage(root, "success", "Item deleted.");
+  setListMessage(root, "success", translate("list_detail.item_deleted", {}, "Item deleted."));
 }
 
 async function restoreToggledItem(root, state, toggleId, action) {
@@ -1939,7 +2038,7 @@ function handleSocketClose(root, state, reconnect, isDisposed) {
   if (isDisposed()) {
     return;
   }
-  setListSyncStatus(root, "Live updates paused. Reconnecting...");
+  setListSyncStatus(root, translate("list_detail.sync_paused", {}, "Live updates paused. Reconnecting..."));
   window.setTimeout(reconnect, 1500);
 }
 
@@ -1976,7 +2075,7 @@ async function loadListDetail(root, state) {
 function connectListSocket(root, state) {
   const listId = root.dataset.listId;
   if (!listId) {
-    setListSyncStatus(root, "Live updates unavailable.");
+    setListSyncStatus(root, translate("list_detail.sync_unavailable", {}, "Live updates unavailable."));
     return;
   }
 
@@ -1985,16 +2084,16 @@ function connectListSocket(root, state) {
   const connect = () => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const socketUrl = `${protocol}//${window.location.host}/api/v1/ws/lists/${listId}`;
-    setListSyncStatus(root, "Connecting live updates...");
+    setListSyncStatus(root, translate("list_detail.sync_connecting", {}, "Connecting live updates..."));
     state.socket = new WebSocket(socketUrl);
 
     if (typeof state.socket?.addEventListener !== "function") {
-      setListSyncStatus(root, "Live updates unavailable.");
+      setListSyncStatus(root, translate("list_detail.sync_unavailable", {}, "Live updates unavailable."));
       return;
     }
 
     state.socket.addEventListener("open", () => {
-      setListSyncStatus(root, "Live updates on.");
+      setListSyncStatus(root, translate("list_detail.sync_on", {}, "Live updates on."));
     });
 
     state.socket.addEventListener("message", (event) => {
@@ -2189,7 +2288,7 @@ async function initListDetail() {
     const formData = new FormData(itemForm);
     const name = String(formData.get("name") || "").trim();
     if (!name) {
-      setListMessage(root, "error", "Please enter an item name.");
+      setListMessage(root, "error", translate("list_detail.item_name_required", {}, "Please enter an item name."));
       return;
     }
 
@@ -2220,9 +2319,9 @@ async function initListDetail() {
       renderItems(root, state);
       setItemPanelOpen(root, false);
       hideUndoToast(root, state);
-      setListMessage(root, "success", "Item added.");
+      setListMessage(root, "success", translate("list_detail.item_added", {}, "Item added."));
     } catch (error) {
-      setListMessage(root, "error", error instanceof Error ? error.message : "Could not add item.");
+      setListMessage(root, "error", error instanceof Error ? error.message : translate("list_detail.item_add_failed", {}, "Could not add item."));
     }
   });
 
@@ -2241,7 +2340,7 @@ async function initListDetail() {
     };
 
     if (!payload.name) {
-      setListMessage(root, "error", "Please enter an item name.");
+      setListMessage(root, "error", translate("list_detail.item_name_required", {}, "Please enter an item name."));
       return;
     }
 
@@ -2254,9 +2353,9 @@ async function initListDetail() {
       upsertItem(state, updatedItem);
       renderItems(root, state);
       setItemEditPanelOpen(root, state, updatedItem.id);
-      setListMessage(root, "success", "Item updated.");
+      setListMessage(root, "success", translate("list_detail.item_updated", {}, "Item updated."));
     } catch (error) {
-      setListMessage(root, "error", error instanceof Error ? error.message : "Could not save item.");
+      setListMessage(root, "error", error instanceof Error ? error.message : translate("list_detail.item_update_failed", {}, "Could not save item."));
     }
   });
 
@@ -2309,7 +2408,7 @@ async function initListDetail() {
       if (reuseItemId) {
         const existingItem = state.items.get(reuseItemId);
         if (!existingItem) {
-          throw new Error("Could not find that item.");
+          throw new Error(translate("list_detail.item_not_found", {}, "Could not find that item."));
         }
         if (existingItem.checked) {
           const updatedItem = await postJson(`/api/v1/items/${reuseItemId}/uncheck`, {});
@@ -2321,10 +2420,10 @@ async function initListDetail() {
           showUndoToast(
             root,
             state,
-            `${existingItem.name} added back to the list.`,
+            translate("list_detail.item_added_back_named", { name: existingItem.name }, "{name} added back to the list."),
             restoreCheckedSuggestion.bind(null, root, state, reuseItemId),
           );
-          setListMessage(root, "success", "Item added back to the list.");
+          setListMessage(root, "success", translate("list_detail.item_added_back", {}, "Item added back to the list."));
           return;
         }
 
@@ -2336,7 +2435,7 @@ async function initListDetail() {
       if (toggleId) {
         const existingItem = state.items.get(toggleId);
         if (!existingItem) {
-          throw new Error("Could not find that item.");
+          throw new Error(translate("list_detail.item_not_found", {}, "Could not find that item."));
         }
         const action = existingItem.checked ? "uncheck" : "check";
         const updatedItem = await postJson(`/api/v1/items/${toggleId}/${action}`, {});
@@ -2345,13 +2444,15 @@ async function initListDetail() {
         showUndoToast(
           root,
           state,
-          `${existingItem.name} ${action === "check" ? "checked" : "unchecked"}.`,
+          action === "check"
+            ? translate("list_detail.item_checked_named", { name: existingItem.name }, "{name} checked.")
+            : translate("list_detail.item_unchecked_named", { name: existingItem.name }, "{name} unchecked."),
           restoreToggledItem.bind(null, root, state, toggleId, action),
         );
         return;
       }
     } catch (error) {
-      setListMessage(root, "error", error instanceof Error ? error.message : "List action failed.");
+      setListMessage(root, "error", error instanceof Error ? error.message : translate("list_detail.list_action_failed", {}, "List action failed."));
     }
   });
 
@@ -2363,7 +2464,7 @@ async function initListDetail() {
     try {
       await deleteItem(root, state, listId, state.editingItemId);
     } catch (error) {
-      setListMessage(root, "error", error instanceof Error ? error.message : "Could not delete item.");
+      setListMessage(root, "error", error instanceof Error ? error.message : translate("list_detail.item_delete_failed", {}, "Could not delete item."));
     }
   });
 
@@ -2376,7 +2477,7 @@ async function initListDetail() {
     }
     connectListSocket(root, state);
   } catch (error) {
-    setListMessage(root, "error", error instanceof Error ? error.message : "Could not load the list.");
+    setListMessage(root, "error", error instanceof Error ? error.message : translate("list_detail.load_failed", {}, "Could not load the list."));
   }
 }
 
@@ -2392,7 +2493,7 @@ async function registerWithPasskey(root, form) {
   await postJson("/api/v1/auth/register/verify", {
     credential: credentialToJSON(credential),
   });
-  setMessage(root, "success", "Passkey created. Redirecting to your dashboard...");
+  setMessage(root, "success", translate("auth.login.created_redirect", {}, "Passkey created. Redirecting to your dashboard..."));
   navigateTo(root.getAttribute("data-next-url") || "/");
 }
 
@@ -2405,14 +2506,14 @@ async function loginWithPasskey(root, form) {
   await postJson("/api/v1/auth/login/verify", {
     credential: credentialToJSON(credential),
   });
-  setMessage(root, "success", "Passkey accepted. Redirecting to your dashboard...");
+  setMessage(root, "success", translate("auth.login.accepted_redirect", {}, "Passkey accepted. Redirecting to your dashboard..."));
   navigateTo(root.getAttribute("data-next-url") || "/");
 }
 
 async function addPasskeyWithLink(root) {
   const token = root.getAttribute("data-passkey-add-token");
   if (!token) {
-    throw new Error("Passkey add link is missing.");
+    throw new Error(translate("auth.passkey_add.missing_token", {}, "Passkey add link is missing."));
   }
 
   const options = await postJson(`/api/v1/auth/passkey-add/${token}/options`, {});
@@ -2422,7 +2523,7 @@ async function addPasskeyWithLink(root) {
   await postJson(`/api/v1/auth/passkey-add/${token}/verify`, {
     credential: credentialToJSON(credential),
   });
-  setMessage(root, "success", "Additional passkey created. Redirecting to your dashboard...");
+  setMessage(root, "success", translate("auth.passkey_add.created_redirect", {}, "Additional passkey created. Redirecting to your dashboard..."));
   navigateTo("/");
 }
 
@@ -2431,7 +2532,7 @@ async function handlePasskeyLoginClick(root, loginForm) {
   try {
     await loginWithPasskey(root, loginForm);
   } catch (error) {
-    setMessage(root, "error", error instanceof Error ? error.message : "Passkey login failed.");
+    setMessage(root, "error", error instanceof Error ? error.message : translate("auth.login.login_failed", {}, "Passkey login failed."));
   } finally {
     toggleButtons(root, false);
   }
@@ -2466,7 +2567,7 @@ function initPasskeyAuth() {
   }
 
   if (!window.PublicKeyCredential || !navigator.credentials) {
-    setMessage(root, "error", "This browser does not support passkeys.");
+    setMessage(root, "error", translate("common.errors.unsupported_passkeys", {}, "This browser does not support passkeys."));
     toggleButtons(root, true);
     return;
   }
@@ -2484,7 +2585,7 @@ function initPasskeyAuth() {
     try {
       await registerWithPasskey(root, registerForm);
     } catch (error) {
-      setMessage(root, "error", error instanceof Error ? error.message : "Passkey registration failed.");
+      setMessage(root, "error", error instanceof Error ? error.message : translate("auth.login.registration_failed", {}, "Passkey registration failed."));
     } finally {
       toggleButtons(root, false);
     }
@@ -2503,7 +2604,7 @@ function initPasskeyAddLink() {
   }
 
   if (!window.PublicKeyCredential || !navigator.credentials) {
-    setMessage(root, "error", "This browser does not support passkeys.");
+    setMessage(root, "error", translate("common.errors.unsupported_passkeys", {}, "This browser does not support passkeys."));
     toggleButtons(root, true);
     return;
   }
@@ -2513,7 +2614,7 @@ function initPasskeyAddLink() {
     try {
       await addPasskeyWithLink(root);
     } catch (error) {
-      setMessage(root, "error", error instanceof Error ? error.message : "Passkey add failed.");
+      setMessage(root, "error", error instanceof Error ? error.message : translate("auth.passkey_add.failed", {}, "Passkey add failed."));
     } finally {
       toggleButtons(root, false);
     }
@@ -2549,7 +2650,7 @@ function initUserSettings() {
   }
 
   if (!window.PublicKeyCredential || !navigator.credentials) {
-    setPasskeyManagementMessage(root, "error", "This browser does not support passkeys.");
+    setPasskeyManagementMessage(root, "error", translate("common.errors.unsupported_passkeys", {}, "This browser does not support passkeys."));
     toggleButtons(root, true);
     return;
   }
@@ -2562,14 +2663,14 @@ function initUserSettings() {
     setPasskeyManagementMessage(
       root,
       "error",
-      error instanceof Error ? error.message : "Could not load your passkeys."
+      error instanceof Error ? error.message : translate("settings.load_failed", {}, "Could not load your passkeys.")
     );
   });
 }
 
 function formatInviteExpiry(value) {
   const date = new Date(value);
-  return date.toLocaleString([], {
+  return date.toLocaleString(getCurrentLocale(), {
     dateStyle: "medium",
     timeStyle: "short",
   });
@@ -2594,14 +2695,14 @@ async function initHouseholdInvite() {
     loadingNode.hidden = true;
     readyNode.hidden = false;
     householdNameNode.textContent = invite.household_name;
-    expiryNode.textContent = `This link expires on ${formatInviteExpiry(invite.expires_at)}.`;
+    expiryNode.textContent = translate("invite.expires_on", { date: formatInviteExpiry(invite.expires_at) }, "This link expires on {date}.");
     membershipNoteNode.hidden = !invite.already_member;
   } catch (error) {
     loadingNode.hidden = true;
     setInviteMessage(
       root,
       "error",
-      error instanceof Error ? error.message : "This invite link is no longer available.",
+      error instanceof Error ? error.message : translate("invite.unavailable", {}, "This invite link is no longer available."),
     );
     return;
   }
@@ -2611,7 +2712,7 @@ async function initHouseholdInvite() {
     setInviteMessage(root, "", "");
     try {
       const household = await postJson(`/api/v1/households/invites/${token}/accept`, {});
-      setInviteMessage(root, "success", `You joined ${household.name}. Redirecting now...`);
+      setInviteMessage(root, "success", translate("invite.accepted", { household: household.name }, "You joined {household}. Redirecting now..."));
       window.setTimeout(() => {
         navigateTo("/");
       }, 500);
@@ -2619,7 +2720,7 @@ async function initHouseholdInvite() {
       setInviteMessage(
         root,
         "error",
-        error instanceof Error ? error.message : "Could not accept the invite.",
+        error instanceof Error ? error.message : translate("invite.accept_failed", {}, "Could not accept the invite."),
       );
       acceptButton.disabled = false;
     }
@@ -2643,6 +2744,11 @@ if (typeof document !== "undefined") {
 export {
   base64UrlToBytes,
   bytesToBase64Url,
+  getI18nState,
+  getCurrentLocale,
+  interpolateTranslation,
+  translate,
+  translatePlural,
   publicKeyFromJSON,
   credentialToJSON,
   registerServiceWorker,

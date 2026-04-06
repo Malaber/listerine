@@ -2,22 +2,20 @@
 {% block content %}
 <section class="invite-shell" data-household-invite data-invite-token="{{ invite_token }}">
   <div class="invite-card">
-    <p class="dashboard-kicker">Household invite</p>
-    <h1>Join a shared grocery space</h1>
-    <p class="invite-lead" data-invite-loading>
-      Checking your invite link and household access.
-    </p>
+    <p class="dashboard-kicker">{{ t("invite.kicker") }}</p>
+    <h1>{{ t("invite.title") }}</h1>
+    <p class="invite-lead" data-invite-loading>{{ t("invite.loading") }}</p>
     <div class="dashboard-banner dashboard-banner-error" data-invite-error hidden></div>
     <div class="dashboard-banner dashboard-banner-success" data-invite-success hidden></div>
     <div data-invite-ready hidden>
       <h2 data-invite-household-name></h2>
       <p class="dashboard-helper" data-invite-expiry></p>
       <p class="dashboard-helper" data-invite-membership-note hidden>
-        You already belong to this household. You can still use this invite to jump back into it.
+        {{ t("invite.already_member") }}
       </p>
       <div class="invite-actions">
-        <button type="button" class="primary-button" data-invite-accept>Accept invite</button>
-        <a class="back-link" href="/">Back to dashboard</a>
+        <button type="button" class="primary-button" data-invite-accept>{{ t("invite.accept") }}</button>
+        <a class="back-link" href="/">{{ t("invite.back_to_dashboard") }}</a>
       </div>
     </div>
   </div>
