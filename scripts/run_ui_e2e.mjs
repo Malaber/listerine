@@ -673,10 +673,10 @@ async function main() {
 
     if (deviceName === "desktop") {
       await page.keyboard.press("Enter");
-      await expectVisible(page.getByRole("heading", { name: "Add an item" }), "Enter should open add modal");
+      await expectVisible(page.locator("[data-item-panel]"), "Enter should open add modal");
     } else {
       await page.getByRole("button", { name: "Add item" }).click();
-      await expectVisible(page.getByRole("heading", { name: "Add an item" }), "Add button should open add modal");
+      await expectVisible(page.locator("[data-item-panel]"), "Add button should open add modal");
     }
     await addForm.getByLabel("Item name").fill("Spag");
     const activeSuggestion = addForm.locator(".item-suggestion", { hasText: "Spaghetti" });
@@ -760,9 +760,12 @@ async function main() {
     assert(checkedNames.includes("Tofu"), "Expected previously checked item in checked section");
 
     const hackfleischCard = itemCard(page, "Hackfleisch");
-    await hackfleischCard.getByRole("button", { name: "Delete" }).click();
+    await hackfleischCard.click();
+    const hackfleischEditPanel = page.locator("[data-item-edit-panel]", { hasText: "Hackfleisch" });
+    await expectVisible(hackfleischEditPanel, "Expected Hackfleisch edit modal before deleting");
+    await hackfleischEditPanel.locator("[data-item-edit-delete]").click();
     await expectVisible(
-      page.locator("[data-list-toast]", { hasText: "Hackfleisch deleted." }),
+      page.locator("[data-list-toast]", { hasText: /Hackfleisch (deleted|wurde gelöscht)\./ }),
       "Expected delete toast",
     );
     await page.locator("[data-list-toast-undo]").click();
@@ -833,10 +836,11 @@ async function main() {
     await page.getByRole("button", { name: "Add item" }).click();
     const freshThingName = `Fresh thing ${Date.now()}`;
     await addForm.getByLabel("Item name").fill(freshThingName);
+    await addForm.locator(".item-more-fields summary").click();
     await addForm.locator("[data-item-category-search]").fill("brot");
     await addForm.locator(".category-radio-option", { hasText: "Backwaren" }).click();
     await addForm.locator('input[name="quantity_text"]').fill("1");
-    await addForm.locator('button[type="submit"]').click();
+    await page.locator(".add-item-save-button").click();
     const freshThingCard = itemCard(page, freshThingName);
     await expectVisible(freshThingCard, "Expected newly added item");
     await expectVisible(

@@ -408,6 +408,12 @@ def install_browser(c, with_deps=False) -> None:
     _run_quiet(c, _node_command(playwright_install), pty=False, shell="/bin/bash")
 
 
+@task(help={"database_url": "SQLite database URL used by the browser e2e flow."})
+def clean_browser_e2e(c, database_url=DEFAULT_BROWSER_DATABASE_URL) -> None:
+    """Remove the generated browser e2e SQLite database and sidecar files."""
+    _reset_sqlite_database_file(database_url)
+
+
 @task(
     help={
         "seed_path": "Fixture used to seed the local app database.",

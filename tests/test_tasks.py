@@ -43,6 +43,19 @@ def test_reset_sqlite_database_file_removes_database_and_sidecars(tmp_path: Path
         assert not database_path.with_name(f"{database_path.name}{suffix}").exists()
 
 
+def test_clean_browser_e2e_removes_database_and_sidecars(tmp_path: Path) -> None:
+    database_path = tmp_path / "browser-e2e.db"
+    for suffix in ("", "-shm", "-wal"):
+        database_path.with_name(f"{database_path.name}{suffix}").write_text(
+            "data", encoding="utf-8"
+        )
+
+    tasks.clean_browser_e2e.body(None, database_url=f"sqlite+aiosqlite:///{database_path}")
+
+    for suffix in ("", "-shm", "-wal"):
+        assert not database_path.with_name(f"{database_path.name}{suffix}").exists()
+
+
 def test_wait_for_pid_exit_returns_once_process_is_gone(monkeypatch) -> None:
     states = iter([True, True, False])
     monkeypatch.setattr(tasks.os, "waitpid", lambda pid, flags: (0, 0))

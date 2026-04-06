@@ -1876,18 +1876,6 @@ function renderItems(root, state) {
 
       main.appendChild(copy);
       article.appendChild(main);
-
-      const actions = document.createElement("div");
-      actions.className = "item-actions";
-
-      const deleteButton = document.createElement("button");
-      deleteButton.type = "button";
-      deleteButton.className = "danger-button";
-      deleteButton.dataset.itemDelete = item.id;
-      deleteButton.textContent = translate("common.delete", {}, "Delete");
-      actions.appendChild(deleteButton);
-
-      article.appendChild(actions);
       section.appendChild(article);
     });
 
@@ -1962,18 +1950,6 @@ function renderItems(root, state) {
 
       main.appendChild(copy);
       article.appendChild(main);
-
-      const actions = document.createElement("div");
-      actions.className = "item-actions";
-
-      const deleteButton = document.createElement("button");
-      deleteButton.type = "button";
-      deleteButton.className = "danger-button";
-      deleteButton.dataset.itemDelete = item.id;
-      deleteButton.textContent = translate("common.delete", {}, "Delete");
-      actions.appendChild(deleteButton);
-
-      article.appendChild(actions);
       section.appendChild(article);
     });
 
@@ -2019,6 +1995,35 @@ async function restoreDeletedItem(root, state, listId, deletedItem) {
   }
   upsertItem(state, nextItem);
   renderItems(root, state);
+}
+
+async function deleteItem(root, state, listId, itemId) {
+  const deletedItem = state.items.get(itemId);
+  if (!deletedItem) {
+    throw new Error(translate("list_detail.item_not_found", {}, "Could not find that item."));
+  }
+
+  const response = await fetch(`/api/v1/items/${itemId}`, { method: "DELETE" });
+  if (response.status === 401) {
+    navigateTo("/login");
+    throw new Error(translate("common.errors.unauthorized", {}, "Unauthorized"));
+  }
+  if (!response.ok) {
+    throw new Error(translate("list_detail.item_delete_failed", {}, "Could not delete item."));
+  }
+
+  removeItem(state, itemId);
+  renderItems(root, state);
+  showUndoToast(
+    root,
+    state,
+    translate("list_detail.item_deleted_named", { name: deletedItem.name }, "{name} deleted."),
+    restoreDeletedItem.bind(null, root, state, listId, deletedItem),
+  );
+  if (state.editingItemId === itemId) {
+    setItemEditPanelOpen(root, state, null);
+  }
+  setListMessage(root, "success", translate("list_detail.item_deleted", {}, "Item deleted."));
 }
 
 async function restoreToggledItem(root, state, toggleId, action) {
@@ -2361,7 +2366,6 @@ async function initListDetail() {
     }
 
     const toggleId = target.dataset.itemToggle;
-    const deleteId = target.dataset.itemDelete;
     const reuseItemId = target.dataset.itemReuse;
     const categoryMove = target.dataset.settingsCategoryMove;
     const categoryId = target.dataset.categoryId;
@@ -2372,7 +2376,7 @@ async function initListDetail() {
       return;
     }
 
-    if (!toggleId && !deleteId && !reuseItemId && !categoryMove) {
+    if (!toggleId && !reuseItemId && !categoryMove) {
       return;
     }
 
@@ -2447,31 +2451,6 @@ async function initListDetail() {
         );
         return;
       }
-
-      const deletedItem = state.items.get(deleteId);
-      if (!deletedItem) {
-        throw new Error(translate("list_detail.item_not_found", {}, "Could not find that item."));
-      }
-      const response = await fetch(`/api/v1/items/${deleteId}`, { method: "DELETE" });
-      if (response.status === 401) {
-        navigateTo("/login");
-        throw new Error(translate("common.errors.unauthorized", {}, "Unauthorized"));
-      }
-      if (!response.ok) {
-        throw new Error(translate("list_detail.item_delete_failed", {}, "Could not delete item."));
-      }
-      removeItem(state, deleteId);
-      renderItems(root, state);
-      showUndoToast(
-        root,
-        state,
-        translate("list_detail.item_deleted_named", { name: deletedItem.name }, "{name} deleted."),
-        restoreDeletedItem.bind(null, root, state, listId, deletedItem),
-      );
-      if (state.editingItemId === deleteId) {
-        setItemEditPanelOpen(root, state, null);
-      }
-      setListMessage(root, "success", translate("list_detail.item_deleted", {}, "Item deleted."));
     } catch (error) {
       setListMessage(root, "error", error instanceof Error ? error.message : translate("list_detail.list_action_failed", {}, "List action failed."));
     }
@@ -2482,12 +2461,11 @@ async function initListDetail() {
       return;
     }
 
-    const deleteButton = root.querySelector(`[data-item-delete="${state.editingItemId}"]`);
-    /* c8 ignore next 3 */
-    if (!(deleteButton instanceof HTMLElement)) {
-      return;
+    try {
+      await deleteItem(root, state, listId, state.editingItemId);
+    } catch (error) {
+      setListMessage(root, "error", error instanceof Error ? error.message : translate("list_detail.item_delete_failed", {}, "Could not delete item."));
     }
-    deleteButton.click();
   });
 
   try {
