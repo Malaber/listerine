@@ -396,7 +396,7 @@ def install_js(c) -> None:
 
 @task
 def check_js(c) -> None:
-    c.run(_node_command("npm run test:js"), pty=False, shell="/bin/bash")
+    c.run(_node_command("npm run --silent test:js"), pty=False, shell="/bin/bash")
 
 
 @task(help={"with_deps": "Use Playwright's system dependency install flow."})
