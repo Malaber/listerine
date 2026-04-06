@@ -496,7 +496,10 @@ async function scenarioFromSeed(seed, requestContext) {
   const lists = await apiJson(requestContext, `/api/v1/households/${household.id}/lists`);
   const groceryList = lists.find((entry) => entry.name === seed.e2e.primary_list);
   assert(groceryList, `Expected seeded list ${seed.e2e.primary_list}`);
+  const checkedStressList = lists.find((entry) => entry.name === seed.e2e.checked_stress_list);
+  assert(checkedStressList, `Expected seeded list ${seed.e2e.checked_stress_list}`);
   return {
+    checkedStressListId: checkedStressList.id,
     householdId: household.id,
     householdName: household.name,
     listId: groceryList.id,
@@ -533,6 +536,64 @@ async function textList(locator) {
 
 function itemCard(page, text) {
   return page.locator(".item-card", { hasText: text }).first();
+}
+
+async function revealCheckedItemCard(page, text) {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const card = itemCard(page, text);
+    if (await card.isVisible()) {
+      return card;
+    }
+
+    const loadMoreButton = page.locator(".checked-items-load-more button").first();
+    if (!(await loadMoreButton.isVisible())) {
+      break;
+    }
+    await loadMoreButton.click();
+  }
+
+  throw new Error(`Could not reveal checked item card for ${text}`);
+}
+
+async function expectCheckedCardCount(group, count) {
+  await group.locator(".item-card").nth(count - 1).waitFor({ state: "visible" });
+  assert.equal(await group.locator(".item-card").count(), count);
+}
+
+async function runCheckedStressListFlow(page, stressListUrl) {
+  logStep("Checking large checked-off list pagination");
+  await page.goto(stressListUrl, { waitUntil: "networkidle" });
+
+  const checkedGroup = page
+    .locator(".item-category-group")
+    .filter({ has: page.locator(".item-category-header h3", { hasText: "Checked off" }) })
+    .first();
+  const headingMeta = checkedGroup.locator(".item-category-header .item-category-meta");
+  const loadMoreButton = checkedGroup.locator(".checked-items-load-more button");
+  const loadMoreMeta = checkedGroup.locator(".checked-items-load-more .item-category-meta");
+
+  await expectVisible(checkedGroup, "Expected checked-off group on large checked list");
+  await expectCheckedCardCount(checkedGroup, 10);
+  assert.equal(await headingMeta.textContent(), "258 items");
+  assert.equal(await loadMoreButton.textContent(), "Load 100 more");
+  assert.equal(await loadMoreMeta.textContent(), "248 older items not loaded");
+
+  await loadMoreButton.click();
+  await expectCheckedCardCount(checkedGroup, 110);
+  assert.equal(await headingMeta.textContent(), "258 items");
+  assert.equal(await loadMoreButton.textContent(), "Load 100 more");
+  assert.equal(await loadMoreMeta.textContent(), "148 older items not loaded");
+
+  await loadMoreButton.click();
+  await expectCheckedCardCount(checkedGroup, 210);
+  assert.equal(await headingMeta.textContent(), "258 items");
+  assert.equal(await loadMoreButton.textContent(), "Load 48 more");
+  assert.equal(await loadMoreMeta.textContent(), "48 older items not loaded");
+
+  await loadMoreButton.click();
+  await expectCheckedCardCount(checkedGroup, 258);
+  assert.equal(await headingMeta.textContent(), "258 items");
+  assert.equal(await checkedGroup.locator(".checked-items-load-more").count(), 0);
 }
 
 function extractInviteToken(inviteUrl) {
@@ -574,8 +635,13 @@ async function runInviteFlow(ownerPage, browser, scenario, seed, rpId) {
     await inviteePage.waitForURL(/\/login(\?|$)/);
     await loginFromLoginPage(inviteePage, new URL("/", baseUrl).toString());
     await expectVisible(
-      inviteePage.getByRole("heading", { name: "No households yet" }),
-      "Invitee should not see any household before accepting an invite",
+      inviteePage.getByRole("heading", { name: "Households and Lists" }),
+      "Invitee should reach the dashboard before accepting an invite",
+    );
+    assert.equal(
+      await inviteePage.locator(".household-card", { hasText: scenario.householdName }).count(),
+      0,
+      "Invitee should not see the owner's household before accepting an invite",
     );
 
     await inviteeContext.request.post(new URL("/api/v1/auth/logout", baseUrl).toString());
@@ -644,6 +710,7 @@ async function main() {
     logStep(`Resetting seeded list state for ${scenario.listName}`);
     await resetFixtureItems(context.request, scenario.listId, expectedChecked);
     const listUrl = new URL(`/lists/${scenario.listId}`, baseUrl).toString();
+    const checkedStressListUrl = new URL(`/lists/${scenario.checkedStressListId}`, baseUrl).toString();
 
     if (owner.is_admin) {
       await expectVisible(page.getByRole("link", { name: "Admin" }), "Expected admin link");
@@ -759,7 +826,7 @@ async function main() {
     assert.equal(checkedNames[0], "Eier", "Most recently checked item should be first in checked section");
     assert(checkedNames.includes("Tofu"), "Expected previously checked item in checked section");
 
-    const hackfleischCard = itemCard(page, "Hackfleisch");
+    const hackfleischCard = await revealCheckedItemCard(page, "Hackfleisch");
     await hackfleischCard.click();
     const hackfleischEditPanel = page.locator("[data-item-edit-panel]", { hasText: "Hackfleisch" });
     await expectVisible(hackfleischEditPanel, "Expected Hackfleisch edit modal before deleting");
@@ -855,6 +922,8 @@ async function main() {
     await expectVisible(toast, "Expected temporary undo toast");
     await page.waitForTimeout(10500);
     await expectHidden(toast, "Undo toast should disappear after timeout");
+
+    await runCheckedStressListFlow(page, checkedStressListUrl);
 
     await runInviteFlow(page, browser, scenario, seed, rpId);
 

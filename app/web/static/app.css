@@ -842,6 +842,23 @@ main {
   margin-left: auto;
 }
 
+.checked-items-load-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  border-top: 1px solid rgba(167, 203, 223, 0.72);
+  padding: 0.85rem 0.95rem;
+  background: rgba(245, 251, 253, 0.72);
+}
+
+.checked-items-load-more .item-category-meta {
+  justify-self: auto;
+  margin-left: 0;
+  text-align: center;
+}
+
 .list-focus-card {
   gap: 0.9rem;
 }
