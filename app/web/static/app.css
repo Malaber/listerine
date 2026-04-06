@@ -1571,17 +1571,34 @@ main {
   }
 
   .item-modal {
-    padding: max(0.6rem, env(safe-area-inset-top)) max(0.6rem, env(safe-area-inset-right)) max(0.6rem, env(safe-area-inset-bottom)) max(0.6rem, env(safe-area-inset-left));
+    --item-modal-safe-top: max(0.6rem, env(safe-area-inset-top));
+    --item-modal-safe-right: max(0.6rem, env(safe-area-inset-right));
+    --item-modal-safe-bottom: max(0.6rem, env(safe-area-inset-bottom));
+    --item-modal-safe-left: max(0.6rem, env(safe-area-inset-left));
+    padding: var(--item-modal-safe-top) var(--item-modal-safe-right) var(--item-modal-safe-bottom) var(--item-modal-safe-left);
     align-items: end;
   }
 
   .add-item-panel,
   .item-edit-panel {
     width: 100%;
-    max-height: min(100dvh - 1rem, 100%);
+    max-height: calc(100vh - var(--item-modal-safe-top) - var(--item-modal-safe-bottom));
+    max-height: calc(100dvh - var(--item-modal-safe-top) - var(--item-modal-safe-bottom));
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
-    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+    padding-bottom: calc(0.85rem + env(safe-area-inset-bottom));
+  }
+
+  .add-item-panel-header {
+    position: sticky;
+    top: -0.9rem;
+    z-index: 2;
+    margin: -0.9rem -0.9rem 0;
+    padding: 0.9rem 0.9rem 0.65rem;
+    border-top-left-radius: inherit;
+    border-top-right-radius: inherit;
+    background: linear-gradient(180deg, rgba(245, 251, 253, 0.98), rgba(245, 251, 253, 0.92));
+    backdrop-filter: blur(8px);
   }
 
   .add-item-panel-header h2,
@@ -1595,6 +1612,11 @@ main {
     border-radius: 999px;
     background: var(--surface-muted);
     font-size: 2rem;
+  }
+
+  .dashboard-form {
+    gap: 0.75rem;
+    margin-top: 0.75rem;
   }
 
   .dashboard-field input,
@@ -1615,6 +1637,10 @@ main {
   .settings-category-row,
   .item-suggestion {
     padding: 0.75rem 0.85rem;
+  }
+
+  .category-radio-list {
+    max-height: min(13.5rem, 34dvh);
   }
 
   .item-suggestion button,
