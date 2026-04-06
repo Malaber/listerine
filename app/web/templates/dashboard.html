@@ -3,24 +3,19 @@
 <section class="dashboard-shell" data-dashboard>
   <div class="dashboard-hero">
     <div class="dashboard-copy">
-      <p class="dashboard-kicker">Shared grocery planning</p>
-      <h1>Households and Lists</h1>
-      <p class="dashboard-intro">
-        Start by creating one household for the people who shop together. Then create one or
-        more lists inside that household, like Weekly Groceries, Costco Run, or Party Supplies.
-      </p>
+      <p class="dashboard-kicker">{{ t("dashboard.kicker") }}</p>
+      <h1>{{ t("dashboard.title") }}</h1>
+      <p class="dashboard-intro">{{ t("dashboard.intro") }}</p>
     </div>
     <aside class="dashboard-card dashboard-card-accent">
-      <h2>How the data is organized</h2>
+      <h2>{{ t("dashboard.organized_title") }}</h2>
       <ol class="dashboard-steps">
-        <li><strong>You</strong> sign in and become a user.</li>
-        <li><strong>A household</strong> groups the people sharing lists.</li>
-        <li><strong>A list</strong> lives inside one household.</li>
-        <li><strong>Items and categories</strong> live inside a list.</li>
+        <li>{{ t("dashboard.organized_step_user") }}</li>
+        <li>{{ t("dashboard.organized_step_household") }}</li>
+        <li>{{ t("dashboard.organized_step_list") }}</li>
+        <li>{{ t("dashboard.organized_step_items") }}</li>
       </ol>
-      <p class="dashboard-note">
-        If this page is empty, it usually means you have not created your first household yet.
-      </p>
+      <p class="dashboard-note">{{ t("dashboard.organized_note") }}</p>
     </aside>
   </div>
 
@@ -30,15 +25,13 @@
   <section class="dashboard-card dashboard-lists" aria-live="polite">
     <div class="dashboard-section-heading">
       <div>
-        <p class="dashboard-label">Your space</p>
-        <h2>Your households</h2>
+        <p class="dashboard-label">{{ t("dashboard.your_space") }}</p>
+        <h2>{{ t("dashboard.your_households") }}</h2>
       </div>
     </div>
     <div class="dashboard-empty" data-dashboard-empty hidden>
-      <h3>No households yet</h3>
-      <p>
-        Create your first household above. Once it exists, you can add lists to it immediately.
-      </p>
+      <h3>{{ t("dashboard.no_households_title") }}</h3>
+      <p>{{ t("dashboard.no_households_body") }}</p>
     </div>
     <div class="dashboard-household-list" data-household-list></div>
   </section>
@@ -48,39 +41,39 @@
     type="button"
     aria-expanded="false"
     aria-controls="dashboard-add-panel"
-    aria-label="Open add options"
+    aria-label="{{ t("dashboard.open_add_options") }}"
     data-dashboard-add-toggle
   >
     <span aria-hidden="true">+</span>
   </button>
 
   <div class="item-modal" data-dashboard-add-overlay hidden>
-    <button class="item-modal-backdrop" type="button" aria-label="Close add options" data-dashboard-add-close></button>
+    <button class="item-modal-backdrop" type="button" aria-label="{{ t("dashboard.close_add_options") }}" data-dashboard-add-close></button>
     <section class="dashboard-card add-item-panel" id="dashboard-add-panel" data-dashboard-add-panel hidden>
       <div class="add-item-panel-header">
         <div>
-          <p class="dashboard-label">Add fast</p>
-          <h2>Create something new</h2>
+          <p class="dashboard-label">{{ t("dashboard.add_fast") }}</p>
+          <h2>{{ t("dashboard.create_new") }}</h2>
         </div>
-        <button class="add-item-close" type="button" aria-label="Close add options" data-dashboard-add-close>
+        <button class="add-item-close" type="button" aria-label="{{ t("dashboard.close_add_options") }}" data-dashboard-add-close>
           &times;
         </button>
       </div>
       <div class="dashboard-add-actions">
         <button type="button" class="dashboard-add-action" data-dashboard-add-option="household">
-          <strong>Household</strong>
-          <span>Create a shared home for people and lists.</span>
+          <strong>{{ t("dashboard.add_household") }}</strong>
+          <span>{{ t("dashboard.add_household_body") }}</span>
         </button>
         <button type="button" class="dashboard-add-action" data-dashboard-add-option="list">
-          <strong>List</strong>
-          <span>Pick a household, then create a new shopping list inside it.</span>
+          <strong>{{ t("dashboard.add_list") }}</strong>
+          <span>{{ t("dashboard.add_list_body") }}</span>
         </button>
       </div>
       <div class="dashboard-field dashboard-add-item-section">
-        <span>Add item to</span>
+        <span>{{ t("dashboard.add_item_to") }}</span>
         <div class="dashboard-add-list-group" data-dashboard-list-group>
           <p class="dashboard-helper dashboard-add-list-empty" data-dashboard-list-empty>
-            Create a household and list first
+            {{ t("dashboard.add_item_to_empty") }}
           </p>
         </div>
       </div>
@@ -88,77 +81,73 @@
   </div>
 
   <div class="item-modal" data-dashboard-household-overlay hidden>
-    <button class="item-modal-backdrop" type="button" aria-label="Close add household form" data-dashboard-household-close></button>
+    <button class="item-modal-backdrop" type="button" aria-label="{{ t("dashboard.close_add_household_form") }}" data-dashboard-household-close></button>
     <section class="dashboard-card add-item-panel" data-dashboard-household-panel hidden>
       <div class="add-item-panel-header">
-        <button class="panel-back-button" type="button" aria-label="Back to add overview" data-dashboard-panel-back>
+        <button class="panel-back-button" type="button" aria-label="{{ t("dashboard.back_to_add_overview") }}" data-dashboard-panel-back>
           &larr;
         </button>
         <div>
-          <p class="dashboard-label">Step 1</p>
-          <h2>Add household</h2>
+          <p class="dashboard-label">{{ t("dashboard.step_1") }}</p>
+          <h2>{{ t("dashboard.add_household_title") }}</h2>
         </div>
-        <button class="add-item-close" type="button" aria-label="Close add household form" data-dashboard-household-close>
+        <button class="add-item-close" type="button" aria-label="{{ t("dashboard.close_add_household_form") }}" data-dashboard-household-close>
           &times;
         </button>
       </div>
-      <p class="dashboard-helper">
-        Examples: Home, Flatshare, Family, Office Kitchen.
-      </p>
+      <p class="dashboard-helper">{{ t("dashboard.household_examples") }}</p>
       <form class="dashboard-form" data-household-form>
         <label class="dashboard-field">
-          <span>Household name</span>
+          <span>{{ t("dashboard.household_name") }}</span>
           <input
             type="text"
             name="name"
-            placeholder="Home"
+            placeholder="{{ t("dashboard.household_name_placeholder") }}"
             maxlength="120"
             required
             data-household-name-input
           />
         </label>
-        <button type="submit">Create household</button>
+        <button type="submit">{{ t("dashboard.create_household") }}</button>
       </form>
     </section>
   </div>
 
   <div class="item-modal" data-dashboard-list-overlay hidden>
-    <button class="item-modal-backdrop" type="button" aria-label="Close add list form" data-dashboard-list-close></button>
+    <button class="item-modal-backdrop" type="button" aria-label="{{ t("dashboard.close_add_list_form") }}" data-dashboard-list-close></button>
     <section class="dashboard-card add-item-panel" data-dashboard-list-panel hidden>
       <div class="add-item-panel-header">
-        <button class="panel-back-button" type="button" aria-label="Back to add overview" data-dashboard-panel-back>
+        <button class="panel-back-button" type="button" aria-label="{{ t("dashboard.back_to_add_overview") }}" data-dashboard-panel-back>
           &larr;
         </button>
         <div>
-          <p class="dashboard-label">Step 2</p>
-          <h2>Add list to household</h2>
+          <p class="dashboard-label">{{ t("dashboard.step_2") }}</p>
+          <h2>{{ t("dashboard.add_list_title") }}</h2>
         </div>
-        <button class="add-item-close" type="button" aria-label="Close add list form" data-dashboard-list-close>
+        <button class="add-item-close" type="button" aria-label="{{ t("dashboard.close_add_list_form") }}" data-dashboard-list-close>
           &times;
         </button>
       </div>
-      <p class="dashboard-helper">
-        Choose a household first, then add a list everyone can open and update.
-      </p>
+      <p class="dashboard-helper">{{ t("dashboard.add_list_helper") }}</p>
       <form class="dashboard-form" data-list-form>
         <label class="dashboard-field">
-          <span>Household</span>
+          <span>{{ t("dashboard.household_field") }}</span>
           <select name="household_id" data-household-select required>
-            <option value="">Create a household first</option>
+            <option value="">{{ t("dashboard.create_household_first") }}</option>
           </select>
         </label>
         <label class="dashboard-field">
-          <span>List name</span>
+          <span>{{ t("dashboard.list_name") }}</span>
           <input
             type="text"
             name="name"
-            placeholder="Weekly groceries"
+            placeholder="{{ t("dashboard.list_name_placeholder") }}"
             maxlength="120"
             required
             data-list-name-input
           />
         </label>
-        <button type="submit">Create list</button>
+        <button type="submit">{{ t("dashboard.create_list") }}</button>
       </form>
     </section>
   </div>

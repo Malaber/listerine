@@ -287,6 +287,19 @@ def test_full_flow(client) -> None:
     assert client.post("/api/v1/auth/logout", headers=headers).status_code == 200
 
 
+def test_login_page_renders_selected_locale_and_persists_cookie(client) -> None:
+    response = client.get("/login?lang=de")
+
+    assert response.status_code == 200
+    assert 'lang="de"' in response.text
+    assert "Anmelden" in response.text
+    assert "listerine_locale=de" in response.headers["set-cookie"]
+
+    follow_up = client.get("/login")
+    assert follow_up.status_code == 200
+    assert 'lang="de"' in follow_up.text
+
+
 def test_pwa_assets_are_exposed(client) -> None:
     login_page = client.get("/login")
     assert login_page.status_code == 200
