@@ -27,23 +27,38 @@ cd ios/ListerineIOS
 
 ## Included app flow
 
-- first-launch backend URL entry and local persistence
-- passkey sign-up button
-- passkey login button
-- placeholder passkey request generation using `AuthenticationServices` on Apple platforms
-- integration notes for connecting to the future backend passkey endpoints
+- configurable backend URL with `https://listerine.malaber.de` as the default suggestion
+- passkey login against `/api/v1/auth/login/options` and `/api/v1/auth/login/verify`
+- bearer-token authenticated loading of households, lists, and list items
+- list switching plus add, remove, check/uncheck, and edit item details
+- liquid-glass inspired SwiftUI styling using material cards and gradients
 
-## Backend work needed to finish passkey auth
+## Local testing workflow
 
-The app is intentionally ready only up to local passkey request creation. To complete the feature, the backend will need endpoints that:
-
-1. return a WebAuthn registration challenge for sign-up
-2. verify the registration response and create the account
-3. return a WebAuthn assertion challenge for login
-4. verify the assertion response and establish an authenticated session or token
-5. expose the relying party ID and any environment-specific passkey metadata the app should trust
-
-When those routes exist, update `ApplePasskeyClient.swift` to submit server-provided challenges and send the completed registration/assertion payload back to the API.
+1. **Swift package checks (Linux/macOS):**
+   ```bash
+   cd ios/ListerineIOS
+   ./Scripts/check_coverage.sh
+   ```
+2. **Generate the Xcode project (macOS):**
+   ```bash
+   cd ios/ListerineIOS
+   xcodegen generate
+   ```
+3. **Build and run in Simulator (macOS):**
+   ```bash
+   xcodebuild \
+     -project ListerineApp.xcodeproj \
+     -scheme Listerine \
+     -configuration Debug \
+     -destination "platform=iOS Simulator,name=iPhone 16" \
+     build
+   ```
+4. Launch from Xcode and verify:
+   - backend can be changed in-app
+   - passkey login succeeds for the selected backend
+   - list switching works
+   - adding/editing/checking/deleting items updates correctly
 
 ## Shipping to the App Store
 

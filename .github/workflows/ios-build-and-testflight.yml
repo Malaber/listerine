@@ -20,6 +20,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install XcodeGen
         run: brew install xcodegen
+      - name: Run Swift package tests with coverage gate
+        run: cd ios/ListerineIOS && ./Scripts/check_coverage.sh
       - name: Generate Xcode project
         run: cd ios/ListerineIOS && xcodegen generate
       - name: Build iOS app for simulator
