@@ -1,3 +1,10 @@
+const LANGUAGE_COOKIE_NAME = "listerine_locale";
+const SUPPORTED_LANGUAGE_OPTIONS = [
+  { value: "", label: "Browser default" },
+  { value: "en", label: "English" },
+  { value: "de", label: "Deutsch" },
+];
+
 function base64UrlToBytes(value) {
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
   const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
@@ -12,6 +19,107 @@ function bytesToBase64Url(value) {
     binary += String.fromCharCode(byte);
   });
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function normalizeLanguagePreference(value) {
+  return SUPPORTED_LANGUAGE_OPTIONS.some((option) => option.value === value) ? value : "";
+}
+
+function getBrowserLanguage() {
+  if (typeof navigator === "undefined") {
+    return "en";
+  }
+
+  if (Array.isArray(navigator.languages) && navigator.languages.length > 0) {
+    return navigator.languages[0];
+  }
+
+  return navigator.language || "en";
+}
+
+function getStoredLanguagePreference() {
+  if (typeof document === "undefined") {
+    return "";
+  }
+
+  const cookie = document.cookie
+    .split(";")
+    .map((entry) => entry.trim())
+    .find((entry) => entry.startsWith(`${LANGUAGE_COOKIE_NAME}=`));
+  if (!cookie) {
+    return "";
+  }
+
+  return normalizeLanguagePreference(decodeURIComponent(cookie.split("=").slice(1).join("=")));
+}
+
+function storeLanguagePreference(value) {
+  const normalized = normalizeLanguagePreference(value);
+  if (typeof document === "undefined") {
+    return normalized;
+  }
+
+  if (normalized) {
+    document.cookie = `${LANGUAGE_COOKIE_NAME}=${encodeURIComponent(normalized)}; path=/; max-age=31536000; SameSite=Lax`;
+  } else {
+    document.cookie = `${LANGUAGE_COOKIE_NAME}=; path=/; max-age=0; SameSite=Lax`;
+  }
+
+  return normalized;
+}
+
+function getPreferredLocale() {
+  return getStoredLanguagePreference() || getCurrentLocale();
+}
+
+function applyLanguagePreference(value = getStoredLanguagePreference()) {
+  const normalized = normalizeLanguagePreference(value);
+  if (typeof document !== "undefined") {
+    document.documentElement.lang = normalized || getCurrentLocale();
+  }
+  return normalized;
+}
+
+function languagePreferenceLabel(value) {
+  const normalized = normalizeLanguagePreference(value);
+  const option = SUPPORTED_LANGUAGE_OPTIONS.find((entry) => entry.value === normalized);
+  if (!option || !normalized) {
+    return translate(
+      "settings.language_browser_default_with_locale",
+      { locale: getCurrentLocale() },
+      "Browser default ({locale})"
+    );
+  }
+  return option.label;
+}
+
+function syncLanguageSettings(root) {
+  const preference = applyLanguagePreference();
+  const select = root.querySelector("[data-language-settings-select]");
+  const summary = root.querySelector("[data-language-settings-summary]");
+
+  if (select instanceof HTMLSelectElement) {
+    select.value = preference;
+  }
+
+  if (summary instanceof HTMLElement) {
+    summary.textContent = languagePreferenceLabel(preference);
+  }
+}
+
+function setLanguageSettingsOpen(root, isOpen) {
+  const overlay = root.querySelector("[data-language-settings-overlay]");
+  const panel = root.querySelector("[data-language-settings-panel]");
+  if (!(overlay instanceof HTMLElement) || !(panel instanceof HTMLElement)) {
+    return;
+  }
+
+  overlay.hidden = !isOpen;
+  panel.hidden = !isOpen;
+  if (isOpen) {
+    syncLanguageSettings(root);
+    root.querySelector("[data-language-settings-select]")?.focus();
+  }
 }
 
 function publicKeyFromJSON(publicKey) {
@@ -491,7 +599,7 @@ function formatPasskeyDate(value) {
     return translate("settings.never_used", {}, "Never used yet");
   }
 
-  return new Date(value).toLocaleString(getCurrentLocale(), {
+  return new Date(value).toLocaleString(getPreferredLocale(), {
     dateStyle: "medium",
     timeStyle: "short",
   });
@@ -2649,6 +2757,40 @@ function initUserSettings() {
     return;
   }
 
+  applyLanguagePreference();
+  syncLanguageSettings(root);
+  root.querySelector("[data-language-settings-open]")?.addEventListener("click", () => {
+    setLanguageSettingsOpen(root, true);
+  });
+  root.querySelectorAll("[data-language-settings-close]").forEach((node) => {
+    node.addEventListener("click", () => {
+      setLanguageSettingsOpen(root, false);
+    });
+  });
+  root.querySelector("[data-language-settings-form]")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const select = root.querySelector("[data-language-settings-select]");
+    const preference = storeLanguagePreference(select instanceof HTMLSelectElement ? select.value : "");
+    syncLanguageSettings(root);
+    setLanguageSettingsOpen(root, false);
+    setSettingsMessage(
+      root,
+      "success",
+      translate(
+        "settings.language_saved",
+        { language: languagePreferenceLabel(preference) },
+        "Language set to {language}."
+      )
+    );
+    const url = new URL(window.location.href);
+    if (preference) {
+      url.searchParams.set("lang", preference);
+    } else {
+      url.searchParams.delete("lang");
+    }
+    navigateTo(`${url.pathname}${url.search}${url.hash}`);
+  });
+
   if (!window.PublicKeyCredential || !navigator.credentials) {
     setPasskeyManagementMessage(root, "error", translate("common.errors.unsupported_passkeys", {}, "This browser does not support passkeys."));
     toggleButtons(root, true);
@@ -2670,7 +2812,7 @@ function initUserSettings() {
 
 function formatInviteExpiry(value) {
   const date = new Date(value);
-  return date.toLocaleString(getCurrentLocale(), {
+  return date.toLocaleString(getPreferredLocale(), {
     dateStyle: "medium",
     timeStyle: "short",
   });
@@ -2728,6 +2870,7 @@ async function initHouseholdInvite() {
 }
 
 function initApp() {
+  applyLanguagePreference();
   registerServiceWorker().catch(() => undefined);
   initPasskeyAuth();
   initPasskeyAddLink();
@@ -2751,6 +2894,15 @@ export {
   translatePlural,
   publicKeyFromJSON,
   credentialToJSON,
+  normalizeLanguagePreference,
+  getBrowserLanguage,
+  getStoredLanguagePreference,
+  storeLanguagePreference,
+  getPreferredLocale,
+  applyLanguagePreference,
+  languagePreferenceLabel,
+  syncLanguageSettings,
+  setLanguageSettingsOpen,
   registerServiceWorker,
   navigateTo,
   postJson,

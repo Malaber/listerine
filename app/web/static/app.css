@@ -408,6 +408,17 @@ main {
   color: #14532d;
 }
 
+.settings-preference-summary {
+  margin: 0.4rem 0 0;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.settings-language-form {
+  display: grid;
+  gap: 1rem;
+}
+
 .dashboard-steps {
   margin: 1rem 0;
   padding-left: 1.2rem;
