@@ -1658,6 +1658,9 @@ function compareActiveItems(state, left, right) {
   return left.name.localeCompare(right.name);
 }
 
+const CHECKED_ITEMS_INITIAL_LIMIT = 10;
+const CHECKED_ITEMS_LOAD_MORE_COUNT = 100;
+
 function compareCheckedItems(left, right) {
   const leftCheckedAt = left.checked_at ? Date.parse(left.checked_at) : 0;
   const rightCheckedAt = right.checked_at ? Date.parse(right.checked_at) : 0;
@@ -1878,6 +1881,33 @@ function renderItems(root, state) {
       section.appendChild(article);
     });
 
+    if (state.checkedRemainingCount > 0) {
+      const remainingCount = state.checkedRemainingCount;
+      const loadMoreWrapper = document.createElement("div");
+      loadMoreWrapper.className = "checked-items-load-more";
+
+      const loadMoreButton = document.createElement("button");
+      loadMoreButton.type = "button";
+      loadMoreButton.className = "secondary-button";
+      loadMoreButton.textContent = `Load ${Math.min(CHECKED_ITEMS_LOAD_MORE_COUNT, remainingCount)} more`;
+      loadMoreButton.addEventListener("click", async () => {
+        loadMoreButton.disabled = true;
+        try {
+          await loadMoreCheckedItems(root, state);
+        } finally {
+          loadMoreButton.disabled = false;
+        }
+      });
+      loadMoreWrapper.appendChild(loadMoreButton);
+
+      const loadMoreMeta = document.createElement("p");
+      loadMoreMeta.className = "item-category-meta";
+      loadMoreMeta.textContent = `${remainingCount} older ${remainingCount === 1 ? "item" : "items"} not loaded`;
+      loadMoreWrapper.appendChild(loadMoreMeta);
+
+      section.appendChild(loadMoreWrapper);
+    }
+
     container.appendChild(section);
   }
 
@@ -1898,6 +1928,20 @@ function upsertItem(state, item) {
 
 function removeItem(state, itemId) {
   state.items.delete(itemId);
+}
+
+async function loadMoreCheckedItems(root, state) {
+  const listId = root.dataset.listId;
+  const checkedOffset = [...state.items.values()].filter((item) => item.checked).length;
+  const olderItems = await fetchJson(
+    `/api/v1/lists/${listId}/items/checked?offset=${checkedOffset}&limit=${CHECKED_ITEMS_LOAD_MORE_COUNT}`,
+  );
+  olderItems.forEach((item) => {
+    state.items.set(item.id, item);
+  });
+  state.checkedRemainingCount = Math.max((state.checkedRemainingCount || 0) - olderItems.length, 0);
+  renderItems(root, state);
+  return olderItems;
 }
 
 async function restoreCheckedSuggestion(root, state, reuseItemId) {
@@ -1947,9 +1991,9 @@ function disposeSocket(state, markDisposed) {
 
 async function loadListDetail(root, state) {
   const listId = root.dataset.listId;
-  const [groceryList, items, categories, categoryOrder] = await Promise.all([
+  const [groceryList, itemWindow, categories, categoryOrder] = await Promise.all([
     fetchJson(`/api/v1/lists/${listId}`),
-    fetchJson(`/api/v1/lists/${listId}/items`),
+    fetchJson(`/api/v1/lists/${listId}/items/window`),
     fetchJson(`/api/v1/lists/${listId}/categories`),
     fetchJson(`/api/v1/lists/${listId}/category-order`),
   ]);
@@ -1963,7 +2007,8 @@ async function loadListDetail(root, state) {
   state.categoryOrder = new Map(
     categoryOrder.map((entry) => [entry.category_id, entry.sort_order])
   );
-  replaceItems(state, items);
+  replaceItems(state, itemWindow.items || []);
+  state.checkedRemainingCount = itemWindow.checked_remaining_count || 0;
   syncCategoryRadioGroups(root, state);
   renderItems(root, state);
 }
@@ -1996,6 +2041,7 @@ function connectListSocket(root, state) {
       const message = JSON.parse(event.data);
       if (message.type === "list_snapshot") {
         replaceItems(state, message.payload.items || []);
+        state.checkedRemainingCount = message.payload.checked_remaining_count || 0;
         state.categoryOrder = new Map(
           (message.payload.category_order || []).map((entry) => [entry.category_id, entry.sort_order])
         );
@@ -2054,6 +2100,7 @@ async function initListDetail() {
   const state = {
     categoryOrder: new Map(),
     categories: new Map(),
+    checkedRemainingCount: 0,
     editingItemId: null,
     highlightTimers: new Map(),
     items: new Map(),
@@ -2724,6 +2771,7 @@ export {
   replaceItems,
   upsertItem,
   removeItem,
+  loadMoreCheckedItems,
   restoreToggledItem,
   restoreCheckedSuggestion,
   restoreDeletedItem,

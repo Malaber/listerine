@@ -87,3 +87,8 @@ class GroceryItemOut(ORMModel):
     checked: bool
     checked_at: datetime | None
     sort_order: int
+
+
+class GroceryItemsWindowOut(BaseModel):
+    items: list[GroceryItemOut]
+    checked_remaining_count: int

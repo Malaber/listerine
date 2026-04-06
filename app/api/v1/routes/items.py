@@ -1,17 +1,25 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_list_for_user
 from app.core.database import get_db
 from app.models import Category, GroceryItem, User
-from app.schemas.domain import GroceryItemCreate, GroceryItemOut, GroceryItemUpdate
+from app.schemas.domain import (
+    GroceryItemCreate,
+    GroceryItemOut,
+    GroceryItemsWindowOut,
+    GroceryItemUpdate,
+)
 from app.services.websocket_hub import hub
 
 router = APIRouter(tags=["items"])
+
+CHECKED_ITEMS_INITIAL_LIMIT = 10
+CHECKED_ITEMS_PAGE_SIZE = 100
 
 
 async def _broadcast(event_type: str, user_id: UUID, item: GroceryItem) -> None:
@@ -37,6 +45,31 @@ async def _validate_category_id(db: AsyncSession, category_id: UUID | None) -> N
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Selected category does not exist.",
         )
+
+
+async def _checked_item_count(db: AsyncSession, list_id: UUID) -> int:
+    result = await db.execute(
+        select(func.count())
+        .select_from(GroceryItem)
+        .where(
+            GroceryItem.list_id == list_id,
+            GroceryItem.checked.is_(True),
+        )
+    )
+    return int(result.scalar_one())
+
+
+async def _checked_items_page(
+    db: AsyncSession, list_id: UUID, *, offset: int, limit: int
+) -> list[GroceryItem]:
+    result = await db.execute(
+        select(GroceryItem)
+        .where(GroceryItem.list_id == list_id, GroceryItem.checked.is_(True))
+        .order_by(GroceryItem.checked_at.desc(), GroceryItem.name.asc())
+        .offset(offset)
+        .limit(limit)
+    )
+    return list(result.scalars().all())
 
 
 @router.post("/lists/{list_id}/items", response_model=GroceryItemOut)
@@ -72,6 +105,37 @@ async def list_items(
     await get_list_for_user(db, list_id, user.id)
     result = await db.execute(select(GroceryItem).where(GroceryItem.list_id == list_id))
     return list(result.scalars().all())
+
+
+@router.get("/lists/{list_id}/items/window", response_model=GroceryItemsWindowOut)
+async def list_item_window(
+    list_id: UUID, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> GroceryItemsWindowOut:
+    await get_list_for_user(db, list_id, user.id)
+    active_result = await db.execute(
+        select(GroceryItem).where(GroceryItem.list_id == list_id, GroceryItem.checked.is_(False))
+    )
+    checked_items = await _checked_items_page(
+        db, list_id, offset=0, limit=CHECKED_ITEMS_INITIAL_LIMIT
+    )
+    checked_count = await _checked_item_count(db, list_id)
+    items = list(active_result.scalars().all()) + checked_items
+    return GroceryItemsWindowOut(
+        items=[GroceryItemOut.model_validate(item) for item in items],
+        checked_remaining_count=max(checked_count - len(checked_items), 0),
+    )
+
+
+@router.get("/lists/{list_id}/items/checked", response_model=list[GroceryItemOut])
+async def list_checked_items(
+    list_id: UUID,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(CHECKED_ITEMS_PAGE_SIZE, ge=1, le=CHECKED_ITEMS_PAGE_SIZE),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[GroceryItem]:
+    await get_list_for_user(db, list_id, user.id)
+    return await _checked_items_page(db, list_id, offset=offset, limit=limit)
 
 
 @router.patch("/items/{item_id}", response_model=GroceryItemOut)

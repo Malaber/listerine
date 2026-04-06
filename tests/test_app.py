@@ -493,6 +493,56 @@ def test_delete_category_clears_item_category_and_order(client) -> None:
     assert category_order.json() == []
 
 
+def test_item_window_limits_checked_items_and_pages_older_checked_items(client) -> None:
+    headers = _auth_headers(client, f"{uuid4()}@example.com")
+    household = client.post("/api/v1/households", json={"name": "Home"}, headers=headers).json()
+    grocery_list = client.post(
+        f"/api/v1/households/{household['id']}/lists",
+        json={"name": "Weekly"},
+        headers=headers,
+    ).json()
+    active_item = client.post(
+        f"/api/v1/lists/{grocery_list['id']}/items",
+        json={"name": "Active"},
+        headers=headers,
+    ).json()
+    checked_item_ids = []
+    for index in range(12):
+        item = client.post(
+            f"/api/v1/lists/{grocery_list['id']}/items",
+            json={"name": f"Checked {index:02d}"},
+            headers=headers,
+        ).json()
+        checked_item_ids.append(item["id"])
+        client.post(f"/api/v1/items/{item['id']}/check", headers=headers)
+
+    item_window = client.get(
+        f"/api/v1/lists/{grocery_list['id']}/items/window", headers=headers
+    ).json()
+    assert item_window["checked_remaining_count"] == 2
+    window_names = [item["name"] for item in item_window["items"]]
+    assert "Active" in window_names
+    assert "Checked 11" in window_names
+    assert "Checked 02" in window_names
+    assert "Checked 01" not in window_names
+    assert "Checked 00" not in window_names
+    assert len(item_window["items"]) == 11
+
+    older_checked_items = client.get(
+        f"/api/v1/lists/{grocery_list['id']}/items/checked?offset=10&limit=100",
+        headers=headers,
+    ).json()
+    assert [item["name"] for item in older_checked_items] == ["Checked 01", "Checked 00"]
+
+    too_large_page = client.get(
+        f"/api/v1/lists/{grocery_list['id']}/items/checked?limit=101",
+        headers=headers,
+    )
+    assert too_large_page.status_code == 422
+    assert checked_item_ids[0] == older_checked_items[1]["id"]
+    assert active_item["id"] in {item["id"] for item in item_window["items"]}
+
+
 def test_cross_household_forbidden(client) -> None:
     h1 = _auth_headers(client, f"{uuid4()}@example.com")
     h2 = _auth_headers(client, f"{uuid4()}@example.com")

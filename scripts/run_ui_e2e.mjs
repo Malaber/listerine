@@ -483,6 +483,23 @@ function itemCard(page, text) {
   return page.locator(".item-card", { hasText: text }).first();
 }
 
+async function revealCheckedItemCard(page, text) {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const card = itemCard(page, text);
+    if (await card.isVisible()) {
+      return card;
+    }
+
+    const loadMoreButton = page.locator(".checked-items-load-more button").first();
+    if (!(await loadMoreButton.isVisible())) {
+      break;
+    }
+    await loadMoreButton.click();
+  }
+
+  throw new Error(`Could not reveal checked item card for ${text}`);
+}
+
 function extractInviteToken(inviteUrl) {
   const invitePath = new URL(inviteUrl).pathname;
   return invitePath.split("/").filter(Boolean).at(-1);
@@ -522,8 +539,13 @@ async function runInviteFlow(ownerPage, browser, scenario, seed, rpId) {
     await inviteePage.waitForURL(/\/login(\?|$)/);
     await loginFromLoginPage(inviteePage, new URL("/", baseUrl).toString());
     await expectVisible(
-      inviteePage.getByRole("heading", { name: "No households yet" }),
-      "Invitee should not see any household before accepting an invite",
+      inviteePage.getByRole("heading", { name: "Households and Lists" }),
+      "Invitee should reach the dashboard before accepting an invite",
+    );
+    assert.equal(
+      await inviteePage.locator(".household-card", { hasText: scenario.householdName }).count(),
+      0,
+      "Invitee should not see the owner's household before accepting an invite",
     );
 
     await inviteeContext.request.post(new URL("/api/v1/auth/logout", baseUrl).toString());
@@ -706,7 +728,7 @@ async function main() {
     assert.equal(checkedNames[0], "Eier", "Most recently checked item should be first in checked section");
     assert(checkedNames.includes("Tofu"), "Expected previously checked item in checked section");
 
-    const hackfleischCard = itemCard(page, "Hackfleisch");
+    const hackfleischCard = await revealCheckedItemCard(page, "Hackfleisch");
     await hackfleischCard.getByRole("button", { name: "Delete" }).click();
     await expectVisible(
       page.locator("[data-list-toast]", { hasText: "Hackfleisch deleted." }),
