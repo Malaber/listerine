@@ -1725,9 +1725,11 @@ def test_dashboard_redirects_to_last_opened_list(client, monkeypatch) -> None:
 
     dashboard = client.get("/")
     assert dashboard.status_code == 200
+    assert 'href="/?dashboard=1"' in dashboard.text
 
     list_detail = client.get(f"/lists/{grocery_list['id']}")
     assert list_detail.status_code == 200
+    assert 'href="/?dashboard=1"' in list_detail.text
 
     next_open = client.get("/", follow_redirects=False)
     assert next_open.status_code == 303
