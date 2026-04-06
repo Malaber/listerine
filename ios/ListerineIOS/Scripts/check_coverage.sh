@@ -4,7 +4,7 @@ set -euo pipefail
 package_dir=$(cd "$(dirname "$0")/.." && pwd)
 cd "$package_dir"
 
-swift test --enable-code-coverage
+swift test --quiet --enable-code-coverage
 
 profdata=$(find .build -name default.profdata | head -n 1)
 if [[ -z "$profdata" ]]; then

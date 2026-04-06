@@ -48,7 +48,7 @@ include = ["app*"]
 exclude = ["tests*", "alembic*"]
 
 [tool.pytest.ini_options]
-addopts = "-q --cov=app --cov-report=term-missing --cov-fail-under=100"
+addopts = "-q --cov=app --cov-report=term-missing:skip-covered --cov-fail-under=100"
 asyncio_mode = "auto"
 
 [tool.coverage.run]
