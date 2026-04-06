@@ -707,7 +707,10 @@ async function main() {
     assert(checkedNames.includes("Tofu"), "Expected previously checked item in checked section");
 
     const hackfleischCard = itemCard(page, "Hackfleisch");
-    await hackfleischCard.getByRole("button", { name: "Delete" }).click();
+    await hackfleischCard.click();
+    const hackfleischEditPanel = page.locator("[data-item-edit-panel]", { hasText: "Hackfleisch" });
+    await expectVisible(hackfleischEditPanel, "Expected Hackfleisch edit modal before deleting");
+    await hackfleischEditPanel.getByRole("button", { name: "Delete item" }).click();
     await expectVisible(
       page.locator("[data-list-toast]", { hasText: "Hackfleisch deleted." }),
       "Expected delete toast",
