@@ -1,4 +1,4 @@
-const CACHE_NAME = "listerine-shell-v3";
+const CACHE_NAME = "listerine-shell-v4";
 const APP_SHELL_ASSETS = [
   "/manifest.webmanifest",
   "/static/app.css",
@@ -39,26 +39,41 @@ function isCacheableAssetRequest(request) {
   return url.pathname === "/manifest.webmanifest" || url.pathname.startsWith("/static/");
 }
 
+function isMutableShellAssetRequest(request) {
+  const url = new URL(request.url);
+  return (
+    url.pathname === "/manifest.webmanifest" ||
+    url.pathname === "/static/app.css" ||
+    url.pathname === "/static/app.js"
+  );
+}
+
+function fetchAndCache(request) {
+  return fetch(request).then((response) => {
+    if (!response.ok || response.redirected) {
+      return response;
+    }
+
+    const responseClone = response.clone();
+    caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
+    return response;
+  });
+}
+
 self.addEventListener("fetch", (event) => {
   if (!isCacheableAssetRequest(event.request)) {
     return;
   }
 
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
+    isMutableShellAssetRequest(event.request)
+      ? fetchAndCache(event.request).catch(() => caches.match(event.request))
+      : caches.match(event.request).then((cachedResponse) => {
+          if (cachedResponse) {
+            return cachedResponse;
+          }
 
-      return fetch(event.request).then((response) => {
-        if (!response.ok || response.redirected) {
-          return response;
-        }
-
-        const responseClone = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
-        return response;
-      });
-    }),
+          return fetchAndCache(event.request);
+        }),
   );
 });

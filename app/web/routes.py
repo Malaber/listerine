@@ -1,3 +1,5 @@
+import hashlib
+from functools import lru_cache
 from pathlib import Path
 from uuid import UUID
 
@@ -16,6 +18,15 @@ from app.services.passkey_reset import get_user_for_passkey_reset_token
 router = APIRouter(tags=["web"])
 templates = Jinja2Templates(directory="app/web/templates")
 static_root = Path("app/web/static")
+MUTABLE_STATIC_ASSETS = ("app.css", "app.js")
+
+
+@lru_cache(maxsize=1)
+def _static_asset_version() -> str:
+    digest = hashlib.sha256()
+    for asset_name in MUTABLE_STATIC_ASSETS:
+        digest.update((static_root / asset_name).read_bytes())
+    return digest.hexdigest()[:16]
 
 
 def _template_auth_context(user: User | None) -> dict[str, bool]:
@@ -31,6 +42,7 @@ def _template_context(request: Request, user: User | None, **extra: object) -> d
         **_template_auth_context(user),
         "locale": locale,
         "i18n_catalog_b64": encode_catalog(locale),
+        "static_asset_version": _static_asset_version(),
         "t": translator_for(locale),
         **extra,
     }

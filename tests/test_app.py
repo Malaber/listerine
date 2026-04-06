@@ -306,6 +306,8 @@ def test_pwa_assets_are_exposed(client) -> None:
     assert 'rel="manifest" href="/manifest.webmanifest"' in login_page.text
     assert 'name="theme-color" content="#142a57"' in login_page.text
     assert 'rel="apple-touch-icon" href="/static/img/apple-touch-icon.png"' in login_page.text
+    assert 'rel="stylesheet" href="/static/app.css?v=' in login_page.text
+    assert 'type="module" src="/static/app.js?v=' in login_page.text
 
     manifest = client.get("/manifest.webmanifest")
     assert manifest.status_code == 200
