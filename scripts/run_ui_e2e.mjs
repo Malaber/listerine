@@ -100,6 +100,58 @@ async function expectHidden(locator, message) {
   assert(!(await locator.isVisible().catch(() => false)), message);
 }
 
+async function assertHeaderActionsFitTranslatedLabels(page) {
+  logStep("Checking mobile header action sizing with German labels");
+  const originalViewport = page.viewportSize();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForFunction(() => {
+    const settingsLink = document.querySelector('.app-header-actions .admin-link[href="/settings"]');
+    const logoutButton = document.querySelector(".app-header-actions .logout-button");
+    return Boolean(settingsLink && logoutButton);
+  });
+
+  const measurements = await page.evaluate(() => {
+    const settingsLink = document.querySelector('.app-header-actions .admin-link[href="/settings"]');
+    const logoutButton = document.querySelector(".app-header-actions .logout-button");
+    if (!(settingsLink instanceof HTMLElement) || !(logoutButton instanceof HTMLElement)) {
+      throw new Error("Expected settings and logout controls in the app header");
+    }
+
+    const controls = [
+      [settingsLink, "Einstellungen"],
+      [logoutButton, "Abmelden"],
+    ];
+    const originals = controls.map(([node]) => node.textContent);
+
+    try {
+      for (const [node, label] of controls) {
+        node.textContent = label;
+      }
+      document.body.offsetWidth;
+      return controls.map(([node]) => ({
+        text: node.textContent?.trim() ?? "",
+        clientWidth: node.clientWidth,
+        scrollWidth: node.scrollWidth,
+      }));
+    } finally {
+      controls.forEach(([node], index) => {
+        node.textContent = originals[index];
+      });
+    }
+  });
+
+  if (originalViewport) {
+    await page.setViewportSize(originalViewport);
+  }
+
+  for (const measurement of measurements) {
+    assert(
+      measurement.scrollWidth <= measurement.clientWidth,
+      `${measurement.text} should fit in the mobile header button without clipping`,
+    );
+  }
+}
+
 async function assertLoginPageTabs(page) {
   const signInTab = page.getByRole("tab", { name: "Sign In" });
   const createAccountTab = page.getByRole("tab", { name: "Create Account" });
@@ -551,7 +603,7 @@ function extractInviteToken(inviteUrl) {
 
 async function runInviteFlow(ownerPage, browser, scenario, seed, rpId) {
   logStep("Creating and accepting a household invite");
-  await ownerPage.goto(new URL("/", baseUrl).toString(), { waitUntil: "networkidle" });
+  await ownerPage.goto(new URL("/?dashboard=1", baseUrl).toString(), { waitUntil: "networkidle" });
   await expectVisible(
     ownerPage.getByRole("heading", { name: "Households and Lists" }),
     "Expected dashboard heading",
@@ -650,6 +702,7 @@ async function main() {
     await installSeededPasskey(authenticator, owner, rpId);
     logStep("Signing in with the seeded owner passkey");
     await loginFromRoot(page, owner, "Households and Lists");
+    await assertHeaderActionsFitTranslatedLabels(page);
     await runAdminPasskeyAddLinkFlow(page, seed, rpId);
     await runPasskeyManagementFlow(page, context, owner, rpId, authenticator);
 
@@ -687,10 +740,10 @@ async function main() {
 
     if (deviceName === "desktop") {
       await page.keyboard.press("Enter");
-      await expectVisible(page.getByRole("heading", { name: "Add an item" }), "Enter should open add modal");
+      await expectVisible(page.locator("[data-item-panel]"), "Enter should open add modal");
     } else {
       await page.getByRole("button", { name: "Add item" }).click();
-      await expectVisible(page.getByRole("heading", { name: "Add an item" }), "Add button should open add modal");
+      await expectVisible(page.locator("[data-item-panel]"), "Add button should open add modal");
     }
     await addForm.getByLabel("Item name").fill("Spag");
     const activeSuggestion = addForm.locator(".item-suggestion", { hasText: "Spaghetti" });
@@ -774,9 +827,12 @@ async function main() {
     assert(checkedNames.includes("Tofu"), "Expected previously checked item in checked section");
 
     const hackfleischCard = await revealCheckedItemCard(page, "Hackfleisch");
-    await hackfleischCard.getByRole("button", { name: "Delete" }).click();
+    await hackfleischCard.click();
+    const hackfleischEditPanel = page.locator("[data-item-edit-panel]", { hasText: "Hackfleisch" });
+    await expectVisible(hackfleischEditPanel, "Expected Hackfleisch edit modal before deleting");
+    await hackfleischEditPanel.locator("[data-item-edit-delete]").click();
     await expectVisible(
-      page.locator("[data-list-toast]", { hasText: "Hackfleisch deleted." }),
+      page.locator("[data-list-toast]", { hasText: /Hackfleisch (deleted|wurde gelöscht)\./ }),
       "Expected delete toast",
     );
     await page.locator("[data-list-toast-undo]").click();
@@ -847,10 +903,11 @@ async function main() {
     await page.getByRole("button", { name: "Add item" }).click();
     const freshThingName = `Fresh thing ${Date.now()}`;
     await addForm.getByLabel("Item name").fill(freshThingName);
+    await addForm.locator(".item-more-fields summary").click();
     await addForm.locator("[data-item-category-search]").fill("brot");
     await addForm.locator(".category-radio-option", { hasText: "Backwaren" }).click();
     await addForm.locator('input[name="quantity_text"]').fill("1");
-    await addForm.locator('button[type="submit"]').click();
+    await page.locator(".add-item-save-button").click();
     const freshThingCard = itemCard(page, freshThingName);
     await expectVisible(freshThingCard, "Expected newly added item");
     await expectVisible(

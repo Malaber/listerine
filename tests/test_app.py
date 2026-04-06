@@ -287,6 +287,19 @@ def test_full_flow(client) -> None:
     assert client.post("/api/v1/auth/logout", headers=headers).status_code == 200
 
 
+def test_login_page_renders_selected_locale_and_persists_cookie(client) -> None:
+    response = client.get("/login?lang=de")
+
+    assert response.status_code == 200
+    assert 'lang="de"' in response.text
+    assert "Anmelden" in response.text
+    assert "listerine_locale=de" in response.headers["set-cookie"]
+
+    follow_up = client.get("/login")
+    assert follow_up.status_code == 200
+    assert 'lang="de"' in follow_up.text
+
+
 def test_pwa_assets_are_exposed(client) -> None:
     login_page = client.get("/login")
     assert login_page.status_code == 200
@@ -1742,6 +1755,8 @@ def test_web_pages_render_for_logged_in_user(client, monkeypatch) -> None:
     assert settings.status_code == 200
     assert "Account and passkey" in settings.text
     assert "Signed in as" in settings.text
+    assert "Change language" in settings.text
+    assert "data-language-settings" in settings.text
     assert "Your passkeys" in settings.text
     assert "Add another passkey" in settings.text
     assert "data-passkey-list" in settings.text
@@ -1749,6 +1764,55 @@ def test_web_pages_render_for_logged_in_user(client, monkeypatch) -> None:
 
     admin_page = client.get("/admin", follow_redirects=False)
     assert admin_page.status_code in {302, 303, 307}
+
+
+def test_dashboard_redirects_to_last_opened_list(client, monkeypatch) -> None:
+    _register_session_user(client, monkeypatch, f"{uuid4()}@example.com")
+    household = client.post("/api/v1/households", json={"name": "Home"}).json()
+    grocery_list = client.post(
+        f"/api/v1/households/{household['id']}/lists", json={"name": "Weekly"}
+    ).json()
+
+    dashboard = client.get("/")
+    assert dashboard.status_code == 200
+    assert 'href="/?dashboard=1"' in dashboard.text
+
+    list_detail = client.get(f"/lists/{grocery_list['id']}")
+    assert list_detail.status_code == 200
+    assert 'href="/?dashboard=1"' in list_detail.text
+
+    next_open = client.get("/", follow_redirects=False)
+    assert next_open.status_code == 303
+    assert next_open.headers["location"] == f"/lists/{grocery_list['id']}"
+
+    dashboard_link = client.get("/?dashboard=1", follow_redirects=False)
+    assert dashboard_link.status_code == 200
+    assert "data-dashboard-add-toggle" in dashboard_link.text
+
+
+def test_dashboard_ignores_stale_last_opened_list(client, monkeypatch) -> None:
+    _register_session_user(client, monkeypatch, f"{uuid4()}@example.com")
+    household = client.post("/api/v1/households", json={"name": "Home"}).json()
+    grocery_list = client.post(
+        f"/api/v1/households/{household['id']}/lists", json={"name": "Weekly"}
+    ).json()
+
+    assert client.get(f"/lists/{grocery_list['id']}").status_code == 200
+    assert client.delete(f"/api/v1/lists/{grocery_list['id']}").status_code == 200
+
+    dashboard = client.get("/", follow_redirects=False)
+    assert dashboard.status_code == 200
+    assert "data-dashboard-add-toggle" in dashboard.text
+
+
+def test_dashboard_ignores_invalid_last_opened_list(client, monkeypatch) -> None:
+    _register_session_user(client, monkeypatch, f"{uuid4()}@example.com")
+
+    assert client.get("/lists/not-a-list-id").status_code == 200
+
+    dashboard = client.get("/", follow_redirects=False)
+    assert dashboard.status_code == 200
+    assert "data-dashboard-add-toggle" in dashboard.text
 
 
 def test_web_pages_redirect_admin_user_to_admin_frontend(client, monkeypatch) -> None:

@@ -31,7 +31,7 @@ function createServiceWorkerHarness(options = {}) {
     URL,
     caches: {
       open: async (name) => {
-        assert.equal(name, "listerine-shell-v2");
+        assert.equal(name, "listerine-shell-v3");
         return openedCache;
       },
       match: async (request) => {
@@ -139,11 +139,11 @@ test("service worker tolerates precache failures during install", async () => {
 });
 
 test("service worker clears old caches and claims clients on activate", async () => {
-  const harness = createServiceWorkerHarness({ cacheKeys: ["listerine-shell-v1", "listerine-shell-v2"] });
+  const harness = createServiceWorkerHarness({ cacheKeys: ["listerine-shell-v2", "listerine-shell-v3"] });
 
   await dispatchExtendableEvent(harness.listeners.get("activate"));
 
-  assert.deepEqual(harness.deletedKeys, ["listerine-shell-v1"]);
+  assert.deepEqual(harness.deletedKeys, ["listerine-shell-v2"]);
   assert.equal(harness.self.clients.claimCalled, true);
 });
 

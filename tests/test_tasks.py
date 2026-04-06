@@ -9,6 +9,13 @@ tasks = importlib.util.module_from_spec(TASKS_SPEC)
 TASKS_SPEC.loader.exec_module(tasks)
 
 
+class RunResult:
+    def __init__(self, exited: int, stdout: str = "", stderr: str = "") -> None:
+        self.exited = exited
+        self.stdout = stdout
+        self.stderr = stderr
+
+
 def test_database_url_for_device_uses_distinct_sqlite_file() -> None:
     database_url = "sqlite+aiosqlite:///./tmp-ci-ui-e2e.db"
 
@@ -31,6 +38,19 @@ def test_reset_sqlite_database_file_removes_database_and_sidecars(tmp_path: Path
         )
 
     tasks._reset_sqlite_database_file(f"sqlite+aiosqlite:///{database_path}")
+
+    for suffix in ("", "-shm", "-wal"):
+        assert not database_path.with_name(f"{database_path.name}{suffix}").exists()
+
+
+def test_clean_browser_e2e_removes_database_and_sidecars(tmp_path: Path) -> None:
+    database_path = tmp_path / "browser-e2e.db"
+    for suffix in ("", "-shm", "-wal"):
+        database_path.with_name(f"{database_path.name}{suffix}").write_text(
+            "data", encoding="utf-8"
+        )
+
+    tasks.clean_browser_e2e.body(None, database_url=f"sqlite+aiosqlite:///{database_path}")
 
     for suffix in ("", "-shm", "-wal"):
         assert not database_path.with_name(f"{database_path.name}{suffix}").exists()
@@ -107,6 +127,35 @@ def test_compute_version_values_for_branch_skips_existing_rc_tags():
         "release_version": "1.2.4-rc.9",
         "git_tag": "v1.2.4-rc.9",
     }
+
+
+def test_run_quiet_hides_successful_output() -> None:
+    calls: list[tuple[str, dict]] = []
+
+    class Context:
+        def run(self, command, **kwargs):
+            calls.append((command, kwargs))
+            return RunResult(exited=0, stdout="noise\n", stderr="more noise\n")
+
+    result = tasks._run_quiet(Context(), "npm ci", pty=False)
+
+    assert result.exited == 0
+    assert calls == [("npm ci", {"pty": False, "hide": True, "warn": True})]
+
+
+def test_run_quiet_prints_captured_output_on_failure(capsys) -> None:
+    class Context:
+        def run(self, command, **kwargs):
+            return RunResult(exited=1, stdout="stdout noise\n", stderr="stderr noise")
+
+    try:
+        tasks._run_quiet(Context(), "npm ci")
+    except tasks.Exit as exc:
+        assert "Command failed with exit code 1: npm ci" in str(exc)
+    else:
+        raise AssertionError("expected quiet run failure")
+
+    assert capsys.readouterr().out == "stdout noise\nstderr noise\n"
 
 
 def test_run_browser_e2e_for_device_uses_derived_database_and_artifact_paths(monkeypatch) -> None:
