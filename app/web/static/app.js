@@ -1776,9 +1776,10 @@ function renderItemSuggestions(root, state) {
     return;
   }
 
-  matches.forEach((item) => {
+  matches.forEach((item, index) => {
     const wrapper = document.createElement("article");
-    wrapper.className = `item-suggestion${item.checked ? " is-checked" : ""}`;
+    wrapper.className = `item-card item-suggestion${item.checked ? " is-checked" : ""}`;
+    wrapper.style.setProperty("--suggestion-delay", `${index * 24}ms`);
 
     const main = document.createElement("div");
     main.className = "item-main";
