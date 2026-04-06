@@ -94,6 +94,24 @@ function loginHtml() {
 function settingsHtml() {
   return `
     <section data-user-settings>
+      <section data-language-settings>
+        <button type="button" data-language-settings-open>Change language</button>
+        <strong data-language-settings-summary></strong>
+        <div data-settings-error hidden></div>
+        <div data-settings-success hidden></div>
+        <div data-language-settings-overlay hidden>
+          <section data-language-settings-panel hidden>
+            <button type="button" data-language-settings-close>Close</button>
+            <form data-language-settings-form>
+              <select data-language-settings-select>
+                <option value="">Browser default</option>
+                <option value="en">English</option>
+                <option value="de">Deutsch</option>
+              </select>
+            </form>
+          </section>
+        </div>
+      </section>
       <section data-passkey-management>
         <button type="button" data-passkey-add>Add another passkey</button>
         <form data-passkey-name-form hidden>
@@ -373,6 +391,80 @@ test("translation helpers read runtime locale data and fall back cleanly", async
 
     globalThis.__appI18n = { locale: 7, catalog: null };
     assert.deepEqual(app.getI18nState(), { locale: "en", catalog: {} });
+  } finally {
+    env.restore();
+  }
+});
+
+test("language settings save a locale cookie and navigate to the selected locale", async () => {
+  const env = installDom(settingsHtml(), { url: "http://example.com/settings?from=test" });
+  try {
+    const app = await loadApp();
+    globalThis.__appI18n = {
+      locale: "en",
+      catalog: {
+        settings: {
+          language_browser_default_with_locale: "Browser default ({locale})",
+          language_saved: "Language set to {language}.",
+        },
+      },
+    };
+    globalThis.window.PublicKeyCredential = class {};
+    globalThis.navigator.credentials = {};
+
+    const root = document.querySelector("[data-user-settings]");
+    app.syncLanguageSettings(root);
+    assert.equal(root.querySelector("[data-language-settings-summary]").textContent, "Browser default (en)");
+
+    app.setLanguageSettingsOpen(root, true);
+    assert.equal(root.querySelector("[data-language-settings-overlay]").hidden, false);
+    assert.equal(root.querySelector("[data-language-settings-panel]").hidden, false);
+
+    root.querySelector("[data-language-settings-select]").value = "de";
+    await app.initUserSettings();
+    root.querySelector("[data-language-settings-form]").dispatchEvent(
+      new Event("submit", { bubbles: true, cancelable: true }),
+    );
+
+    assert.equal(root.querySelector("[data-language-settings-overlay]").hidden, true);
+    assert.equal(root.querySelector("[data-language-settings-panel]").hidden, true);
+    assert.equal(root.querySelector("[data-language-settings-summary]").textContent, "Deutsch");
+    assert.equal(root.querySelector("[data-settings-success]").textContent, "Language set to Deutsch.");
+    assert.equal(app.getStoredLanguagePreference(), "de");
+    assert.equal(document.documentElement.lang, "de");
+    assert.deepEqual(env.assigned, ["/settings?from=test&lang=de"]);
+  } finally {
+    env.restore();
+  }
+});
+
+test("language settings clear the locale cookie to return to browser default", async () => {
+  const env = installDom(settingsHtml(), { url: "http://example.com/settings?lang=de" });
+  try {
+    const app = await loadApp();
+    globalThis.__appI18n = {
+      locale: "de",
+      catalog: {
+        settings: {
+          language_browser_default_with_locale: "Browser-Standard ({locale})",
+          language_saved: "Sprache auf {language} gesetzt.",
+        },
+      },
+    };
+
+    app.storeLanguagePreference("de");
+    assert.equal(app.getStoredLanguagePreference(), "de");
+
+    const root = document.querySelector("[data-user-settings]");
+    root.querySelector("[data-language-settings-select]").value = "";
+    await app.initUserSettings();
+    root.querySelector("[data-language-settings-form]").dispatchEvent(
+      new Event("submit", { bubbles: true, cancelable: true }),
+    );
+
+    assert.equal(app.getStoredLanguagePreference(), "");
+    assert.equal(root.querySelector("[data-settings-success]").textContent, "Sprache auf Browser-Standard (de) gesetzt.");
+    assert.deepEqual(env.assigned, ["/settings"]);
   } finally {
     env.restore();
   }

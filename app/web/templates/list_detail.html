@@ -54,11 +54,16 @@
           <p class="dashboard-label">{{ t("dashboard.add_fast") }}</p>
           <h2>{{ t("list_detail.add_item_title") }}</h2>
         </div>
-        <button class="add-item-close" type="button" aria-label="{{ t("list_detail.close_add_item_form") }}" data-item-form-close>
-          &times;
-        </button>
+        <div class="add-item-panel-header-actions">
+          <button class="add-item-save-button" type="submit" form="add-item-form">
+            {{ t("list_detail.save_now") }}
+          </button>
+          <button class="add-item-close" type="button" aria-label="{{ t("list_detail.close_add_item_form") }}" data-item-form-close>
+            &times;
+          </button>
+        </div>
       </div>
-      <form class="dashboard-form" data-item-form>
+      <form class="dashboard-form add-item-form" id="add-item-form" data-item-form>
         <label class="dashboard-field">
           <span>{{ t("list_detail.item_name") }}</span>
           <input
@@ -74,26 +79,33 @@
         <div class="item-suggestion-slot" data-item-suggestions-slot>
           <div class="item-suggestion-list" data-item-suggestions></div>
         </div>
-        <fieldset class="dashboard-field category-radio-group">
-          <legend>{{ t("list_detail.category") }}</legend>
-          <input
-            class="category-search-input"
-            type="search"
-            placeholder="{{ t("list_detail.category_search_placeholder") }}"
-            autocomplete="off"
-            data-item-category-search
-          />
-          <div class="category-radio-list" data-item-category-radios></div>
-        </fieldset>
         <label class="dashboard-field">
           <span>{{ t("list_detail.quantity") }}</span>
           <input type="text" name="quantity_text" placeholder="{{ t("list_detail.quantity_placeholder") }}" maxlength="120" />
         </label>
-        <label class="dashboard-field">
-          <span>{{ t("list_detail.note") }}</span>
-          <input type="text" name="note" placeholder="{{ t("list_detail.note_placeholder") }}" />
-        </label>
-        <button type="submit">{{ t("list_detail.add_item") }}</button>
+        <details class="item-more-fields">
+          <summary>
+            <span>{{ t("list_detail.more_fields") }}</span>
+            <small>{{ t("list_detail.more_fields_hint") }}</small>
+          </summary>
+          <div class="item-more-fields-body">
+            <fieldset class="dashboard-field category-radio-group">
+              <legend>{{ t("list_detail.category") }}</legend>
+              <input
+                class="category-search-input"
+                type="search"
+                placeholder="{{ t("list_detail.category_search_placeholder") }}"
+                autocomplete="off"
+                data-item-category-search
+              />
+              <div class="category-radio-list" data-item-category-radios></div>
+            </fieldset>
+            <label class="dashboard-field">
+              <span>{{ t("list_detail.note") }}</span>
+              <input type="text" name="note" placeholder="{{ t("list_detail.note_placeholder") }}" />
+            </label>
+          </div>
+        </details>
       </form>
     </section>
   </div>
