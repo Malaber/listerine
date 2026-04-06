@@ -54,11 +54,16 @@
           <p class="dashboard-label">Add fast</p>
           <h2>Add an item</h2>
         </div>
-        <button class="add-item-close" type="button" aria-label="Close add item form" data-item-form-close>
-          &times;
-        </button>
+        <div class="add-item-panel-header-actions">
+          <button class="add-item-save-button" type="submit" form="add-item-form">
+            Save now
+          </button>
+          <button class="add-item-close" type="button" aria-label="Close add item form" data-item-form-close>
+            &times;
+          </button>
+        </div>
       </div>
-      <form class="dashboard-form" data-item-form>
+      <form class="dashboard-form add-item-form" id="add-item-form" data-item-form>
         <label class="dashboard-field">
           <span>Item name</span>
           <input
@@ -74,26 +79,33 @@
         <div class="item-suggestion-slot" data-item-suggestions-slot>
           <div class="item-suggestion-list" data-item-suggestions></div>
         </div>
-        <fieldset class="dashboard-field category-radio-group">
-          <legend>Category</legend>
-          <input
-            class="category-search-input"
-            type="search"
-            placeholder="Search categories or aliases"
-            autocomplete="off"
-            data-item-category-search
-          />
-          <div class="category-radio-list" data-item-category-radios></div>
-        </fieldset>
         <label class="dashboard-field">
-          <span>Quantity</span>
+          <span>Amount</span>
           <input type="text" name="quantity_text" placeholder="2 bottles" maxlength="120" />
         </label>
-        <label class="dashboard-field">
-          <span>Note</span>
-          <input type="text" name="note" placeholder="Low fat if possible" />
-        </label>
-        <button type="submit">Add item</button>
+        <details class="item-more-fields">
+          <summary>
+            <span>More</span>
+            <small>Category and note</small>
+          </summary>
+          <div class="item-more-fields-body">
+            <fieldset class="dashboard-field category-radio-group">
+              <legend>Category</legend>
+              <input
+                class="category-search-input"
+                type="search"
+                placeholder="Search categories or aliases"
+                autocomplete="off"
+                data-item-category-search
+              />
+              <div class="category-radio-list" data-item-category-radios></div>
+            </fieldset>
+            <label class="dashboard-field">
+              <span>Note</span>
+              <input type="text" name="note" placeholder="Low fat if possible" />
+            </label>
+          </div>
+        </details>
       </form>
     </section>
   </div>

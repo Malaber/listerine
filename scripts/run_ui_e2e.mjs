@@ -620,10 +620,10 @@ async function main() {
 
     if (deviceName === "desktop") {
       await page.keyboard.press("Enter");
-      await expectVisible(page.getByRole("heading", { name: "Add an item" }), "Enter should open add modal");
+      await expectVisible(page.locator("[data-item-panel]"), "Enter should open add modal");
     } else {
       await page.getByRole("button", { name: "Add item" }).click();
-      await expectVisible(page.getByRole("heading", { name: "Add an item" }), "Add button should open add modal");
+      await expectVisible(page.locator("[data-item-panel]"), "Add button should open add modal");
     }
     await addForm.getByLabel("Item name").fill("Spag");
     const activeSuggestion = addForm.locator(".item-suggestion", { hasText: "Spaghetti" });
@@ -780,10 +780,11 @@ async function main() {
     await page.getByRole("button", { name: "Add item" }).click();
     const freshThingName = `Fresh thing ${Date.now()}`;
     await addForm.getByLabel("Item name").fill(freshThingName);
+    await addForm.locator(".item-more-fields summary").click();
     await addForm.locator("[data-item-category-search]").fill("brot");
     await addForm.locator(".category-radio-option", { hasText: "Backwaren" }).click();
-    await addForm.locator('input[name="quantity_text"]').fill("1");
-    await addForm.locator('button[type="submit"]').click();
+    await addForm.getByLabel("Amount").fill("1");
+    await page.getByRole("button", { name: "Save now" }).click();
     const freshThingCard = itemCard(page, freshThingName);
     await expectVisible(freshThingCard, "Expected newly added item");
     await expectVisible(

@@ -1029,6 +1029,30 @@ main {
   gap: 1rem;
 }
 
+.add-item-panel-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex: 0 0 auto;
+}
+
+.add-item-save-button {
+  border: 1px solid rgba(167, 203, 223, 0.92);
+  border-radius: 999px;
+  background: var(--surface-strong);
+  color: var(--brand-navy);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+  padding: 0.72rem 1rem;
+  white-space: nowrap;
+}
+
+.add-item-save-button:hover {
+  background: var(--brand-aqua-soft);
+  border-color: rgba(29, 184, 217, 0.45);
+}
+
 .panel-back-button {
   width: 2.75rem;
   height: 2.75rem;
@@ -1143,6 +1167,59 @@ main {
   font-size: 2rem;
   line-height: 1;
   flex: 0 0 auto;
+}
+
+.item-more-fields {
+  border: 1px solid rgba(167, 203, 223, 0.75);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  overflow: hidden;
+}
+
+.item-more-fields summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 0.95rem;
+  color: var(--brand-navy);
+  cursor: pointer;
+  font-weight: 800;
+  list-style: none;
+}
+
+.item-more-fields summary::-webkit-details-marker {
+  display: none;
+}
+
+.item-more-fields summary::after {
+  content: "+";
+  width: 1.85rem;
+  height: 1.85rem;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--brand-aqua-soft);
+  color: var(--brand-navy);
+  font-size: 1.2rem;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.item-more-fields[open] summary::after {
+  content: "-";
+}
+
+.item-more-fields summary small {
+  color: var(--text-muted);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.item-more-fields-body {
+  display: grid;
+  gap: 1rem;
+  padding: 0 0.95rem 0.95rem;
 }
 
 .list-toast {
@@ -1601,6 +1678,16 @@ main {
     backdrop-filter: blur(8px);
   }
 
+  .add-item-panel .add-item-panel-header > div:first-child {
+    display: none;
+  }
+
+  .add-item-panel .add-item-panel-header-actions {
+    flex-direction: row-reverse;
+    justify-content: space-between;
+    width: 100%;
+  }
+
   .add-item-panel-header h2,
   .item-edit-panel h2 {
     font-size: 1.6rem;
@@ -1617,6 +1704,11 @@ main {
   .dashboard-form {
     gap: 0.75rem;
     margin-top: 0.75rem;
+  }
+
+  .add-item-save-button {
+    min-height: 2.75rem;
+    padding: 0.65rem 1rem;
   }
 
   .dashboard-field input,
