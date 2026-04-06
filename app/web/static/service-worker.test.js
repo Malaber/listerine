@@ -31,7 +31,7 @@ function createServiceWorkerHarness(options = {}) {
     URL,
     caches: {
       open: async (name) => {
-        assert.equal(name, "listerine-shell-v3");
+        assert.equal(name, "listerine-shell-v4");
         return openedCache;
       },
       match: async (request) => {
@@ -46,6 +46,9 @@ function createServiceWorkerHarness(options = {}) {
     },
     fetch: async (request) => {
       fetchCalls.push(request);
+      if (options.fetchError) {
+        throw options.fetchError;
+      }
       return options.fetchResponse ?? {
         ok: true,
         redirected: false,
@@ -139,11 +142,13 @@ test("service worker tolerates precache failures during install", async () => {
 });
 
 test("service worker clears old caches and claims clients on activate", async () => {
-  const harness = createServiceWorkerHarness({ cacheKeys: ["listerine-shell-v2", "listerine-shell-v3"] });
+  const harness = createServiceWorkerHarness({
+    cacheKeys: ["listerine-shell-v2", "listerine-shell-v3", "listerine-shell-v4"],
+  });
 
   await dispatchExtendableEvent(harness.listeners.get("activate"));
 
-  assert.deepEqual(harness.deletedKeys, ["listerine-shell-v2"]);
+  assert.deepEqual(harness.deletedKeys, ["listerine-shell-v2", "listerine-shell-v3"]);
   assert.equal(harness.self.clients.claimCalled, true);
 });
 
@@ -175,10 +180,10 @@ test("service worker ignores admin navigations", async () => {
   assert.deepEqual(harness.matchedRequests, []);
 });
 
-test("service worker serves cached static assets", async () => {
+test("service worker serves cached immutable static assets", async () => {
   const cachedResponse = { cached: true };
   const harness = createServiceWorkerHarness({ cachedResponse });
-  const request = { method: "GET", url: "https://example.com/static/app.css" };
+  const request = { method: "GET", url: "https://example.com/static/img/Favicon.png" };
 
   const responsePromise = await dispatchFetchEvent(harness.listeners.get("fetch"), request);
 
@@ -187,7 +192,7 @@ test("service worker serves cached static assets", async () => {
   assert.deepEqual(harness.matchedRequests, [request]);
 });
 
-test("service worker fetches and caches uncached static assets", async () => {
+test("service worker fetches and caches mutable shell assets before checking cache", async () => {
   const clonedResponse = { cloned: true };
   const networkResponse = {
     ok: true,
@@ -197,13 +202,29 @@ test("service worker fetches and caches uncached static assets", async () => {
     },
   };
   const harness = createServiceWorkerHarness({ fetchResponse: networkResponse });
-  const request = { method: "GET", url: "https://example.com/static/app.css" };
+  const request = { method: "GET", url: "https://example.com/static/app.css?v=asset-version" };
 
   const responsePromise = await dispatchFetchEvent(harness.listeners.get("fetch"), request);
 
   assert.equal(await responsePromise, networkResponse);
   assert.deepEqual(harness.fetchCalls, [request]);
+  assert.deepEqual(harness.matchedRequests, []);
   assert.deepEqual(harness.putCalls, [[request, clonedResponse]]);
+});
+
+test("service worker falls back to cached mutable shell assets when the network fails", async () => {
+  const cachedResponse = { cached: true };
+  const harness = createServiceWorkerHarness({
+    cachedResponse,
+    fetchError: new Error("offline"),
+  });
+  const request = { method: "GET", url: "https://example.com/static/app.js?v=asset-version" };
+
+  const responsePromise = await dispatchFetchEvent(harness.listeners.get("fetch"), request);
+
+  assert.equal(await responsePromise, cachedResponse);
+  assert.deepEqual(harness.fetchCalls, [request]);
+  assert.deepEqual(harness.matchedRequests, [request]);
 });
 
 test("service worker avoids caching redirected asset responses", async () => {
