@@ -1144,10 +1144,23 @@ main {
 }
 
 .item-suggestion {
+  position: relative;
   border-top-color: rgba(167, 203, 223, 0.72);
   animation: item-suggestion-enter 180ms ease both;
   animation-delay: var(--suggestion-delay, 0ms);
   cursor: default;
+}
+
+.item-suggestion.has-category {
+  padding-left: calc(0.95rem + 0.35rem);
+}
+
+.item-suggestion.has-category::before {
+  content: "";
+  position: absolute;
+  inset: -1px auto -1px 0;
+  width: 0.28rem;
+  background: var(--suggestion-category-color, var(--brand-aqua));
 }
 
 .item-suggestion:first-child {

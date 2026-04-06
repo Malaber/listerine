@@ -1780,6 +1780,11 @@ function renderItemSuggestions(root, state) {
     const wrapper = document.createElement("article");
     wrapper.className = `item-card item-suggestion${item.checked ? " is-checked" : ""}`;
     wrapper.style.setProperty("--suggestion-delay", `${index * 24}ms`);
+    const categoryColor = item.category_id ? state.categories.get(item.category_id)?.color || "" : "";
+    if (categoryColor) {
+      wrapper.classList.add("has-category");
+      wrapper.style.setProperty("--suggestion-category-color", categoryColor);
+    }
 
     const main = document.createElement("div");
     main.className = "item-main";

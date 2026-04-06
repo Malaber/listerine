@@ -13,6 +13,7 @@ import {
   normalizeLanguagePreference,
   registerServiceWorker,
   renderItems,
+  renderItemSuggestions,
   setLanguageSettingsOpen,
   storeLanguagePreference,
   syncLanguageSettings,
@@ -28,11 +29,13 @@ function setGlobalProperty(name, value) {
 
 function setDomGlobals(dom) {
   setGlobalProperty("HTMLElement", dom.window.HTMLElement);
+  setGlobalProperty("HTMLInputElement", dom.window.HTMLInputElement);
   setGlobalProperty("HTMLSelectElement", dom.window.HTMLSelectElement);
 }
 
 function restoreDomGlobals(originals) {
   setGlobalProperty("HTMLElement", originals.HTMLElement);
+  setGlobalProperty("HTMLInputElement", originals.HTMLInputElement);
   setGlobalProperty("HTMLSelectElement", originals.HTMLSelectElement);
 }
 
@@ -114,6 +117,22 @@ function createListRoot() {
   };
 }
 
+function createSuggestionRoot() {
+  const dom = new JSDOM(`
+    <section data-list-detail data-list-id="list-1">
+      <input data-item-name-input value="m" />
+      <div data-item-suggestions-slot>
+        <div data-item-suggestions></div>
+      </div>
+    </section>
+  `);
+  return {
+    document: dom.window.document,
+    root: dom.window.document.querySelector("[data-list-detail]"),
+    window: dom.window,
+  };
+}
+
 function createState(items) {
   return {
     categoryOrder: new Map(),
@@ -188,9 +207,51 @@ test("loadMoreCheckedItems fetches one hundred older checked items per page", as
   assert.equal(document.querySelector(".checked-items-load-more .item-category-meta").textContent, "10 older items not loaded");
 });
 
+test("renderItemSuggestions adds category color strips for categorized matches", () => {
+  const { document, root, window } = createSuggestionRoot();
+  const originalHTMLElement = globalThis.HTMLElement;
+  const originalHTMLInputElement = globalThis.HTMLInputElement;
+  setGlobalProperty("HTMLElement", window.HTMLElement);
+  setGlobalProperty("HTMLInputElement", window.HTMLInputElement);
+  const state = createState([
+    {
+      id: "item-1",
+      name: "Mehl",
+      checked: false,
+      category_id: "cat-1",
+      note: null,
+      quantity_text: null,
+    },
+    {
+      id: "item-2",
+      name: "Loose item",
+      checked: false,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+    },
+  ]);
+  state.categories.set("cat-1", { id: "cat-1", name: "Backzutaten", color: "#ff3b30" });
+
+  try {
+    renderItemSuggestions(root, state);
+
+    const suggestions = document.querySelectorAll(".item-suggestion");
+    assert.equal(suggestions.length, 2);
+    assert.equal(suggestions[0].classList.contains("has-category"), true);
+    assert.equal(suggestions[0].style.getPropertyValue("--suggestion-category-color"), "#ff3b30");
+    assert.equal(suggestions[1].classList.contains("has-category"), false);
+    assert.equal(suggestions[1].style.getPropertyValue("--suggestion-category-color"), "");
+  } finally {
+    setGlobalProperty("HTMLElement", originalHTMLElement);
+    setGlobalProperty("HTMLInputElement", originalHTMLInputElement);
+  }
+});
+
 test("language preference helpers normalize, store, and apply choices", () => {
   const originalDocument = globalThis.document;
   const originalHTMLElement = globalThis.HTMLElement;
+  const originalHTMLInputElement = globalThis.HTMLInputElement;
   const originalHTMLSelectElement = globalThis.HTMLSelectElement;
   const originalI18n = globalThis.__appI18n;
   const originalNavigator = globalThis.navigator;
@@ -225,6 +286,7 @@ test("language preference helpers normalize, store, and apply choices", () => {
     setGlobalProperty("document", originalDocument);
     restoreDomGlobals({
       HTMLElement: originalHTMLElement,
+      HTMLInputElement: originalHTMLInputElement,
       HTMLSelectElement: originalHTMLSelectElement,
     });
     setGlobalProperty("__appI18n", originalI18n);
@@ -236,6 +298,7 @@ test("language preference helpers normalize, store, and apply choices", () => {
 test("language settings dialog syncs and saves the selected language", () => {
   const originalDocument = globalThis.document;
   const originalHTMLElement = globalThis.HTMLElement;
+  const originalHTMLInputElement = globalThis.HTMLInputElement;
   const originalHTMLSelectElement = globalThis.HTMLSelectElement;
   const originalI18n = globalThis.__appI18n;
   const originalNavigator = globalThis.navigator;
@@ -317,6 +380,7 @@ test("language settings dialog syncs and saves the selected language", () => {
     setGlobalProperty("document", originalDocument);
     restoreDomGlobals({
       HTMLElement: originalHTMLElement,
+      HTMLInputElement: originalHTMLInputElement,
       HTMLSelectElement: originalHTMLSelectElement,
     });
     setGlobalProperty("__appI18n", originalI18n);
