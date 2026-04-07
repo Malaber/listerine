@@ -18,10 +18,15 @@ struct ApplePasskeyClient {
         let request = provider.createCredentialAssertionRequest(challenge: challenge)
 
         if let allowCredentials = publicKey["allowCredentials"] as? [[String: Any]], allowCredentials.isEmpty == false {
-            request.allowedCredentials = allowCredentials.compactMap { item in
-                guard let id = item["id"] as? String else { return nil }
-                return Data(base64URLEncoded: id)
+            var descriptors: [ASAuthorizationPlatformPublicKeyCredentialDescriptor] = []
+            for item in allowCredentials {
+                guard let id = item["id"] as? String,
+                      let credentialID = Data(base64URLEncoded: id) else { continue }
+                // Transports are optional; you can parse them if present. For now, use nil to allow any.
+                let descriptor = ASAuthorizationPlatformPublicKeyCredentialDescriptor(credentialID: credentialID)
+                descriptors.append(descriptor)
             }
+            request.allowedCredentials = descriptors
         }
 
         let authorization = try await PasskeyCoordinator().perform(request: request)
@@ -94,3 +99,4 @@ private extension Data {
         base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
     }
 }
+

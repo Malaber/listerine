@@ -69,7 +69,7 @@ struct RootView: View {
             .pickerStyle(.menu)
             .padding()
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .onChange(of: viewModel.selectedListID) { _, _ in
+            .onChange(of: viewModel.selectedListID) { _ in
                 Task { try? await viewModel.reloadItems() }
             }
 
