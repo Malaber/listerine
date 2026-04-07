@@ -1,0 +1,40 @@
+name: ListerineApp
+options:
+  minimumXcodeGenVersion: 2.38.0
+  deploymentTarget:
+    iOS: '16.0'
+settings:
+  base:
+    PRODUCT_BUNDLE_IDENTIFIER: com.example.listerine
+    DEVELOPMENT_TEAM: ""
+    TARGETED_DEVICE_FAMILY: 1
+    INFOPLIST_FILE: App/Info.plist
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+packages:
+  ListerineIOS:
+    path: .
+
+targets:
+  Listerine:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+        excludes:
+          - Assets.xcassets/**/*.imageset/*.png
+    dependencies:
+      - package: ListerineIOS
+        product: ListerineCore
+    settings:
+      base:
+        PRODUCT_NAME: Listerine
+        SWIFT_VERSION: 6.0
+        IPHONEOS_DEPLOYMENT_TARGET: 16.0
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: 1.0
+        SUPPORTED_PLATFORMS: iphoneos iphonesimulator
+    scheme:
+      testTargets: []
+      gatherCoverageData: false
+
+targetTemplates: {}
