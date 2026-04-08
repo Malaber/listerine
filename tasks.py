@@ -679,6 +679,11 @@ def install_xcodegen(c) -> None:
             "Build-time backend URL embedded into the native app and used for "
             "webcredentials:<host>."
         ),
+        "passkey_domain": (
+            "Optional Associated Domains host for native passkeys. Defaults to "
+            "the backend host, but can be a shared parent domain such as "
+            "pr.listerine.malaber.de."
+        ),
         "bundle_id": (
             "Bundle identifier used for the native app build; the final Apple "
             "appID is TEAM_ID.bundle_id."
@@ -689,12 +694,14 @@ def install_xcodegen(c) -> None:
 def configure_ios_app(
     c,
     backend_url=DEFAULT_IOS_APP_BACKEND_URL,
+    passkey_domain="",
     bundle_id=DEFAULT_IOS_APP_BUNDLE_IDENTIFIER,
     regenerate_project=True,
 ) -> None:
     # Keep the embedded backend URL and associated domain aligned so self-hosted
     # builders can stamp one consistent passkey configuration into the app.
     host = _validated_ios_backend_host(backend_url)
+    passkey_host = passkey_domain.strip() or host
     project_yml = IOS_PROJECT_YML_PATH.read_text(encoding="utf-8")
     project_yml = _replace_project_setting(
         project_yml,
@@ -707,7 +714,7 @@ def configure_ios_app(
         backend_url,
     )
     IOS_PROJECT_YML_PATH.write_text(project_yml, encoding="utf-8")
-    _write_ios_entitlements(host)
+    _write_ios_entitlements(passkey_host)
     _write_ios_generated_config(backend_url)
     if str(regenerate_project).lower() not in {"0", "false", "no"}:
         install_xcodegen.body(c)

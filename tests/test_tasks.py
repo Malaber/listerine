@@ -292,6 +292,7 @@ def test_configure_ios_app_updates_project_and_entitlements(monkeypatch, tmp_pat
     tasks.configure_ios_app.body(
         None,
         backend_url="https://selfhost.example.com",
+        passkey_domain="passkeys.example.com",
         bundle_id="com.example.selfhost",
         regenerate_project=True,
     )
@@ -299,7 +300,7 @@ def test_configure_ios_app_updates_project_and_entitlements(monkeypatch, tmp_pat
     project_contents = project_path.read_text(encoding="utf-8")
     assert "PRODUCT_BUNDLE_IDENTIFIER: com.example.selfhost" in project_contents
     assert "INFOPLIST_KEY_ListerineBackendBaseURL: https://selfhost.example.com" in project_contents
-    assert "webcredentials:selfhost.example.com" in entitlements_path.read_text(encoding="utf-8")
+    assert "webcredentials:passkeys.example.com" in entitlements_path.read_text(encoding="utf-8")
     assert (
         'static let backendURL = "https://selfhost.example.com"'
         in generated_config_path.read_text(encoding="utf-8")

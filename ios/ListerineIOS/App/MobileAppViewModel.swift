@@ -73,9 +73,13 @@ final class MobileAppViewModel: ObservableObject {
                 body: [:],
                 token: nil
             )
+            let relyingPartyIdentifier = rpID(from: options) ?? backendURL.host ?? ""
             netLog.debug("Received login options keys: \(String(describing: Array(options.keys)), privacy: .public)")
-            netLog.debug("Invoking platform authenticator with RP ID: \(backendURL.host ?? "<nil>", privacy: .public)")
-            let credential = try await passkeyClient.authenticate(optionsPayload: options, relyingPartyIdentifier: backendURL.host ?? "")
+            netLog.debug("Invoking platform authenticator with RP ID: \(relyingPartyIdentifier, privacy: .public)")
+            let credential = try await passkeyClient.authenticate(
+                optionsPayload: options,
+                relyingPartyIdentifier: relyingPartyIdentifier
+            )
             let verifyEnvelope: [String: Any] = ["credential": credential]
             let tokenJson = try await requestJSON(
                 backendURL: backendURL,
@@ -108,6 +112,11 @@ final class MobileAppViewModel: ObservableObject {
             netLog.error("Passkey login failed. Type=\(String(describing: type(of: error)), privacy: .public) Domain=\(nsErr.domain, privacy: .public) Code=\(nsErr.code) Desc=\(nsErr.localizedDescription, privacy: .public)")
             errorMessage = nsErr.localizedDescription
         }
+    }
+
+    private func rpID(from optionsPayload: [String: Any]) -> String? {
+        let publicKey = (optionsPayload["publicKey"] as? [String: Any]) ?? optionsPayload
+        return publicKey["rpId"] as? String
     }
 
     private func ensureBackendReady(backendURL: URL) async throws {
