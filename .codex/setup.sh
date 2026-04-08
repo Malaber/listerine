@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 find_shared_venv() {
-  git -C "$ROOT" worktree list --porcelain | while read -r line; do
+  while read -r line; do
     [[ "$line" == worktree\ * ]] || continue
     worktree_path="${line#worktree }"
     [[ "$worktree_path" == "$ROOT" ]] && continue
@@ -12,7 +12,9 @@ find_shared_venv() {
       printf '%s\n' "$worktree_path/.venv"
       return 0
     fi
-  done
+  done < <(git -C "$ROOT" worktree list --porcelain)
+
+  return 1
 }
 
 if [[ -x "$ROOT/.venv/bin/inv" ]]; then
