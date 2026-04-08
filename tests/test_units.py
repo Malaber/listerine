@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 from jose import jwt
+from pydantic import ValidationError
 from starlette.requests import Request
 
 from app.admin import SessionAdminAuth, get_application_version
@@ -367,6 +368,14 @@ def test_settings_normalize_app_base_url_and_webcredentials_apps() -> None:
         "VWKG94374J.de.malaber.listerine",
         "VWKG94374J.de.malaber.listerine.beta",
     ]
+
+
+def test_settings_normalize_app_base_url_empty_none_and_invalid() -> None:
+    assert Settings(app_base_url="   ").app_base_url is None
+    assert Settings(webcredentials_apps=None).webcredentials_apps == []
+
+    with pytest.raises(ValidationError):
+        Settings(app_base_url="not-a-url")
 
 
 def test_passkey_request_helpers() -> None:
