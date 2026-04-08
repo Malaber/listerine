@@ -1,39 +1,100 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="card" style="max-width: 900px; margin: 1.5rem auto">
-  <h1>What Listerine can do</h1>
-  <p>
-    Listerine is built to make household planning simple: shared to-do lists, grocery checklists,
-    and real-time collaboration with privacy-first defaults.
-  </p>
+<section class="capabilities-shell">
+  <section class="capabilities-hero">
+    <div class="capabilities-copy">
+      <p class="dashboard-kicker">Interactive showcase</p>
+      <h1>See how Listerine handles real grocery lists and to-dos.</h1>
+      <p class="dashboard-intro">
+        These demos run entirely in your browser. Check items off, add your own entries, and get a feel
+        for the calm, practical flow Listerine brings to shared shopping lists and everyday planning.
+      </p>
+      <div class="capabilities-actions">
+        <a class="primary-button" href="/login">Open your real lists</a>
+        <a class="secondary-button" href="#capabilities-demo">Try the demo first</a>
+      </div>
+      <p class="capabilities-note">
+        No backend calls, no saved data, no account required. Refresh the page to reset the examples.
+      </p>
+    </div>
 
-  <h2>Practical examples</h2>
-  <ul>
-    <li>
-      <strong>Weekly groceries:</strong> Create a list for this week, assign categories like
-      Produce or Dairy, then check off items while shopping.
-    </li>
-    <li>
-      <strong>Household chores:</strong> Keep a shared “Home Tasks” list so everyone can add and
-      complete chores from one place.
-    </li>
-    <li>
-      <strong>Family event prep:</strong> Build a party-prep checklist with supplies, notes, and
-      progress tracked in real time.
-    </li>
-  </ul>
+    <aside class="dashboard-card dashboard-card-accent capabilities-summary">
+      <h2>What this demonstrates</h2>
+      <ul class="capabilities-summary-list">
+        <li>Fast check-off for groceries and household tasks</li>
+        <li>Quick add for missing items while you think</li>
+        <li>Clear grouped structure that stays easy to scan</li>
+        <li>A privacy-friendly flow that works without noisy clutter</li>
+      </ul>
+    </aside>
+  </section>
 
-  <h2>Feature highlights</h2>
-  <ul>
-    <li>Households and shared lists for collaborative planning.</li>
-    <li>Category organization to keep shopping efficient in-store.</li>
-    <li>Real-time updates so everyone sees changes immediately.</li>
-    <li>Passkey-based sign-in and session controls for strong account security.</li>
-    <li>Responsive web experience for desktop and mobile use.</li>
-  </ul>
+  <section class="capabilities-grid" id="capabilities-demo" data-capabilities-showcase>
+    <article class="dashboard-card capabilities-demo" data-demo-list="groceries">
+      <div class="capabilities-demo-header">
+        <div>
+          <p class="dashboard-label">Grocery run</p>
+          <h2>Weekly grocery list</h2>
+        </div>
+        <p class="capabilities-status" data-demo-summary></p>
+      </div>
+      <p class="dashboard-helper">
+        A realistic shopping list with grouped staples. Check things off as they go into the cart, or
+        add the one ingredient you forgot.
+      </p>
+      <form class="capabilities-add-form" data-demo-form>
+        <label class="dashboard-field">
+          <span>Add an item</span>
+          <input
+            type="text"
+            name="item"
+            maxlength="60"
+            placeholder="Try bananas or dishwasher tabs"
+            data-demo-input
+          />
+        </label>
+        <button type="submit" class="secondary-button">Add to list</button>
+      </form>
+      <div class="capabilities-list" data-demo-items></div>
+    </article>
 
-  <p>
-    Ready to try it? <a href="/login">Sign in</a> to start your first shared list.
-  </p>
+    <article class="dashboard-card capabilities-demo" data-demo-list="todos">
+      <div class="capabilities-demo-header">
+        <div>
+          <p class="dashboard-label">Home rhythm</p>
+          <h2>Household reset list</h2>
+        </div>
+        <p class="capabilities-status" data-demo-summary></p>
+      </div>
+      <p class="dashboard-helper">
+        The same simple flow works for to-dos: lightweight, clear, and easy to update when plans change.
+      </p>
+      <form class="capabilities-add-form" data-demo-form>
+        <label class="dashboard-field">
+          <span>Add a task</span>
+          <input
+            type="text"
+            name="item"
+            maxlength="60"
+            placeholder="Try water herbs or book dentist"
+            data-demo-input
+          />
+        </label>
+        <button type="submit" class="secondary-button">Add task</button>
+      </form>
+      <div class="capabilities-list" data-demo-items></div>
+    </article>
+  </section>
+
+  <section class="capabilities-proof">
+    <article class="dashboard-card">
+      <p class="dashboard-label">Why it works</p>
+      <h2>Built for the lists people actually keep.</h2>
+      <p class="dashboard-helper">
+        Grocery shopping and to-dos fail when software adds friction. Listerine stays focused on quick
+        capture, easy review, and satisfying completion so the list helps instead of getting in the way.
+      </p>
+    </article>
+  </section>
 </section>
 {% endblock %}

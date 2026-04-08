@@ -3,20 +3,25 @@ import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 
 import {
+  addCapabilitiesDemoItem,
   applyLanguagePreference,
+  createCapabilitiesDemoState,
   formatInviteExpiry,
   formatPasskeyDate,
   getPreferredLocale,
+  initCapabilitiesShowcase,
   initUserSettings,
   languagePreferenceLabel,
   loadMoreCheckedItems,
   normalizeLanguagePreference,
   registerServiceWorker,
+  renderCapabilitiesDemo,
   renderItems,
   renderItemSuggestions,
   setLanguageSettingsOpen,
   storeLanguagePreference,
   syncLanguageSettings,
+  toggleCapabilitiesDemoItem,
 } from "./app.js";
 
 function setGlobalProperty(name, value) {
@@ -133,6 +138,32 @@ function createSuggestionRoot() {
   };
 }
 
+function createCapabilitiesRoot() {
+  const dom = new JSDOM(`
+    <!doctype html>
+    <html>
+      <body>
+        <section data-capabilities-showcase>
+          <article data-demo-list="groceries">
+            <p data-demo-summary></p>
+            <form data-demo-form>
+              <input data-demo-input />
+              <button type="submit">Add</button>
+            </form>
+            <div data-demo-items></div>
+          </article>
+        </section>
+      </body>
+    </html>
+  `);
+  return {
+    document: dom.window.document,
+    root: dom.window.document.querySelector("[data-demo-list]"),
+    showcase: dom.window.document.querySelector("[data-capabilities-showcase]"),
+    window: dom.window,
+  };
+}
+
 function createState(items) {
   return {
     categoryOrder: new Map(),
@@ -245,6 +276,53 @@ test("renderItemSuggestions adds category color strips for categorized matches",
   } finally {
     setGlobalProperty("HTMLElement", originalHTMLElement);
     setGlobalProperty("HTMLInputElement", originalHTMLInputElement);
+  }
+});
+
+test("capabilities showcase demos render, toggle, and add items without backend calls", () => {
+  const { document, root, window } = createCapabilitiesRoot();
+  const originals = {
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    HTMLSelectElement: globalThis.HTMLSelectElement,
+    document: globalThis.document,
+    window: globalThis.window,
+  };
+
+  setDomGlobals({ window });
+  setGlobalProperty("document", document);
+  setGlobalProperty("window", window);
+
+  try {
+    const state = createCapabilitiesDemoState("groceries");
+    renderCapabilitiesDemo(root, state);
+
+    assert.match(document.querySelector("[data-demo-summary]").textContent, /left to do/);
+    assert.equal(document.querySelectorAll("[data-demo-item]").length, 6);
+
+    toggleCapabilitiesDemoItem(root, state, "groceries-1");
+    assert.equal(document.querySelector('[data-demo-toggle="groceries-1"]').checked, true);
+
+    assert.equal(addCapabilitiesDemoItem(root, state, "  Bananas   "), true);
+    assert.equal(document.querySelector('[data-demo-item="groceries-7"] strong').textContent, "Bananas");
+
+    initCapabilitiesShowcase();
+    const input = document.querySelector("[data-demo-input]");
+    input.value = "Dishwasher tabs";
+    document
+      .querySelector("[data-demo-form]")
+      .dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+
+    assert.equal(document.querySelector('[data-demo-item="groceries-7"] strong').textContent, "Dishwasher tabs");
+
+    const checkbox = document.querySelector('[data-demo-toggle="groceries-1"]');
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new window.Event("change", { bubbles: true }));
+    assert.equal(document.querySelector('[data-demo-item="groceries-1"]').classList.contains("is-checked"), true);
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("window", originals.window);
   }
 });
 

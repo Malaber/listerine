@@ -153,6 +153,15 @@ async def _set_auth_session_times(
         await session.commit()
 
 
+def test_capabilities_page_is_public_and_contains_interactive_demo(client) -> None:
+    response = client.get("/capabilities")
+
+    assert response.status_code == 200
+    assert "data-capabilities-showcase" in response.text
+    assert "Weekly grocery list" in response.text
+    assert "No backend calls" in response.text
+
+
 def test_full_flow(client) -> None:
     assert client.get("/health").status_code == 200
     assert client.get("/api").status_code == 200

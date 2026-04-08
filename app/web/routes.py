@@ -196,6 +196,16 @@ async def login_page(request: Request, db: AsyncSession = Depends(get_db)) -> Re
     )
 
 
+@router.get("/capabilities", response_class=HTMLResponse)
+async def capabilities_page(request: Request, db: AsyncSession = Depends(get_db)) -> Response:
+    user = await _get_session_user(request, db)
+    return templates.TemplateResponse(
+        request,
+        "capabilities.html",
+        _template_context(request, user),
+    )
+
+
 @router.post("/logout")
 async def logout_page(request: Request, db: AsyncSession = Depends(get_db)) -> Response:
     await revoke_auth_session(request, db)

@@ -4,6 +4,22 @@ const SUPPORTED_LANGUAGE_OPTIONS = [
   { value: "en", label: "English" },
   { value: "de", label: "Deutsch" },
 ];
+const CAPABILITIES_DEMO_DEFAULTS = {
+  groceries: [
+    { name: "Apples", meta: "6-pack", group: "Produce", checked: false },
+    { name: "Spinach", meta: "1 bag", group: "Produce", checked: false },
+    { name: "Greek yogurt", meta: "2 tubs", group: "Fridge", checked: true },
+    { name: "Eggs", meta: "12-pack", group: "Fridge", checked: false },
+    { name: "Pasta", meta: "2 boxes", group: "Pantry", checked: false },
+    { name: "Olive oil", meta: "Running low", group: "Pantry", checked: false },
+  ],
+  todos: [
+    { name: "Empty recycling", meta: "Before pickup", group: "Home", checked: true },
+    { name: "Plan three dinners", meta: "For this week", group: "Planning", checked: false },
+    { name: "Water herbs", meta: "Kitchen window", group: "Home", checked: false },
+    { name: "Pack gym shirt", meta: "For tomorrow morning", group: "Personal", checked: false },
+  ],
+};
 
 function base64UrlToBytes(value) {
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
@@ -2949,6 +2965,158 @@ async function initHouseholdInvite() {
   });
 }
 
+function normalizeDemoEntry(value) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function createCapabilitiesDemoState(name) {
+  const defaults = CAPABILITIES_DEMO_DEFAULTS[name] || [];
+  return {
+    nextId: defaults.length + 1,
+    items: defaults.map((item, index) => ({
+      id: `${name}-${index + 1}`,
+      name: item.name,
+      meta: item.meta,
+      group: item.group,
+      checked: item.checked,
+    })),
+  };
+}
+
+function setCapabilitiesSummary(root, items) {
+  const summary = root.querySelector("[data-demo-summary]");
+  if (!(summary instanceof HTMLElement)) {
+    return;
+  }
+
+  const remaining = items.filter((item) => !item.checked).length;
+  summary.textContent = remaining === 0 ? "Everything checked off" : `${remaining} left to do`;
+}
+
+function renderCapabilitiesDemo(root, state) {
+  const container = root.querySelector("[data-demo-items]");
+  if (!(container instanceof HTMLElement)) {
+    return;
+  }
+
+  container.innerHTML = "";
+  setCapabilitiesSummary(root, state.items);
+
+  const groupedItems = state.items.reduce((groups, item) => {
+    if (!groups.has(item.group)) {
+      groups.set(item.group, []);
+    }
+    groups.get(item.group).push(item);
+    return groups;
+  }, new Map());
+
+  groupedItems.forEach((items, group) => {
+    const section = document.createElement("section");
+    section.className = "capabilities-group";
+
+    const heading = document.createElement("div");
+    heading.className = "capabilities-group-heading";
+    heading.innerHTML = `
+      <strong>${group}</strong>
+      <span>${items.length} item${items.length === 1 ? "" : "s"}</span>
+    `;
+    section.appendChild(heading);
+
+    const list = document.createElement("div");
+    list.className = "capabilities-items";
+
+    items.forEach((item) => {
+      const row = document.createElement("label");
+      row.className = `capabilities-item${item.checked ? " is-checked" : ""}`;
+      row.setAttribute("data-demo-item", item.id);
+      row.innerHTML = `
+        <input type="checkbox" ${item.checked ? "checked" : ""} data-demo-toggle="${item.id}" />
+        <span class="capabilities-item-copy">
+          <strong>${item.name}</strong>
+          <span>${item.meta}</span>
+        </span>
+      `;
+      list.appendChild(row);
+    });
+
+    section.appendChild(list);
+    container.appendChild(section);
+  });
+}
+
+function addCapabilitiesDemoItem(root, state, name) {
+  const input = root.querySelector("[data-demo-input]");
+  const normalizedName = normalizeDemoEntry(name);
+  if (!normalizedName) {
+    return false;
+  }
+
+  const demoName = root.getAttribute("data-demo-list") || "demo";
+  state.items.unshift({
+    id: `${demoName}-${state.nextId}`,
+    name: normalizedName,
+    meta: "Added just now",
+    group: "New items",
+    checked: false,
+  });
+  state.nextId += 1;
+  renderCapabilitiesDemo(root, state);
+
+  if (input instanceof HTMLInputElement) {
+    input.value = "";
+    input.focus();
+  }
+
+  return true;
+}
+
+function toggleCapabilitiesDemoItem(root, state, itemId) {
+  const item = state.items.find((entry) => entry.id === itemId);
+  if (!item) {
+    return;
+  }
+
+  item.checked = !item.checked;
+  renderCapabilitiesDemo(root, state);
+}
+
+function initCapabilitiesShowcase() {
+  const root = document.querySelector("[data-capabilities-showcase]");
+  if (!(root instanceof HTMLElement)) {
+    return;
+  }
+
+  root.querySelectorAll("[data-demo-list]").forEach((demoRoot) => {
+    if (!(demoRoot instanceof HTMLElement)) {
+      return;
+    }
+
+    const state = createCapabilitiesDemoState(demoRoot.getAttribute("data-demo-list") || "");
+    renderCapabilitiesDemo(demoRoot, state);
+
+    demoRoot.querySelector("[data-demo-form]")?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const input = demoRoot.querySelector("[data-demo-input]");
+      if (!(input instanceof HTMLInputElement)) {
+        return;
+      }
+      addCapabilitiesDemoItem(demoRoot, state, input.value);
+    });
+
+    demoRoot.addEventListener("change", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement)) {
+        return;
+      }
+      const itemId = target.getAttribute("data-demo-toggle");
+      if (!itemId) {
+        return;
+      }
+      toggleCapabilitiesDemoItem(demoRoot, state, itemId);
+    });
+  });
+}
+
 function initApp() {
   applyLanguagePreference();
   registerServiceWorker().catch(() => undefined);
@@ -2958,6 +3126,7 @@ function initApp() {
   initDashboard();
   initHouseholdInvite();
   initListDetail();
+  initCapabilitiesShowcase();
 }
 
 if (typeof document !== "undefined") {
@@ -3060,5 +3229,12 @@ export {
   initUserSettings,
   formatInviteExpiry,
   initHouseholdInvite,
+  normalizeDemoEntry,
+  createCapabilitiesDemoState,
+  setCapabilitiesSummary,
+  renderCapabilitiesDemo,
+  addCapabilitiesDemoItem,
+  toggleCapabilitiesDemoItem,
+  initCapabilitiesShowcase,
   initApp,
 };
