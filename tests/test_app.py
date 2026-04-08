@@ -303,6 +303,11 @@ def test_login_page_renders_selected_locale_and_persists_cookie(client) -> None:
 def test_pwa_assets_are_exposed(client) -> None:
     login_page = client.get("/login")
     assert login_page.status_code == 200
+    assert 'name="description"' in login_page.text
+    assert "Listerine helps households share grocery lists" in login_page.text
+    assert 'link rel="canonical" href="http://testserver/login"' in login_page.text
+    assert 'property="og:site_name" content="Listerine"' in login_page.text
+    assert 'name="twitter:card" content="summary"' in login_page.text
     assert 'rel="manifest" href="/manifest.webmanifest"' in login_page.text
     assert 'name="theme-color" content="#142a57"' in login_page.text
     assert 'rel="apple-touch-icon" href="/static/img/apple-touch-icon.png"' in login_page.text
@@ -318,6 +323,34 @@ def test_pwa_assets_are_exposed(client) -> None:
     assert manifest_data["start_url"] == "/"
     assert any(icon["src"] == "/static/img/pwa-192.png" for icon in manifest_data["icons"])
     assert any(icon.get("purpose") == "maskable" for icon in manifest_data["icons"])
+
+
+def test_indexing_and_llm_metadata_files_are_exposed(client) -> None:
+    robots = client.get("/robots.txt")
+    assert robots.status_code == 200
+    assert robots.headers["content-type"].startswith("text/plain")
+    assert "User-agent: *" in robots.text
+    assert "Allow: /" in robots.text
+    assert "Disallow: /admin" in robots.text
+    assert "Disallow: /api" in robots.text
+    assert "Sitemap: http://testserver/sitemap.xml" in robots.text
+
+    llms = client.get("/llms.txt")
+    assert llms.status_code == 200
+    assert llms.headers["content-type"].startswith("text/plain")
+    assert "# Listerine" in llms.text
+    assert "## Access" in llms.text
+    assert "- The web app requires sign-in for household data." in llms.text
+    assert "- Do not attempt to access or infer private user content." in llms.text
+    assert "- http://testserver/login" in llms.text
+    assert "- http://testserver/sitemap.xml" in llms.text
+
+    sitemap = client.get("/sitemap.xml")
+    assert sitemap.status_code == 200
+    assert sitemap.headers["content-type"].startswith("application/xml")
+    assert "<urlset" in sitemap.text
+    assert "<loc>http://testserver/login</loc>" in sitemap.text
+    assert "<loc>http://testserver/llms.txt</loc>" in sitemap.text
 
     service_worker = client.get("/service-worker.js")
     assert service_worker.status_code == 200
