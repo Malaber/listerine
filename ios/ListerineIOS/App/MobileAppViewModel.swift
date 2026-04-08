@@ -65,6 +65,7 @@ final class MobileAppViewModel: ObservableObject {
         defer { isAuthenticating = false }
 
         do {
+            try await ensureBackendReady(backendURL: backendURL)
             let options = try await requestJSON(
                 backendURL: backendURL,
                 path: "/api/v1/auth/login/options",
@@ -106,6 +107,25 @@ final class MobileAppViewModel: ObservableObject {
             let nsErr = error as NSError
             netLog.error("Passkey login failed. Type=\(String(describing: type(of: error)), privacy: .public) Domain=\(nsErr.domain, privacy: .public) Code=\(nsErr.code) Desc=\(nsErr.localizedDescription, privacy: .public)")
             errorMessage = nsErr.localizedDescription
+        }
+    }
+
+    private func ensureBackendReady(backendURL: URL) async throws {
+        let data = try await requestData(
+            backendURL: backendURL,
+            path: "/health",
+            method: "GET",
+            body: nil,
+            token: nil
+        )
+        guard
+            let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let status = payload["status"] as? String,
+            status == "ok"
+        else {
+            throw AppError.backendUnavailable(
+                "The backend is not ready yet. It may still be starting or redeploying."
+            )
         }
     }
 
@@ -298,6 +318,9 @@ final class MobileAppViewModel: ObservableObject {
             throw AppError.invalidResponse
         }
         guard (200 ... 299).contains(http.statusCode) else {
+            if let temporaryBackendError = backendAvailabilityError(response: http, data: data) {
+                throw temporaryBackendError
+            }
             netLog.error("Request failed with status \(http.statusCode); detail=\(String(describing: (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["detail"]), privacy: .public)")
             if let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let detail = payload["detail"] as? String {
                 throw AppError.server(detail)
@@ -305,6 +328,24 @@ final class MobileAppViewModel: ObservableObject {
             throw AppError.server("Request failed (\(http.statusCode)).")
         }
         return data
+    }
+
+    private func backendAvailabilityError(response: HTTPURLResponse, data: Data) -> AppError? {
+        let serverHeader = response.value(forHTTPHeaderField: "Server") ?? ""
+        let contentType = response.value(forHTTPHeaderField: "Content-Type") ?? ""
+        let bodyString = String(data: data, encoding: .utf8) ?? ""
+
+        if response.statusCode == 501 && serverHeader.contains("BaseHTTP") {
+            return .backendUnavailable(
+                "The backend is not ready yet. This URL is currently serving a temporary placeholder while the deployment is rebuilding."
+            )
+        }
+        if contentType.contains("text/html") && bodyString.contains("Unsupported method") {
+            return .backendUnavailable(
+                "The backend is not ready yet. This URL is currently serving a temporary placeholder while the deployment is rebuilding."
+            )
+        }
+        return nil
     }
 }
 
@@ -338,12 +379,15 @@ struct AppGroceryItem: Identifiable {
 
 enum AppError: LocalizedError {
     case invalidResponse
+    case backendUnavailable(String)
     case server(String)
 
     var errorDescription: String? {
         switch self {
         case .invalidResponse:
             return "The server returned an invalid response."
+        case let .backendUnavailable(message):
+            return message
         case let .server(message):
             return message
         }
