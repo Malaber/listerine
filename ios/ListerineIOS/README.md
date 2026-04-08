@@ -108,6 +108,45 @@ That derives `WEBAUTHN_RP_ID` from the configured backend host automatically.
 - Self-hosted builds work when the builder signs the app themselves and uses `configure-ios-app` so the bundle ID, associated domain, and backend host all match.
 - An App Store build cannot support arbitrary self-hosted passkey domains at runtime, because Apple Associated Domains are static entitlements.
 
+## Passkey deployment checklist
+
+The app and backend now have a strict deployment contract for native Apple passkeys. Both sides must be configured together.
+
+### App build requirements
+
+1. Run `configure-ios-app` with the final backend URL and bundle identifier for the build you will sign:
+   ```bash
+   .venv/bin/inv configure-ios-app \
+     --backend-url=https://shopping.example.com \
+     --bundle-id=com.example.shopping
+   ```
+2. Sign the app with the Apple Developer team that will ship the build.
+3. Confirm the generated entitlement includes `webcredentials:shopping.example.com`.
+4. Remember that the final Apple app identifier is `TEAM_ID.bundle_id`, for example `ABCD123456.com.example.shopping`.
+
+### Backend deployment requirements
+
+1. Serve the backend over HTTPS on the same hostname you embedded into the app.
+2. Set `WEBAUTHN_RP_ID` to that hostname. `start-ios-backend` derives it automatically for local runs, but production deployments still need to set it explicitly.
+3. Serve an Apple App Site Association file at:
+   - `https://shopping.example.com/.well-known/apple-app-site-association`
+4. Include the signed app identifier in that file under `webcredentials.apps`, for example:
+   ```json
+   {
+     "webcredentials": {
+       "apps": [
+         "ABCD123456.com.example.shopping"
+       ]
+     }
+   }
+   ```
+5. Keep the host in all three places identical:
+   - the app's embedded backend URL
+   - the `webcredentials:<host>` entitlement
+   - the backend's `WEBAUTHN_RP_ID`
+
+If any of those values drift apart, the simulator or device will fail passkey login before the app can complete `/api/v1/auth/login/verify`.
+
 ## Shipping to the App Store
 
 1. Join the Apple Developer Program and create an App ID for the iOS app.
@@ -118,6 +157,7 @@ That derives `WEBAUTHN_RP_ID` from the configured backend host automatically.
    - setting the final Apple Developer team and bundle identifier
    - adding the matching `webcredentials:` domain entitlement to the app
    - serving an Apple App Site Association file for that exact app identifier on the backend domain
+   - setting `WEBAUTHN_RP_ID` on the backend to the same hostname the app uses
 5. Test on physical devices, especially sign-in flows, keyboard behavior, and network error handling.
 6. Archive the app in Xcode, validate it, and upload it through Organizer.
 7. In App Store Connect, create the app record, complete screenshots, pricing, age rating, and submission notes.

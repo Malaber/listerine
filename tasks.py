@@ -311,6 +311,8 @@ def _replace_project_setting(contents: str, key: str, value: str) -> str:
 
 
 def _write_ios_entitlements(host: str) -> None:
+    # Native Apple passkeys only work when the signed app declares the same
+    # webcredentials host that the backend advertises in its AASA file.
     IOS_ENTITLEMENTS_PATH.write_text(
         "\n".join(
             [
@@ -654,8 +656,14 @@ def install_xcodegen(c) -> None:
 
 @task(
     help={
-        "backend_url": "Build-time backend URL embedded into the native app.",
-        "bundle_id": "Bundle identifier used for the native app build.",
+        "backend_url": (
+            "Build-time backend URL embedded into the native app and used for "
+            "webcredentials:<host>."
+        ),
+        "bundle_id": (
+            "Bundle identifier used for the native app build; the final Apple "
+            "appID is TEAM_ID.bundle_id."
+        ),
         "regenerate_project": "Regenerate the Xcode project after updating the config.",
     }
 )
@@ -665,6 +673,8 @@ def configure_ios_app(
     bundle_id=DEFAULT_IOS_APP_BUNDLE_IDENTIFIER,
     regenerate_project=True,
 ) -> None:
+    # Keep the embedded backend URL and associated domain aligned so self-hosted
+    # builders can stamp one consistent passkey configuration into the app.
     host = _validated_ios_backend_host(backend_url)
     project_yml = IOS_PROJECT_YML_PATH.read_text(encoding="utf-8")
     project_yml = _replace_project_setting(
@@ -809,7 +819,11 @@ def check_browser_e2e(
 
 @task(
     help={
-        "backend_url": "Backend URL whose hostname should be used as the WebAuthn RP ID.",
+        "backend_url": (
+            "Backend URL whose hostname should be used as the WebAuthn RP ID; "
+            "the deployed backend must also serve an AASA file for the signed "
+            "appID on that host."
+        ),
         "seed_path": "Fixture used to seed the local app database.",
         "database_url": "Database URL for the temporary local app.",
         "host": "Host to bind the local app server to.",
