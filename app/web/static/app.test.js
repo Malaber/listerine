@@ -4,19 +4,33 @@ import { JSDOM } from "jsdom";
 
 import {
   applyLanguagePreference,
+  cloneDemoItem,
+  createDemoItem,
   formatInviteExpiry,
   formatPasskeyDate,
+  getDemoPayload,
   getPreferredLocale,
   initUserSettings,
+  isDemoList,
   languagePreferenceLabel,
+  loadListDetail,
   loadMoreCheckedItems,
   normalizeLanguagePreference,
   registerServiceWorker,
   renderItems,
   renderItemSuggestions,
+  restoreCheckedSuggestion,
+  restoreDeletedItem,
+  restoreToggledItem,
+  saveCategoryOrder,
+  setCategoryOrder,
+  setDemoItemChecked,
   setLanguageSettingsOpen,
+  setListSyncStatus,
   storeLanguagePreference,
   syncLanguageSettings,
+  updateDemoItem,
+  connectListSocket,
 } from "./app.js";
 
 function setGlobalProperty(name, value) {
@@ -128,6 +142,76 @@ function createSuggestionRoot() {
   `);
   return {
     document: dom.window.document,
+    root: dom.window.document.querySelector("[data-list-detail]"),
+    window: dom.window,
+  };
+}
+
+function createDemoListRoot() {
+  const demoPayload = {
+    list: { id: "demo-list", name: "Saturday Groceries" },
+    categories: [
+      { id: "produce", name: "Produce", color: "#6bbf59" },
+      { id: "pantry", name: "Pantry", color: "#f59e0b" },
+    ],
+    category_order: [
+      { category_id: "produce", sort_order: 0 },
+      { category_id: "pantry", sort_order: 1 },
+    ],
+    item_window: {
+      checked_remaining_count: 0,
+      items: [
+        {
+          id: "demo-item-1",
+          name: "Bananas",
+          category_id: "produce",
+          quantity_text: "6",
+          note: null,
+          checked: false,
+          checked_at: null,
+          sort_order: 0,
+        },
+        {
+          id: "demo-item-2",
+          name: "Olive oil",
+          category_id: "pantry",
+          quantity_text: null,
+          note: "Running low",
+          checked: true,
+          checked_at: "2026-04-08T09:00:00Z",
+          sort_order: 1,
+        },
+      ],
+    },
+  };
+  const dom = new JSDOM(`
+    <!doctype html>
+    <html>
+      <body>
+        <section
+          data-list-detail
+          data-list-id="demo-list"
+          data-list-mode="demo"
+          data-demo-sync-text="Interactive demo running locally."
+          data-demo-payload='${JSON.stringify(demoPayload)}'
+        >
+          <h1 data-list-title></h1>
+          <p data-list-sync-status></p>
+          <input data-item-name-input value="" />
+          <input data-item-category-search value="" />
+          <input data-item-edit-category-search value="" />
+          <div data-item-suggestions-slot><div data-item-suggestions></div></div>
+          <div data-item-category-radios></div>
+          <div data-item-edit-category-radios></div>
+          <div data-item-empty></div>
+          <div data-item-list></div>
+        </section>
+      </body>
+    </html>
+  `);
+  return {
+    document: dom.window.document,
+    payload: demoPayload,
     root: dom.window.document.querySelector("[data-list-detail]"),
     window: dom.window,
   };
@@ -245,6 +329,82 @@ test("renderItemSuggestions adds category color strips for categorized matches",
   } finally {
     setGlobalProperty("HTMLElement", originalHTMLElement);
     setGlobalProperty("HTMLInputElement", originalHTMLInputElement);
+  }
+});
+
+test("demo list helpers reuse the real list page with local data", async () => {
+  const { document, payload, root, window } = createDemoListRoot();
+  const originals = {
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    HTMLSelectElement: globalThis.HTMLSelectElement,
+    document: globalThis.document,
+    window: globalThis.window,
+  };
+
+  setDomGlobals({ window });
+  setGlobalProperty("document", document);
+  setGlobalProperty("window", window);
+
+  try {
+    const state = {
+      categoryOrder: new Map(),
+      categories: new Map(),
+      checkedRemainingCount: 0,
+      demoPayload: getDemoPayload(root),
+      editingItemId: null,
+      highlightedItemId: null,
+      highlightTimers: new Map(),
+      items: new Map(),
+      nextDemoId: 1,
+      socket: null,
+      undoAction: null,
+      undoTimerId: null,
+    };
+
+    assert.equal(isDemoList(root), true);
+    assert.equal(state.demoPayload.list.name, payload.list.name);
+
+    await loadListDetail(root, state);
+    assert.equal(document.querySelector("[data-list-title]").textContent, "Saturday Groceries");
+    assert.equal(document.querySelectorAll(".item-card").length, 2);
+
+    const createdItem = createDemoItem(state, { name: "Dishwasher tabs", category_id: "pantry" });
+    assert.equal(createdItem.id, "demo-item-3");
+    assert.equal(createdItem.sort_order, 2);
+
+    state.items.set(createdItem.id, createdItem);
+    const updatedItem = updateDemoItem(state, "demo-item-3", { note: "Big box" });
+    assert.equal(updatedItem.note, "Big box");
+
+    const checkedItem = setDemoItemChecked(state, "demo-item-1", true);
+    assert.equal(checkedItem.checked, true);
+    assert.match(checkedItem.checked_at, /T/);
+
+    await restoreCheckedSuggestion(root, state, "demo-item-1");
+    assert.equal(state.items.get("demo-item-1").checked, true);
+
+    await restoreToggledItem(root, state, "demo-item-1", "check");
+    assert.equal(state.items.get("demo-item-1").checked, false);
+
+    await restoreDeletedItem(root, state, "demo-list", cloneDemoItem(createdItem));
+    assert.equal(state.items.get("demo-item-3").name, "Dishwasher tabs");
+
+    setCategoryOrder(state, ["pantry", "produce"]);
+    await saveCategoryOrder(root, state);
+    assert.deepEqual([...state.categoryOrder.entries()], [["pantry", 0], ["produce", 1]]);
+
+    const olderItems = await loadMoreCheckedItems(root, state);
+    assert.deepEqual(olderItems, []);
+
+    connectListSocket(root, state);
+    assert.equal(document.querySelector("[data-list-sync-status]").textContent, "Interactive demo running locally.");
+    setListSyncStatus(root, "Manual sync text");
+    assert.equal(document.querySelector("[data-list-sync-status]").textContent, "Manual sync text");
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("window", originals.window);
   }
 });
 

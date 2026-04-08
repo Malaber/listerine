@@ -1570,7 +1570,86 @@ function setCategoryOrder(state, categoryIds) {
   state.categoryOrder = new Map(categoryIds.map((categoryId, index) => [categoryId, index]));
 }
 
+function isDemoList(root) {
+  return root.dataset.listMode === "demo";
+}
+
+function getDemoPayload(root) {
+  if (!isDemoList(root)) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(root.dataset.demoPayload || "{}");
+  } catch {
+    return null;
+  }
+}
+
+function cloneDemoItem(item) {
+  return {
+    id: item.id,
+    name: item.name,
+    category_id: item.category_id || null,
+    quantity_text: item.quantity_text || null,
+    note: item.note || null,
+    checked: Boolean(item.checked),
+    checked_at: item.checked_at || null,
+    sort_order: Number(item.sort_order || 0),
+  };
+}
+
+function getNextDemoSortOrder(state) {
+  return [...state.items.values()].reduce((highest, item) => Math.max(highest, item.sort_order), -1) + 1;
+}
+
+function createDemoItem(state, payload) {
+  const item = cloneDemoItem({
+    id: `demo-item-${state.nextDemoId}`,
+    name: payload.name,
+    category_id: payload.category_id || null,
+    quantity_text: payload.quantity_text || null,
+    note: payload.note || null,
+    checked: false,
+    checked_at: null,
+    sort_order: payload.sort_order ?? getNextDemoSortOrder(state),
+  });
+  state.nextDemoId += 1;
+  return item;
+}
+
+function updateDemoItem(state, itemId, payload) {
+  const existingItem = state.items.get(itemId);
+  if (!existingItem) {
+    throw new Error(translate("list_detail.item_not_found", {}, "Could not find that item."));
+  }
+
+  return cloneDemoItem({
+    ...existingItem,
+    ...payload,
+  });
+}
+
+function setDemoItemChecked(state, itemId, checked) {
+  const existingItem = state.items.get(itemId);
+  if (!existingItem) {
+    throw new Error(translate("list_detail.item_not_found", {}, "Could not find that item."));
+  }
+
+  return cloneDemoItem({
+    ...existingItem,
+    checked,
+    checked_at: checked ? new Date().toISOString() : null,
+  });
+}
+
 async function saveCategoryOrder(root, state) {
+  if (isDemoList(root)) {
+    const categoryIds = getManualCategoryIds(state);
+    state.categoryOrder = new Map(categoryIds.map((categoryId, index) => [categoryId, index]));
+    return;
+  }
+
   const listId = root.dataset.listId;
   const categoryIds = getManualCategoryIds(state);
   const response = await fetchJson(`/api/v1/lists/${listId}/category-order`, {
@@ -2145,6 +2224,10 @@ function removeItem(state, itemId) {
 }
 
 async function loadMoreCheckedItems(root, state) {
+  if (isDemoList(root)) {
+    return [];
+  }
+
   const listId = root.dataset.listId;
   const checkedOffset = [...state.items.values()].filter((item) => item.checked).length;
   const olderItems = await fetchJson(
@@ -2159,12 +2242,25 @@ async function loadMoreCheckedItems(root, state) {
 }
 
 async function restoreCheckedSuggestion(root, state, reuseItemId) {
+  if (isDemoList(root)) {
+    const revertedItem = setDemoItemChecked(state, reuseItemId, true);
+    upsertItem(state, revertedItem);
+    renderItems(root, state);
+    return;
+  }
+
   const revertedItem = await postJson(`/api/v1/items/${reuseItemId}/check`, {});
   upsertItem(state, revertedItem);
   renderItems(root, state);
 }
 
 async function restoreDeletedItem(root, state, listId, deletedItem) {
+  if (isDemoList(root)) {
+    upsertItem(state, cloneDemoItem(deletedItem));
+    renderItems(root, state);
+    return;
+  }
+
   const restoredItem = await postJson(`/api/v1/lists/${listId}/items`, {
     name: deletedItem.name,
     quantity_text: deletedItem.quantity_text,
@@ -2186,13 +2282,15 @@ async function deleteItem(root, state, listId, itemId) {
     throw new Error(translate("list_detail.item_not_found", {}, "Could not find that item."));
   }
 
-  const response = await fetch(`/api/v1/items/${itemId}`, { method: "DELETE" });
-  if (response.status === 401) {
-    navigateTo("/login");
-    throw new Error(translate("common.errors.unauthorized", {}, "Unauthorized"));
-  }
-  if (!response.ok) {
-    throw new Error(translate("list_detail.item_delete_failed", {}, "Could not delete item."));
+  if (!isDemoList(root)) {
+    const response = await fetch(`/api/v1/items/${itemId}`, { method: "DELETE" });
+    if (response.status === 401) {
+      navigateTo("/login");
+      throw new Error(translate("common.errors.unauthorized", {}, "Unauthorized"));
+    }
+    if (!response.ok) {
+      throw new Error(translate("list_detail.item_delete_failed", {}, "Could not delete item."));
+    }
   }
 
   removeItem(state, itemId);
@@ -2210,6 +2308,13 @@ async function deleteItem(root, state, listId, itemId) {
 }
 
 async function restoreToggledItem(root, state, toggleId, action) {
+  if (isDemoList(root)) {
+    const revertedItem = setDemoItemChecked(state, toggleId, action !== "check");
+    upsertItem(state, revertedItem);
+    renderItems(root, state);
+    return;
+  }
+
   const revertedAction = action === "check" ? "uncheck" : "check";
   const revertedItem = await postJson(`/api/v1/items/${toggleId}/${revertedAction}`, {});
   upsertItem(state, revertedItem);
@@ -2233,6 +2338,32 @@ function disposeSocket(state, markDisposed) {
 }
 
 async function loadListDetail(root, state) {
+  if (isDemoList(root)) {
+    const payload = state.demoPayload || getDemoPayload(root);
+    if (!payload?.list || !payload?.item_window) {
+      throw new Error(translate("list_detail.load_failed", {}, "Could not load the list."));
+    }
+
+    const title = root.querySelector("[data-list-title]");
+    if (title) {
+      title.textContent = payload.list.name;
+    }
+
+    const categories = Array.isArray(payload.categories) ? payload.categories : [];
+    const categoryOrder = Array.isArray(payload.category_order) ? payload.category_order : [];
+    const items = Array.isArray(payload.item_window.items) ? payload.item_window.items : [];
+
+    state.demoPayload = payload;
+    state.nextDemoId = items.length + 1;
+    state.categories = new Map(categories.map((category) => [category.id, category]));
+    state.categoryOrder = new Map(categoryOrder.map((entry) => [entry.category_id, entry.sort_order]));
+    replaceItems(state, items.map(cloneDemoItem));
+    state.checkedRemainingCount = payload.item_window.checked_remaining_count || 0;
+    syncCategoryRadioGroups(root, state);
+    renderItems(root, state);
+    return;
+  }
+
   const listId = root.dataset.listId;
   const [groceryList, itemWindow, categories, categoryOrder] = await Promise.all([
     fetchJson(`/api/v1/lists/${listId}`),
@@ -2257,6 +2388,14 @@ async function loadListDetail(root, state) {
 }
 
 function connectListSocket(root, state) {
+  if (isDemoList(root)) {
+    setListSyncStatus(
+      root,
+      root.dataset.demoSyncText || translate("list_detail.sync_unavailable", {}, "Live updates unavailable.")
+    );
+    return;
+  }
+
   const listId = root.dataset.listId;
   if (!listId) {
     setListSyncStatus(root, translate("list_detail.sync_unavailable", {}, "Live updates unavailable."));
@@ -2344,10 +2483,12 @@ async function initListDetail() {
     categoryOrder: new Map(),
     categories: new Map(),
     checkedRemainingCount: 0,
+    demoPayload: getDemoPayload(root),
     editingItemId: null,
     highlightedItemId: null,
     highlightTimers: new Map(),
     items: new Map(),
+    nextDemoId: 1,
     socket: null,
     undoAction: null,
     undoTimerId: null,
@@ -2494,7 +2635,9 @@ async function initListDetail() {
     }
 
     try {
-      const createdItem = await postJson(`/api/v1/lists/${listId}/items`, payload);
+      const createdItem = isDemoList(root)
+        ? createDemoItem(state, payload)
+        : await postJson(`/api/v1/lists/${listId}/items`, payload);
       upsertItem(state, createdItem);
       itemForm.reset();
       const addSearch = root.querySelector("[data-item-category-search]");
@@ -2533,11 +2676,13 @@ async function initListDetail() {
     }
 
     try {
-      const updatedItem = await fetchJson(`/api/v1/items/${state.editingItemId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const updatedItem = isDemoList(root)
+        ? updateDemoItem(state, state.editingItemId, payload)
+        : await fetchJson(`/api/v1/items/${state.editingItemId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
       upsertItem(state, updatedItem);
       renderItems(root, state);
       setItemEditPanelOpen(root, state, updatedItem.id);
@@ -2599,7 +2744,9 @@ async function initListDetail() {
           throw new Error(translate("list_detail.item_not_found", {}, "Could not find that item."));
         }
         if (existingItem.checked) {
-          const updatedItem = await postJson(`/api/v1/items/${reuseItemId}/uncheck`, {});
+          const updatedItem = isDemoList(root)
+            ? setDemoItemChecked(state, reuseItemId, false)
+            : await postJson(`/api/v1/items/${reuseItemId}/uncheck`, {});
           upsertItem(state, updatedItem);
           itemForm.reset();
           renderItems(root, state);
@@ -2626,7 +2773,9 @@ async function initListDetail() {
           throw new Error(translate("list_detail.item_not_found", {}, "Could not find that item."));
         }
         const action = existingItem.checked ? "uncheck" : "check";
-        const updatedItem = await postJson(`/api/v1/items/${toggleId}/${action}`, {});
+        const updatedItem = isDemoList(root)
+          ? setDemoItemChecked(state, toggleId, action === "check")
+          : await postJson(`/api/v1/items/${toggleId}/${action}`, {});
         upsertItem(state, updatedItem);
         renderItems(root, state);
         showUndoToast(
@@ -3027,6 +3176,12 @@ export {
   getDisplayedCategoryIds,
   deriveManualCategoryIds,
   setCategoryOrder,
+  isDemoList,
+  getDemoPayload,
+  cloneDemoItem,
+  createDemoItem,
+  updateDemoItem,
+  setDemoItemChecked,
   saveCategoryOrder,
   setItemEditPanelOpen,
   renderCategoryOrderSettings,

@@ -2088,8 +2088,73 @@ main {
   margin: 0.75rem 0 0;
 }
 
+.capabilities-shell {
+  display: grid;
+  gap: 1.5rem;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.capabilities-hero,
+.capabilities-grid {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.capabilities-hero {
+  grid-template-columns: minmax(0, 1.5fr) minmax(18rem, 1fr);
+  align-items: start;
+}
+
+.capabilities-copy h1 {
+  margin: 0.35rem 0 1rem;
+  font-size: clamp(2.4rem, 5vw, 4.6rem);
+  line-height: 0.94;
+}
+
+.capabilities-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 1.25rem;
+}
+
+.capabilities-note {
+  margin: 1rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+.capabilities-summary-list {
+  margin: 1rem 0 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.7rem;
+  color: var(--text-muted);
+}
+
+.capabilities-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.capabilities-card {
+  display: grid;
+  gap: 0.9rem;
+  align-content: start;
+}
+
+.capabilities-card-accent {
+  background:
+    linear-gradient(180deg, rgba(223, 248, 253, 0.96), rgba(255, 255, 255, 0.94));
+}
+
 @media (max-width: 720px) {
   .dashboard-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .capabilities-hero,
+  .capabilities-grid {
     grid-template-columns: 1fr;
   }
 

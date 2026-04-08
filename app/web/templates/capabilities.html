@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="capabilities-shell">
+  <section class="capabilities-hero">
+    <div class="capabilities-copy">
+      <p class="dashboard-kicker">{{ t("capabilities.kicker") }}</p>
+      <h1>{{ t("capabilities.title") }}</h1>
+      <p class="dashboard-intro">{{ t("capabilities.intro") }}</p>
+      <div class="capabilities-actions">
+        <a class="primary-button" href="/capabilities/live-demo">{{ t("capabilities.try_live_demo") }}</a>
+        <a class="secondary-button" href="/login">{{ t("capabilities.open_real_lists") }}</a>
+      </div>
+      <p class="capabilities-note">{{ t("capabilities.live_demo_note") }}</p>
+    </div>
+
+    <aside class="dashboard-card dashboard-card-accent capabilities-summary">
+      <h2>{{ t("capabilities.why_people_use_it") }}</h2>
+      <ul class="capabilities-summary-list">
+        <li>{{ t("capabilities.why_shared_lists") }}</li>
+        <li>{{ t("capabilities.why_grocery_checkoff") }}</li>
+        <li>{{ t("capabilities.why_task_capture") }}</li>
+        <li>{{ t("capabilities.why_passkeys") }}</li>
+      </ul>
+    </aside>
+  </section>
+
+  <section class="capabilities-grid">
+    <article class="dashboard-card capabilities-card capabilities-card-accent">
+      <p class="dashboard-label">{{ t("capabilities.live_demo_label") }}</p>
+      <h2>{{ t("capabilities.live_demo_title") }}</h2>
+      <p class="dashboard-helper">{{ t("capabilities.live_demo_body") }}</p>
+      <a class="primary-button" href="/capabilities/live-demo">{{ t("capabilities.try_live_demo") }}</a>
+    </article>
+
+    <article class="dashboard-card capabilities-card">
+      <p class="dashboard-label">{{ t("capabilities.weekly_groceries_label") }}</p>
+      <h2>{{ t("capabilities.weekly_groceries_title") }}</h2>
+      <p class="dashboard-helper">{{ t("capabilities.weekly_groceries_body") }}</p>
+    </article>
+
+    <article class="dashboard-card capabilities-card">
+      <p class="dashboard-label">{{ t("capabilities.household_todos_label") }}</p>
+      <h2>{{ t("capabilities.household_todos_title") }}</h2>
+      <p class="dashboard-helper">{{ t("capabilities.household_todos_body") }}</p>
+    </article>
+
+    <article class="dashboard-card capabilities-card">
+      <p class="dashboard-label">{{ t("capabilities.privacy_label") }}</p>
+      <h2>{{ t("capabilities.privacy_title") }}</h2>
+      <p class="dashboard-helper">{{ t("capabilities.privacy_body") }}</p>
+    </article>
+  </section>
+</section>
+{% endblock %}
