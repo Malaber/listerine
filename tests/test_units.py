@@ -356,6 +356,19 @@ def test_settings_normalize_blank_bootstrap_admin_email() -> None:
     )
 
 
+def test_settings_normalize_app_base_url_and_webcredentials_apps() -> None:
+    settings_obj = Settings(
+        app_base_url=" https://listerine.malaber.de/ ",
+        webcredentials_apps="VWKG94374J.de.malaber.listerine, VWKG94374J.de.malaber.listerine.beta",
+    )
+
+    assert settings_obj.app_base_url == "https://listerine.malaber.de"
+    assert settings_obj.webcredentials_apps == [
+        "VWKG94374J.de.malaber.listerine",
+        "VWKG94374J.de.malaber.listerine.beta",
+    ]
+
+
 def test_passkey_request_helpers() -> None:
     request = Request(
         {
@@ -394,3 +407,24 @@ def test_passkey_request_helper_prefers_configured_rp_id(monkeypatch) -> None:
 
     monkeypatch.setattr("app.api.v1.routes.auth.settings.webauthn_rp_id", "review.example.com")
     assert _rp_id_for_request(request) == "review.example.com"
+
+
+def test_passkey_request_helpers_prefer_configured_app_base_url(monkeypatch) -> None:
+    request = Request(
+        {
+            "type": "http",
+            "scheme": "http",
+            "path": "/login",
+            "server": ("localhost", 8000),
+            "headers": [(b"host", b"localhost:8000")],
+        }
+    )
+
+    monkeypatch.setattr("app.api.v1.routes.auth.settings.webauthn_rp_id", None)
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.settings.app_base_url",
+        "https://listerine.malaber.de",
+    )
+
+    assert _rp_id_for_request(request) == "listerine.malaber.de"
+    assert _origin_for_request(request) == "https://listerine.malaber.de"

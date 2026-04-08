@@ -52,7 +52,7 @@ For an iOS build that should sign in with passkeys:
    ```
 2. Sign the app with the Apple Developer team that will ship it.
 3. Deploy the backend on that same host with `WEBAUTHN_RP_ID=shopping.example.com`.
-4. Serve `/.well-known/apple-app-site-association` on that host with the exact signed app identifier under `webcredentials.apps`, for example `ABCD123456.com.example.shopping`.
+4. Configure `APP_BASE_URL=https://shopping.example.com` and `WEBCREDENTIALS_APPS=ABCD123456.com.example.shopping` so the backend can serve `/.well-known/apple-app-site-association` itself.
 
 Apple's native passkey flow only works when those values match. Self-hosters can use the same Invoke flow to build their own signed app variant for their own domain.
 

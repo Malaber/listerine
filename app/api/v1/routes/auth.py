@@ -1,5 +1,6 @@
 import json
 from datetime import UTC, datetime, timedelta
+from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -56,9 +57,23 @@ _REGISTRATION_FAILURE_DETAIL = (
 )
 
 
+def _configured_origin() -> str | None:
+    return settings.app_base_url
+
+
+def _configured_public_host() -> str | None:
+    configured_origin = _configured_origin()
+    if configured_origin is None:
+        return None
+    return urlparse(configured_origin).hostname
+
+
 def _rp_id_for_request(request: Request) -> str:
     if settings.webauthn_rp_id:
         return settings.webauthn_rp_id
+    configured_host = _configured_public_host()
+    if configured_host:
+        return configured_host
     host = request.url.hostname
     if host is None:
         raise HTTPException(
@@ -69,6 +84,9 @@ def _rp_id_for_request(request: Request) -> str:
 
 
 def _origin_for_request(request: Request) -> str:
+    configured_origin = _configured_origin()
+    if configured_origin is not None:
+        return configured_origin
     return str(request.base_url).rstrip("/")
 
 

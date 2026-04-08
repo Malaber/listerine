@@ -127,10 +127,12 @@ The app and backend now have a strict deployment contract for native Apple passk
 ### Backend deployment requirements
 
 1. Serve the backend over HTTPS on the same hostname you embedded into the app.
-2. Set `WEBAUTHN_RP_ID` to that hostname. `start-ios-backend` derives it automatically for local runs, but production deployments still need to set it explicitly.
-3. Serve an Apple App Site Association file at:
+2. Set `APP_BASE_URL` to that public HTTPS origin.
+3. Set `WEBAUTHN_RP_ID` to that hostname. `start-ios-backend` derives it automatically for local runs, but production deployments still need to set it explicitly.
+4. Set `WEBCREDENTIALS_APPS` to the signed Apple app ID.
+5. The backend now serves an Apple App Site Association file from that config at:
    - `https://shopping.example.com/.well-known/apple-app-site-association`
-4. Include the signed app identifier in that file under `webcredentials.apps`, for example:
+6. The file must include the signed app identifier under `webcredentials.apps`, for example:
    ```json
    {
      "webcredentials": {
@@ -140,9 +142,10 @@ The app and backend now have a strict deployment contract for native Apple passk
      }
    }
    ```
-5. Keep the host in all three places identical:
+7. Keep the host in all four places identical:
    - the app's embedded backend URL
    - the `webcredentials:<host>` entitlement
+   - `APP_BASE_URL`
    - the backend's `WEBAUTHN_RP_ID`
 
 If any of those values drift apart, the simulator or device will fail passkey login before the app can complete `/api/v1/auth/login/verify`.

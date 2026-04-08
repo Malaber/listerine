@@ -1000,6 +1000,96 @@ def test_passkey_flow_uses_configured_webauthn_rp_id(client, monkeypatch) -> Non
     ]
 
 
+def test_passkey_flow_uses_configured_app_base_url(client, monkeypatch) -> None:
+    captured_rp_ids: list[str] = []
+    captured_origins: list[str] = []
+    forwarded_headers = {
+        "host": "internal.container",
+        "x-forwarded-proto": "http",
+    }
+
+    def _capture_registration(**kwargs):
+        captured_rp_ids.append(kwargs["expected_rp_id"])
+        captured_origins.append(kwargs["expected_origin"])
+        return _mock_verified_registration()
+
+    def _capture_authentication(**kwargs):
+        captured_rp_ids.append(kwargs["expected_rp_id"])
+        captured_origins.append(kwargs["expected_origin"])
+        return _mock_verified_authentication()
+
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        _capture_registration,
+    )
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_authentication_response",
+        _capture_authentication,
+    )
+    monkeypatch.setattr("app.api.v1.routes.auth.settings.webauthn_rp_id", None)
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.settings.app_base_url",
+        "https://listerine.malaber.de",
+    )
+
+    email = f"{uuid4()}@example.com"
+    register_options = client.post(
+        "/api/v1/auth/register/options",
+        json={"email": email, "display_name": "User"},
+        headers=forwarded_headers,
+    )
+    assert register_options.status_code == 200
+
+    register_verify = client.post(
+        "/api/v1/auth/register/verify",
+        json=_passkey_finish_payload(),
+        headers=forwarded_headers,
+    )
+    assert register_verify.status_code == 200
+
+    client.post("/api/v1/auth/logout")
+    login_options = client.post(
+        "/api/v1/auth/login/options",
+        json={},
+        headers=forwarded_headers,
+    )
+    assert login_options.status_code == 200
+
+    login_verify = client.post(
+        "/api/v1/auth/login/verify",
+        json=_passkey_finish_payload(),
+        headers=forwarded_headers,
+    )
+    assert login_verify.status_code == 200
+    assert captured_rp_ids == ["listerine.malaber.de", "listerine.malaber.de"]
+    assert captured_origins == [
+        "https://listerine.malaber.de",
+        "https://listerine.malaber.de",
+    ]
+
+
+def test_apple_app_site_association_requires_configuration(client) -> None:
+    response = client.get("/.well-known/apple-app-site-association")
+
+    assert response.status_code == 404
+
+
+def test_apple_app_site_association_returns_webcredentials_apps(client, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.web.routes.settings.webcredentials_apps",
+        ["VWKG94374J.de.malaber.listerine"],
+    )
+
+    response = client.get("/.well-known/apple-app-site-association")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "webcredentials": {
+            "apps": ["VWKG94374J.de.malaber.listerine"],
+        }
+    }
+
+
 def test_bootstrap_admin_email_promotes_matching_user(client, monkeypatch) -> None:
     monkeypatch.setattr(
         "app.api.v1.routes.auth.verify_registration_response",
