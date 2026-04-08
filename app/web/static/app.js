@@ -4,22 +4,6 @@ const SUPPORTED_LANGUAGE_OPTIONS = [
   { value: "en", label: "English" },
   { value: "de", label: "Deutsch" },
 ];
-const CAPABILITIES_DEMO_DEFAULTS = {
-  groceries: [
-    { name: "Apples", meta: "6-pack", group: "Produce", checked: false },
-    { name: "Spinach", meta: "1 bag", group: "Produce", checked: false },
-    { name: "Greek yogurt", meta: "2 tubs", group: "Fridge", checked: true },
-    { name: "Eggs", meta: "12-pack", group: "Fridge", checked: false },
-    { name: "Pasta", meta: "2 boxes", group: "Pantry", checked: false },
-    { name: "Olive oil", meta: "Running low", group: "Pantry", checked: false },
-  ],
-  todos: [
-    { name: "Empty recycling", meta: "Before pickup", group: "Home", checked: true },
-    { name: "Plan three dinners", meta: "For this week", group: "Planning", checked: false },
-    { name: "Water herbs", meta: "Kitchen window", group: "Home", checked: false },
-    { name: "Pack gym shirt", meta: "For tomorrow morning", group: "Personal", checked: false },
-  ],
-};
 
 function base64UrlToBytes(value) {
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
@@ -1586,7 +1570,86 @@ function setCategoryOrder(state, categoryIds) {
   state.categoryOrder = new Map(categoryIds.map((categoryId, index) => [categoryId, index]));
 }
 
+function isDemoList(root) {
+  return root.dataset.listMode === "demo";
+}
+
+function getDemoPayload(root) {
+  if (!isDemoList(root)) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(root.dataset.demoPayload || "{}");
+  } catch {
+    return null;
+  }
+}
+
+function cloneDemoItem(item) {
+  return {
+    id: item.id,
+    name: item.name,
+    category_id: item.category_id || null,
+    quantity_text: item.quantity_text || null,
+    note: item.note || null,
+    checked: Boolean(item.checked),
+    checked_at: item.checked_at || null,
+    sort_order: Number(item.sort_order || 0),
+  };
+}
+
+function getNextDemoSortOrder(state) {
+  return [...state.items.values()].reduce((highest, item) => Math.max(highest, item.sort_order), -1) + 1;
+}
+
+function createDemoItem(state, payload) {
+  const item = cloneDemoItem({
+    id: `demo-item-${state.nextDemoId}`,
+    name: payload.name,
+    category_id: payload.category_id || null,
+    quantity_text: payload.quantity_text || null,
+    note: payload.note || null,
+    checked: false,
+    checked_at: null,
+    sort_order: payload.sort_order ?? getNextDemoSortOrder(state),
+  });
+  state.nextDemoId += 1;
+  return item;
+}
+
+function updateDemoItem(state, itemId, payload) {
+  const existingItem = state.items.get(itemId);
+  if (!existingItem) {
+    throw new Error(translate("list_detail.item_not_found", {}, "Could not find that item."));
+  }
+
+  return cloneDemoItem({
+    ...existingItem,
+    ...payload,
+  });
+}
+
+function setDemoItemChecked(state, itemId, checked) {
+  const existingItem = state.items.get(itemId);
+  if (!existingItem) {
+    throw new Error(translate("list_detail.item_not_found", {}, "Could not find that item."));
+  }
+
+  return cloneDemoItem({
+    ...existingItem,
+    checked,
+    checked_at: checked ? new Date().toISOString() : null,
+  });
+}
+
 async function saveCategoryOrder(root, state) {
+  if (isDemoList(root)) {
+    const categoryIds = getManualCategoryIds(state);
+    state.categoryOrder = new Map(categoryIds.map((categoryId, index) => [categoryId, index]));
+    return;
+  }
+
   const listId = root.dataset.listId;
   const categoryIds = getManualCategoryIds(state);
   const response = await fetchJson(`/api/v1/lists/${listId}/category-order`, {
@@ -2161,6 +2224,10 @@ function removeItem(state, itemId) {
 }
 
 async function loadMoreCheckedItems(root, state) {
+  if (isDemoList(root)) {
+    return [];
+  }
+
   const listId = root.dataset.listId;
   const checkedOffset = [...state.items.values()].filter((item) => item.checked).length;
   const olderItems = await fetchJson(
@@ -2175,12 +2242,25 @@ async function loadMoreCheckedItems(root, state) {
 }
 
 async function restoreCheckedSuggestion(root, state, reuseItemId) {
+  if (isDemoList(root)) {
+    const revertedItem = setDemoItemChecked(state, reuseItemId, true);
+    upsertItem(state, revertedItem);
+    renderItems(root, state);
+    return;
+  }
+
   const revertedItem = await postJson(`/api/v1/items/${reuseItemId}/check`, {});
   upsertItem(state, revertedItem);
   renderItems(root, state);
 }
 
 async function restoreDeletedItem(root, state, listId, deletedItem) {
+  if (isDemoList(root)) {
+    upsertItem(state, cloneDemoItem(deletedItem));
+    renderItems(root, state);
+    return;
+  }
+
   const restoredItem = await postJson(`/api/v1/lists/${listId}/items`, {
     name: deletedItem.name,
     quantity_text: deletedItem.quantity_text,
@@ -2202,13 +2282,15 @@ async function deleteItem(root, state, listId, itemId) {
     throw new Error(translate("list_detail.item_not_found", {}, "Could not find that item."));
   }
 
-  const response = await fetch(`/api/v1/items/${itemId}`, { method: "DELETE" });
-  if (response.status === 401) {
-    navigateTo("/login");
-    throw new Error(translate("common.errors.unauthorized", {}, "Unauthorized"));
-  }
-  if (!response.ok) {
-    throw new Error(translate("list_detail.item_delete_failed", {}, "Could not delete item."));
+  if (!isDemoList(root)) {
+    const response = await fetch(`/api/v1/items/${itemId}`, { method: "DELETE" });
+    if (response.status === 401) {
+      navigateTo("/login");
+      throw new Error(translate("common.errors.unauthorized", {}, "Unauthorized"));
+    }
+    if (!response.ok) {
+      throw new Error(translate("list_detail.item_delete_failed", {}, "Could not delete item."));
+    }
   }
 
   removeItem(state, itemId);
@@ -2226,6 +2308,13 @@ async function deleteItem(root, state, listId, itemId) {
 }
 
 async function restoreToggledItem(root, state, toggleId, action) {
+  if (isDemoList(root)) {
+    const revertedItem = setDemoItemChecked(state, toggleId, action !== "check");
+    upsertItem(state, revertedItem);
+    renderItems(root, state);
+    return;
+  }
+
   const revertedAction = action === "check" ? "uncheck" : "check";
   const revertedItem = await postJson(`/api/v1/items/${toggleId}/${revertedAction}`, {});
   upsertItem(state, revertedItem);
@@ -2249,6 +2338,32 @@ function disposeSocket(state, markDisposed) {
 }
 
 async function loadListDetail(root, state) {
+  if (isDemoList(root)) {
+    const payload = state.demoPayload || getDemoPayload(root);
+    if (!payload?.list || !payload?.item_window) {
+      throw new Error(translate("list_detail.load_failed", {}, "Could not load the list."));
+    }
+
+    const title = root.querySelector("[data-list-title]");
+    if (title) {
+      title.textContent = payload.list.name;
+    }
+
+    const categories = Array.isArray(payload.categories) ? payload.categories : [];
+    const categoryOrder = Array.isArray(payload.category_order) ? payload.category_order : [];
+    const items = Array.isArray(payload.item_window.items) ? payload.item_window.items : [];
+
+    state.demoPayload = payload;
+    state.nextDemoId = items.length + 1;
+    state.categories = new Map(categories.map((category) => [category.id, category]));
+    state.categoryOrder = new Map(categoryOrder.map((entry) => [entry.category_id, entry.sort_order]));
+    replaceItems(state, items.map(cloneDemoItem));
+    state.checkedRemainingCount = payload.item_window.checked_remaining_count || 0;
+    syncCategoryRadioGroups(root, state);
+    renderItems(root, state);
+    return;
+  }
+
   const listId = root.dataset.listId;
   const [groceryList, itemWindow, categories, categoryOrder] = await Promise.all([
     fetchJson(`/api/v1/lists/${listId}`),
@@ -2273,6 +2388,14 @@ async function loadListDetail(root, state) {
 }
 
 function connectListSocket(root, state) {
+  if (isDemoList(root)) {
+    setListSyncStatus(
+      root,
+      root.dataset.demoSyncText || translate("list_detail.sync_unavailable", {}, "Live updates unavailable.")
+    );
+    return;
+  }
+
   const listId = root.dataset.listId;
   if (!listId) {
     setListSyncStatus(root, translate("list_detail.sync_unavailable", {}, "Live updates unavailable."));
@@ -2360,10 +2483,12 @@ async function initListDetail() {
     categoryOrder: new Map(),
     categories: new Map(),
     checkedRemainingCount: 0,
+    demoPayload: getDemoPayload(root),
     editingItemId: null,
     highlightedItemId: null,
     highlightTimers: new Map(),
     items: new Map(),
+    nextDemoId: 1,
     socket: null,
     undoAction: null,
     undoTimerId: null,
@@ -2510,7 +2635,9 @@ async function initListDetail() {
     }
 
     try {
-      const createdItem = await postJson(`/api/v1/lists/${listId}/items`, payload);
+      const createdItem = isDemoList(root)
+        ? createDemoItem(state, payload)
+        : await postJson(`/api/v1/lists/${listId}/items`, payload);
       upsertItem(state, createdItem);
       itemForm.reset();
       const addSearch = root.querySelector("[data-item-category-search]");
@@ -2549,11 +2676,13 @@ async function initListDetail() {
     }
 
     try {
-      const updatedItem = await fetchJson(`/api/v1/items/${state.editingItemId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const updatedItem = isDemoList(root)
+        ? updateDemoItem(state, state.editingItemId, payload)
+        : await fetchJson(`/api/v1/items/${state.editingItemId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
       upsertItem(state, updatedItem);
       renderItems(root, state);
       setItemEditPanelOpen(root, state, updatedItem.id);
@@ -2615,7 +2744,9 @@ async function initListDetail() {
           throw new Error(translate("list_detail.item_not_found", {}, "Could not find that item."));
         }
         if (existingItem.checked) {
-          const updatedItem = await postJson(`/api/v1/items/${reuseItemId}/uncheck`, {});
+          const updatedItem = isDemoList(root)
+            ? setDemoItemChecked(state, reuseItemId, false)
+            : await postJson(`/api/v1/items/${reuseItemId}/uncheck`, {});
           upsertItem(state, updatedItem);
           itemForm.reset();
           renderItems(root, state);
@@ -2642,7 +2773,9 @@ async function initListDetail() {
           throw new Error(translate("list_detail.item_not_found", {}, "Could not find that item."));
         }
         const action = existingItem.checked ? "uncheck" : "check";
-        const updatedItem = await postJson(`/api/v1/items/${toggleId}/${action}`, {});
+        const updatedItem = isDemoList(root)
+          ? setDemoItemChecked(state, toggleId, action === "check")
+          : await postJson(`/api/v1/items/${toggleId}/${action}`, {});
         upsertItem(state, updatedItem);
         renderItems(root, state);
         showUndoToast(
@@ -2965,158 +3098,6 @@ async function initHouseholdInvite() {
   });
 }
 
-function normalizeDemoEntry(value) {
-  return value.trim().replace(/\s+/g, " ");
-}
-
-function createCapabilitiesDemoState(name) {
-  const defaults = CAPABILITIES_DEMO_DEFAULTS[name] || [];
-  return {
-    nextId: defaults.length + 1,
-    items: defaults.map((item, index) => ({
-      id: `${name}-${index + 1}`,
-      name: item.name,
-      meta: item.meta,
-      group: item.group,
-      checked: item.checked,
-    })),
-  };
-}
-
-function setCapabilitiesSummary(root, items) {
-  const summary = root.querySelector("[data-demo-summary]");
-  if (!(summary instanceof HTMLElement)) {
-    return;
-  }
-
-  const remaining = items.filter((item) => !item.checked).length;
-  summary.textContent = remaining === 0 ? "Everything checked off" : `${remaining} left to do`;
-}
-
-function renderCapabilitiesDemo(root, state) {
-  const container = root.querySelector("[data-demo-items]");
-  if (!(container instanceof HTMLElement)) {
-    return;
-  }
-
-  container.innerHTML = "";
-  setCapabilitiesSummary(root, state.items);
-
-  const groupedItems = state.items.reduce((groups, item) => {
-    if (!groups.has(item.group)) {
-      groups.set(item.group, []);
-    }
-    groups.get(item.group).push(item);
-    return groups;
-  }, new Map());
-
-  groupedItems.forEach((items, group) => {
-    const section = document.createElement("section");
-    section.className = "capabilities-group";
-
-    const heading = document.createElement("div");
-    heading.className = "capabilities-group-heading";
-    heading.innerHTML = `
-      <strong>${group}</strong>
-      <span>${items.length} item${items.length === 1 ? "" : "s"}</span>
-    `;
-    section.appendChild(heading);
-
-    const list = document.createElement("div");
-    list.className = "capabilities-items";
-
-    items.forEach((item) => {
-      const row = document.createElement("label");
-      row.className = `capabilities-item${item.checked ? " is-checked" : ""}`;
-      row.setAttribute("data-demo-item", item.id);
-      row.innerHTML = `
-        <input type="checkbox" ${item.checked ? "checked" : ""} data-demo-toggle="${item.id}" />
-        <span class="capabilities-item-copy">
-          <strong>${item.name}</strong>
-          <span>${item.meta}</span>
-        </span>
-      `;
-      list.appendChild(row);
-    });
-
-    section.appendChild(list);
-    container.appendChild(section);
-  });
-}
-
-function addCapabilitiesDemoItem(root, state, name) {
-  const input = root.querySelector("[data-demo-input]");
-  const normalizedName = normalizeDemoEntry(name);
-  if (!normalizedName) {
-    return false;
-  }
-
-  const demoName = root.getAttribute("data-demo-list") || "demo";
-  state.items.unshift({
-    id: `${demoName}-${state.nextId}`,
-    name: normalizedName,
-    meta: "Added just now",
-    group: "New items",
-    checked: false,
-  });
-  state.nextId += 1;
-  renderCapabilitiesDemo(root, state);
-
-  if (input instanceof HTMLInputElement) {
-    input.value = "";
-    input.focus();
-  }
-
-  return true;
-}
-
-function toggleCapabilitiesDemoItem(root, state, itemId) {
-  const item = state.items.find((entry) => entry.id === itemId);
-  if (!item) {
-    return;
-  }
-
-  item.checked = !item.checked;
-  renderCapabilitiesDemo(root, state);
-}
-
-function initCapabilitiesShowcase() {
-  const root = document.querySelector("[data-capabilities-showcase]");
-  if (!(root instanceof HTMLElement)) {
-    return;
-  }
-
-  root.querySelectorAll("[data-demo-list]").forEach((demoRoot) => {
-    if (!(demoRoot instanceof HTMLElement)) {
-      return;
-    }
-
-    const state = createCapabilitiesDemoState(demoRoot.getAttribute("data-demo-list") || "");
-    renderCapabilitiesDemo(demoRoot, state);
-
-    demoRoot.querySelector("[data-demo-form]")?.addEventListener("submit", (event) => {
-      event.preventDefault();
-      const input = demoRoot.querySelector("[data-demo-input]");
-      if (!(input instanceof HTMLInputElement)) {
-        return;
-      }
-      addCapabilitiesDemoItem(demoRoot, state, input.value);
-    });
-
-    demoRoot.addEventListener("change", (event) => {
-      const target = event.target;
-      if (!(target instanceof HTMLInputElement)) {
-        return;
-      }
-      const itemId = target.getAttribute("data-demo-toggle");
-      if (!itemId) {
-        return;
-      }
-      toggleCapabilitiesDemoItem(demoRoot, state, itemId);
-    });
-  });
-}
-
 function initApp() {
   applyLanguagePreference();
   registerServiceWorker().catch(() => undefined);
@@ -3126,7 +3107,6 @@ function initApp() {
   initDashboard();
   initHouseholdInvite();
   initListDetail();
-  initCapabilitiesShowcase();
 }
 
 if (typeof document !== "undefined") {
@@ -3196,6 +3176,12 @@ export {
   getDisplayedCategoryIds,
   deriveManualCategoryIds,
   setCategoryOrder,
+  isDemoList,
+  getDemoPayload,
+  cloneDemoItem,
+  createDemoItem,
+  updateDemoItem,
+  setDemoItemChecked,
   saveCategoryOrder,
   setItemEditPanelOpen,
   renderCategoryOrderSettings,
@@ -3229,12 +3215,5 @@ export {
   initUserSettings,
   formatInviteExpiry,
   initHouseholdInvite,
-  normalizeDemoEntry,
-  createCapabilitiesDemoState,
-  setCapabilitiesSummary,
-  renderCapabilitiesDemo,
-  addCapabilitiesDemoItem,
-  toggleCapabilitiesDemoItem,
-  initCapabilitiesShowcase,
   initApp,
 };

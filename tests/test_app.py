@@ -157,9 +157,9 @@ def test_capabilities_page_is_public_and_contains_interactive_demo(client) -> No
     response = client.get("/capabilities")
 
     assert response.status_code == 200
-    assert "data-capabilities-showcase" in response.text
-    assert "Weekly grocery list" in response.text
-    assert "No backend calls" in response.text
+    assert 'data-list-detail' in response.text
+    assert 'data-list-mode="demo"' in response.text
+    assert "Saturday Groceries" in response.text
 
 
 def test_full_flow(client) -> None:
@@ -378,12 +378,12 @@ def test_capabilities_page_is_public_and_describes_real_features(client) -> None
     page = client.get("/capabilities")
 
     assert page.status_code == 200
-    assert "What Listerine can do" in page.text
-    assert "Weekly groceries" in page.text
-    assert "Household chores" in page.text
-    assert "Family event prep" in page.text
-    assert "Households and shared lists for collaborative planning." in page.text
-    assert "Passkey-based sign-in and session controls for strong account security." in page.text
+    assert 'data-list-detail' in page.text
+    assert 'data-list-mode="demo"' in page.text
+    assert "Interactive showcase" in page.text
+    assert "Saturday Groceries" in page.text
+    assert "Interactive demo running locally." in page.text
+    assert "real list UI with local demo data" in page.text
     assert 'href="/login"' in page.text
 
 

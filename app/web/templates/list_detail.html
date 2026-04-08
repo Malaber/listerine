@@ -4,18 +4,28 @@
   class="list-shell"
   data-list-detail
   data-list-id="{{ list_id }}"
+  data-list-mode="{{ 'demo' if is_demo_list else 'live' }}"
+  {% if is_demo_list %}
+  data-demo-payload="{{ demo_payload_json|forceescape }}"
+  data-demo-sync-text="{{ list_sync_text }}"
+  {% endif %}
 >
   <div class="list-hero">
     <div class="list-hero-copy">
-      <p class="dashboard-kicker">{{ t("list_detail.kicker") }}</p>
+      <p class="dashboard-kicker">{{ list_kicker if list_kicker is defined else t("list_detail.kicker") }}</p>
       <div class="list-title-row">
         <h1 data-list-title>{{ t("list_detail.loading_title") }}</h1>
         <button class="list-settings-button" type="button" aria-label="{{ t("list_detail.open_settings") }}" data-list-settings-toggle>
           {{ t("list_detail.list_settings") }}
         </button>
       </div>
+      {% if list_page_note is defined %}
+      <p class="dashboard-helper">{{ list_page_note }}</p>
+      {% endif %}
     </div>
-    <a class="back-link" href="/?dashboard=1">{{ t("list_detail.back_to_households") }}</a>
+    <a class="back-link" href="{{ list_back_href if list_back_href is defined else '/?dashboard=1' }}">
+      {{ list_back_label if list_back_label is defined else t("list_detail.back_to_households") }}
+    </a>
   </div>
 
   <div class="dashboard-banner dashboard-banner-error" data-list-error hidden></div>
@@ -26,7 +36,9 @@
       <div>
         <p class="dashboard-label">{{ t("list_detail.items_label") }}</p>
       </div>
-      <p class="dashboard-helper list-status" data-list-sync-status>{{ t("list_detail.sync_connecting") }}</p>
+      <p class="dashboard-helper list-status" data-list-sync-status>
+        {{ list_sync_text if list_sync_text is defined else t("list_detail.sync_connecting") }}
+      </p>
     </div>
     <div class="dashboard-empty" data-item-empty hidden>
       <h3>{{ t("list_detail.empty_title") }}</h3>

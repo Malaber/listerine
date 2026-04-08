@@ -3,25 +3,34 @@ import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 
 import {
-  addCapabilitiesDemoItem,
   applyLanguagePreference,
-  createCapabilitiesDemoState,
+  cloneDemoItem,
+  createDemoItem,
   formatInviteExpiry,
   formatPasskeyDate,
+  getDemoPayload,
   getPreferredLocale,
-  initCapabilitiesShowcase,
   initUserSettings,
+  isDemoList,
   languagePreferenceLabel,
+  loadListDetail,
   loadMoreCheckedItems,
   normalizeLanguagePreference,
   registerServiceWorker,
-  renderCapabilitiesDemo,
   renderItems,
   renderItemSuggestions,
+  restoreCheckedSuggestion,
+  restoreDeletedItem,
+  restoreToggledItem,
+  saveCategoryOrder,
+  setCategoryOrder,
+  setDemoItemChecked,
   setLanguageSettingsOpen,
+  setListSyncStatus,
   storeLanguagePreference,
   syncLanguageSettings,
-  toggleCapabilitiesDemoItem,
+  updateDemoItem,
+  connectListSocket,
 } from "./app.js";
 
 function setGlobalProperty(name, value) {
@@ -138,28 +147,72 @@ function createSuggestionRoot() {
   };
 }
 
-function createCapabilitiesRoot() {
+function createDemoListRoot() {
+  const demoPayload = {
+    list: { id: "demo-list", name: "Saturday Groceries" },
+    categories: [
+      { id: "produce", name: "Produce", color: "#6bbf59" },
+      { id: "pantry", name: "Pantry", color: "#f59e0b" },
+    ],
+    category_order: [
+      { category_id: "produce", sort_order: 0 },
+      { category_id: "pantry", sort_order: 1 },
+    ],
+    item_window: {
+      checked_remaining_count: 0,
+      items: [
+        {
+          id: "demo-item-1",
+          name: "Bananas",
+          category_id: "produce",
+          quantity_text: "6",
+          note: null,
+          checked: false,
+          checked_at: null,
+          sort_order: 0,
+        },
+        {
+          id: "demo-item-2",
+          name: "Olive oil",
+          category_id: "pantry",
+          quantity_text: null,
+          note: "Running low",
+          checked: true,
+          checked_at: "2026-04-08T09:00:00Z",
+          sort_order: 1,
+        },
+      ],
+    },
+  };
   const dom = new JSDOM(`
     <!doctype html>
     <html>
       <body>
-        <section data-capabilities-showcase>
-          <article data-demo-list="groceries">
-            <p data-demo-summary></p>
-            <form data-demo-form>
-              <input data-demo-input />
-              <button type="submit">Add</button>
-            </form>
-            <div data-demo-items></div>
-          </article>
+        <section
+          data-list-detail
+          data-list-id="demo-list"
+          data-list-mode="demo"
+          data-demo-sync-text="Interactive demo running locally."
+          data-demo-payload='${JSON.stringify(demoPayload)}'
+        >
+          <h1 data-list-title></h1>
+          <p data-list-sync-status></p>
+          <input data-item-name-input value="" />
+          <input data-item-category-search value="" />
+          <input data-item-edit-category-search value="" />
+          <div data-item-suggestions-slot><div data-item-suggestions></div></div>
+          <div data-item-category-radios></div>
+          <div data-item-edit-category-radios></div>
+          <div data-item-empty></div>
+          <div data-item-list></div>
         </section>
       </body>
     </html>
   `);
   return {
     document: dom.window.document,
-    root: dom.window.document.querySelector("[data-demo-list]"),
-    showcase: dom.window.document.querySelector("[data-capabilities-showcase]"),
+    payload: demoPayload,
+    root: dom.window.document.querySelector("[data-list-detail]"),
     window: dom.window,
   };
 }
@@ -279,8 +332,8 @@ test("renderItemSuggestions adds category color strips for categorized matches",
   }
 });
 
-test("capabilities showcase demos render, toggle, and add items without backend calls", () => {
-  const { document, root, window } = createCapabilitiesRoot();
+test("demo list helpers reuse the real list page with local data", async () => {
+  const { document, payload, root, window } = createDemoListRoot();
   const originals = {
     HTMLElement: globalThis.HTMLElement,
     HTMLInputElement: globalThis.HTMLInputElement,
@@ -294,31 +347,60 @@ test("capabilities showcase demos render, toggle, and add items without backend 
   setGlobalProperty("window", window);
 
   try {
-    const state = createCapabilitiesDemoState("groceries");
-    renderCapabilitiesDemo(root, state);
+    const state = {
+      categoryOrder: new Map(),
+      categories: new Map(),
+      checkedRemainingCount: 0,
+      demoPayload: getDemoPayload(root),
+      editingItemId: null,
+      highlightedItemId: null,
+      highlightTimers: new Map(),
+      items: new Map(),
+      nextDemoId: 1,
+      socket: null,
+      undoAction: null,
+      undoTimerId: null,
+    };
 
-    assert.match(document.querySelector("[data-demo-summary]").textContent, /left to do/);
-    assert.equal(document.querySelectorAll("[data-demo-item]").length, 6);
+    assert.equal(isDemoList(root), true);
+    assert.equal(state.demoPayload.list.name, payload.list.name);
 
-    toggleCapabilitiesDemoItem(root, state, "groceries-1");
-    assert.equal(document.querySelector('[data-demo-toggle="groceries-1"]').checked, true);
+    await loadListDetail(root, state);
+    assert.equal(document.querySelector("[data-list-title]").textContent, "Saturday Groceries");
+    assert.equal(document.querySelectorAll(".item-card").length, 2);
 
-    assert.equal(addCapabilitiesDemoItem(root, state, "  Bananas   "), true);
-    assert.equal(document.querySelector('[data-demo-item="groceries-7"] strong').textContent, "Bananas");
+    const createdItem = createDemoItem(state, { name: "Dishwasher tabs", category_id: "pantry" });
+    assert.equal(createdItem.id, "demo-item-3");
+    assert.equal(createdItem.sort_order, 2);
 
-    initCapabilitiesShowcase();
-    const input = document.querySelector("[data-demo-input]");
-    input.value = "Dishwasher tabs";
-    document
-      .querySelector("[data-demo-form]")
-      .dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+    state.items.set(createdItem.id, createdItem);
+    const updatedItem = updateDemoItem(state, "demo-item-3", { note: "Big box" });
+    assert.equal(updatedItem.note, "Big box");
 
-    assert.equal(document.querySelector('[data-demo-item="groceries-7"] strong').textContent, "Dishwasher tabs");
+    const checkedItem = setDemoItemChecked(state, "demo-item-1", true);
+    assert.equal(checkedItem.checked, true);
+    assert.match(checkedItem.checked_at, /T/);
 
-    const checkbox = document.querySelector('[data-demo-toggle="groceries-1"]');
-    checkbox.checked = true;
-    checkbox.dispatchEvent(new window.Event("change", { bubbles: true }));
-    assert.equal(document.querySelector('[data-demo-item="groceries-1"]').classList.contains("is-checked"), true);
+    await restoreCheckedSuggestion(root, state, "demo-item-1");
+    assert.equal(state.items.get("demo-item-1").checked, true);
+
+    await restoreToggledItem(root, state, "demo-item-1", "check");
+    assert.equal(state.items.get("demo-item-1").checked, false);
+
+    await restoreDeletedItem(root, state, "demo-list", cloneDemoItem(createdItem));
+    assert.equal(state.items.get("demo-item-3").name, "Dishwasher tabs");
+
+    setCategoryOrder(state, ["pantry", "produce"]);
+    await saveCategoryOrder(root, state);
+    assert.deepEqual([...state.categoryOrder.entries()], [["pantry", 0], ["produce", 1]]);
+
+    const olderItems = await loadMoreCheckedItems(root, state);
+    assert.deepEqual(olderItems, []);
+
+    connectListSocket(root, state);
+    assert.equal(document.querySelector("[data-list-sync-status]").textContent, "Interactive demo running locally.");
+    setListSyncStatus(root, "Manual sync text");
+    assert.equal(document.querySelector("[data-list-sync-status]").textContent, "Manual sync text");
   } finally {
     restoreDomGlobals(originals);
     setGlobalProperty("document", originals.document);
