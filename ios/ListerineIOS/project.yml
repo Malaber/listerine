@@ -20,6 +20,7 @@ targets:
       base:
         PRODUCT_NAME: Listerine
         PRODUCT_BUNDLE_IDENTIFIER: de.malaber.listerine
+        DEVELOPMENT_TEAM: VWKG94374J
         MARKETING_VERSION: 0.1.0
         CURRENT_PROJECT_VERSION: 1
         SWIFT_VERSION: 5.10
