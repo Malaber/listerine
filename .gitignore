@@ -20,3 +20,11 @@ e2e-artifacts/*
 !e2e-artifacts/.gitkeep
 
 /build
+
+# macOS / Xcode / SwiftPM local artifacts
+.DS_Store
+ios/ListerineIOS/.build/
+ios/ListerineIOS/.clang-module-cache/
+ios/ListerineIOS/.swiftpm/
+ios/ListerineIOS/ListerineApp.xcodeproj/xcuserdata/
+ios/ListerineIOS/ListerineApp.xcodeproj/project.xcworkspace/xcuserdata/
