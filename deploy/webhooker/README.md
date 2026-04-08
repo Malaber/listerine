@@ -311,12 +311,60 @@ webhooker_worker_extra_mounts:
 ## Runtime behavior
 
 - Review deployments seed deterministic real data from `/app/app/fixtures/review_seed.json`.
-- Review deployments set `WEBAUTHN_RP_ID=listerine.example.com` so the same passkey RP can work across PR subdomains.
+- Review deployments set `APP_BASE_URL=https://pr-<PR>.pr.listerine.malaber.de`.
+- Review deployments set `WEBAUTHN_RP_ID=pr.listerine.malaber.de` so one shared passkey works across all PR hosts.
+- Review deployments set `WEBCREDENTIALS_APPS` to the JSON array of signed iOS app IDs allowed to use native passkeys.
 - Both modes mount the host data directory at `/data` in the container and use `DATABASE_URL=sqlite+aiosqlite:////data/listerine.db`.
 - The rendered `APP_DATA_DIR` should stay relative when possible, for example `./data`, so the Compose bundle remains portable with its sibling folders.
 - Both modes join the external Traefik network `system_traefik_external`.
 - CI publishes `sha-<full git sha>` tags on branch pushes, and PR review jobs reuse the matching `sha-<pr head sha>` image.
 - CI sends signed wake requests to `webhooker` after publishing images.
+
+### Shared passkey validation host
+
+Review passkeys need one extra deployment target besides the individual PR app
+hosts. The app UI still lives on `pr-<PR>.pr.listerine.malaber.de`, but the iOS
+Associated Domains entitlement and `WEBAUTHN_RP_ID` both point at the shared
+domain `pr.listerine.malaber.de`.
+
+Because of that, `pr.listerine.malaber.de` must exist as its own deployment and
+serve the Apple App Site Association payload for the signed app identifier. A
+simple Nginx service behind Traefik is enough:
+
+```nginx
+server {
+    listen 80;
+    listen [::]:80;
+    server_name pr.listerine.malaber.de;
+
+    location = /.well-known/apple-app-site-association {
+        default_type application/json;
+        add_header Cache-Control "public, max-age=300";
+        return 200 '{"webcredentials":{"apps":["VWKG94374J.de.malaber.listerine"]}}';
+    }
+
+    location = /apple-app-site-association {
+        default_type application/json;
+        add_header Cache-Control "public, max-age=300";
+        return 200 '{"webcredentials":{"apps":["VWKG94374J.de.malaber.listerine"]}}';
+    }
+
+    location = /health {
+        default_type application/json;
+        return 200 '{"status":"ok"}';
+    }
+
+    location / {
+        return 404;
+    }
+}
+```
+
+Before testing native iOS passkeys against review builds, confirm both of these
+URLs return `200` with the expected JSON body:
+
+- `https://pr.listerine.malaber.de/.well-known/apple-app-site-association`
+- `https://pr.listerine.malaber.de/apple-app-site-association`
 
 ## GitHub Actions settings
 
