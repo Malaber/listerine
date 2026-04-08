@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
+    JSONResponse,
     PlainTextResponse,
     RedirectResponse,
     Response as FastAPIResponse,
@@ -16,6 +17,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_list_for_user
+from app.core.config import settings
 from app.core.database import get_db
 from app.i18n import encode_catalog, translator_for
 from app.models import User
@@ -187,6 +189,20 @@ async def service_worker() -> FileResponse:
         static_root / "service-worker.js",
         media_type="application/javascript",
         headers={"Cache-Control": "no-cache"},
+    )
+
+
+@router.get("/.well-known/apple-app-site-association", include_in_schema=False)
+@router.get("/apple-app-site-association", include_in_schema=False)
+async def apple_app_site_association() -> JSONResponse:
+    if not settings.webcredentials_apps:
+        raise HTTPException(status_code=404, detail="Apple app site association is not configured")
+    return JSONResponse(
+        {
+            "webcredentials": {
+                "apps": settings.webcredentials_apps,
+            }
+        }
     )
 
 

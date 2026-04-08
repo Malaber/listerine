@@ -1,0 +1,376 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0DF0CA0086C7585B6E4DEBC3 /* ListerineApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8491C1AEF2BC348977951F06 /* ListerineApp.swift */; };
+		0EC30171F179B4640712AD7A /* BuildConfiguration.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2E20E622D1483C4892ECDE4 /* BuildConfiguration.generated.swift */; };
+		1D527318E2B0DF81653EE0DE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6FD39624D7CA829381C145D7 /* Assets.xcassets */; };
+		27AF5962A512108259C0C42F /* MobileAppViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EC61542B67179C9B0637940 /* MobileAppViewModel.swift */; };
+		3967759140BC8B5C2218FAD6 /* ApplePasskeyClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 551B3360068D6020C456D4B0 /* ApplePasskeyClient.swift */; };
+		67B81BCC4656D3B209B370C8 /* ListerineCore in Frameworks */ = {isa = PBXBuildFile; productRef = FEE9CD5DEA44E9C8BE44845E /* ListerineCore */; };
+		844561BFFF84892FB58B564F /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E59F81D2ECEBDEED61800D9 /* RootView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		235BABE9DE69DE7A433B762A /* Listerine.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Listerine.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		4E59F81D2ECEBDEED61800D9 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		551B3360068D6020C456D4B0 /* ApplePasskeyClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplePasskeyClient.swift; sourceTree = "<group>"; };
+		5EC61542B67179C9B0637940 /* MobileAppViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileAppViewModel.swift; sourceTree = "<group>"; };
+		6FD39624D7CA829381C145D7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Assets.xcassets; sourceTree = SOURCE_ROOT; };
+		8491C1AEF2BC348977951F06 /* ListerineApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListerineApp.swift; sourceTree = "<group>"; };
+		AF9BDC88BED8495FB5471C16 /* Listerine.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Listerine.entitlements; sourceTree = "<group>"; };
+		B2E20E622D1483C4892ECDE4 /* BuildConfiguration.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildConfiguration.generated.swift; sourceTree = "<group>"; };
+		C2EC8AC13D3FBD3F3FA08CF7 /* ListerineIOS */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ListerineIOS; path = .; sourceTree = SOURCE_ROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		16FBB000FBED0DD5281014C1 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				67B81BCC4656D3B209B370C8 /* ListerineCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		6009D4F07D9C82C7EF4563DD /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				235BABE9DE69DE7A433B762A /* Listerine.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		9016EAE4FB57386C9C3F20C5 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				551B3360068D6020C456D4B0 /* ApplePasskeyClient.swift */,
+				B2E20E622D1483C4892ECDE4 /* BuildConfiguration.generated.swift */,
+				AF9BDC88BED8495FB5471C16 /* Listerine.entitlements */,
+				8491C1AEF2BC348977951F06 /* ListerineApp.swift */,
+				5EC61542B67179C9B0637940 /* MobileAppViewModel.swift */,
+				4E59F81D2ECEBDEED61800D9 /* RootView.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		CFBDB1A3C142C5EBDB9D8F89 = {
+			isa = PBXGroup;
+			children = (
+				6FD39624D7CA829381C145D7 /* Assets.xcassets */,
+				9016EAE4FB57386C9C3F20C5 /* App */,
+				D1D3F812E56DEAEE612D5246 /* Packages */,
+				6009D4F07D9C82C7EF4563DD /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		D1D3F812E56DEAEE612D5246 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				C2EC8AC13D3FBD3F3FA08CF7 /* ListerineIOS */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		4E911D4D424651A104F1C399 /* Listerine */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B3C72804072D54337B6CA36F /* Build configuration list for PBXNativeTarget "Listerine" */;
+			buildPhases = (
+				E9AC6557DBDFA48C35ADE583 /* Sources */,
+				982835F7346C693DB8F83C3D /* Resources */,
+				16FBB000FBED0DD5281014C1 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Listerine;
+			packageProductDependencies = (
+				FEE9CD5DEA44E9C8BE44845E /* ListerineCore */,
+			);
+			productName = Listerine;
+			productReference = 235BABE9DE69DE7A433B762A /* Listerine.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		6A78E51AD6C9D216B021B153 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+			};
+			buildConfigurationList = 93B4E8A38794984F6996627A /* Build configuration list for PBXProject "ListerineApp" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = CFBDB1A3C142C5EBDB9D8F89;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				AAFF09361047BC0154AC5716 /* XCLocalSwiftPackageReference "." */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 6009D4F07D9C82C7EF4563DD /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				4E911D4D424651A104F1C399 /* Listerine */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		982835F7346C693DB8F83C3D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1D527318E2B0DF81653EE0DE /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		E9AC6557DBDFA48C35ADE583 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3967759140BC8B5C2218FAD6 /* ApplePasskeyClient.swift in Sources */,
+				0EC30171F179B4640712AD7A /* BuildConfiguration.generated.swift in Sources */,
+				0DF0CA0086C7585B6E4DEBC3 /* ListerineApp.swift in Sources */,
+				27AF5962A512108259C0C42F /* MobileAppViewModel.swift in Sources */,
+				844561BFFF84892FB58B564F /* RootView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		20C266BC38B2C4AF2AF3C32F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/Listerine.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = VWKG94374J;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Listerine;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.food-and-drink";
+				INFOPLIST_KEY_ListerineBackendBaseURL = "https://listerine.malaber.de";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = de.malaber.listerine;
+				PRODUCT_NAME = Listerine;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_VERSION = 5.1;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		AFF0C65FAEF8EA5C66425DDC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		B5DA5E2CBEE09B426824A3B7 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		B808B1C1752CBDC1261B11FD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/Listerine.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = VWKG94374J;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Listerine;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.food-and-drink";
+				INFOPLIST_KEY_ListerineBackendBaseURL = "https://listerine.malaber.de";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = de.malaber.listerine;
+				PRODUCT_NAME = Listerine;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_VERSION = 5.1;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		93B4E8A38794984F6996627A /* Build configuration list for PBXProject "ListerineApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AFF0C65FAEF8EA5C66425DDC /* Debug */,
+				B5DA5E2CBEE09B426824A3B7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B3C72804072D54337B6CA36F /* Build configuration list for PBXNativeTarget "Listerine" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B808B1C1752CBDC1261B11FD /* Debug */,
+				20C266BC38B2C4AF2AF3C32F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		AAFF09361047BC0154AC5716 /* XCLocalSwiftPackageReference "." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = .;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		FEE9CD5DEA44E9C8BE44845E /* ListerineCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ListerineCore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 6A78E51AD6C9D216B021B153 /* Project object */;
+}

@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -14,15 +15,25 @@ from app.core.database import run_migrations
 from app.services.fixture_seed import ensure_seed_data
 from app.web.routes import router as web_router
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    await run_migrations()
-    if settings.seed_data_path:
-        from app.core.database import AsyncSessionLocal
+    try:
+        logger.info("Running database migrations")
+        await run_migrations()
+        logger.info("Database migrations completed")
+        if settings.seed_data_path:
+            logger.info("Seeding startup fixture from %s", settings.seed_data_path)
+            from app.core.database import AsyncSessionLocal
 
-        async with AsyncSessionLocal() as session:
-            await ensure_seed_data(session, settings.seed_data_path)
+            async with AsyncSessionLocal() as session:
+                await ensure_seed_data(session, settings.seed_data_path)
+            logger.info("Startup fixture seeding completed")
+    except Exception:
+        logger.exception("Application startup failed")
+        raise
     yield
 
 

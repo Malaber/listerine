@@ -203,6 +203,20 @@ def test_lifespan_runs_seed_data_fixture(monkeypatch, tmp_path) -> None:
         asyncio.run(dispose_db())
 
 
+def test_lifespan_logs_and_reraises_startup_failures(monkeypatch) -> None:
+    async def _failing_run_migrations() -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("app.main.run_migrations", _failing_run_migrations)
+    monkeypatch.setattr("app.main.settings.seed_data_path", None)
+
+    from fastapi.testclient import TestClient
+
+    with pytest.raises(RuntimeError, match="boom"):
+        with TestClient(app):
+            pass
+
+
 def test_seed_data_enforces_preview_member_and_admin_membership_rules(tmp_path) -> None:
     fixture_path = tmp_path / "seed-preview-users.json"
     fixture_path.write_text(

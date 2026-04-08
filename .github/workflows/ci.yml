@@ -126,6 +126,20 @@ jobs:
       - name: Run Swift package tests with coverage gate
         run: cd ios/ListerineIOS && ./Scripts/check_coverage.sh
 
+  ios_native_ci:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install Invoke
+        run: python -m pip install invoke
+      - name: Bootstrap backend dependencies
+        run: python -m invoke bootstrap-ci
+      - name: Run native iOS CI flow
+        run: python -m invoke check-ios-ci
+
   version:
     runs-on: ubuntu-latest
     outputs:

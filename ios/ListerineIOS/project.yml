@@ -19,12 +19,14 @@ targets:
     settings:
       base:
         PRODUCT_NAME: Listerine
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.listerine
+        PRODUCT_BUNDLE_IDENTIFIER: de.malaber.listerine
         MARKETING_VERSION: 0.1.0
         CURRENT_PROJECT_VERSION: 1
         SWIFT_VERSION: 5.10
         TARGETED_DEVICE_FAMILY: "1"
         SUPPORTS_MACCATALYST: NO
+        CODE_SIGN_ENTITLEMENTS: App/Listerine.entitlements
+        INFOPLIST_KEY_ListerineBackendBaseURL: https://listerine.malaber.de
         GENERATE_INFOPLIST_FILE: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_CFBundleDisplayName: Listerine
