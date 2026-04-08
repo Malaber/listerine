@@ -38,6 +38,24 @@ using `.venv/bin/...` commands rather than stopping.
 - [Webhooker deployment](docs/deployment/webhooker.md)
 - [iOS starter app](ios/ListerineIOS/README.md)
 
+## Native iOS passkey deployments
+
+The native iOS app now uses a build-time backend URL instead of an in-app server switcher. That keeps the signed bundle identifier, Associated Domains entitlement, and backend WebAuthn relying party aligned for Apple passkeys.
+
+For an iOS build that should sign in with passkeys:
+
+1. Stamp the app with the final backend URL and bundle identifier:
+   ```bash
+   .venv/bin/inv configure-ios-app \
+     --backend-url=https://shopping.example.com \
+     --bundle-id=com.example.shopping
+   ```
+2. Sign the app with the Apple Developer team that will ship it.
+3. Deploy the backend on that same host with `WEBAUTHN_RP_ID=shopping.example.com`.
+4. Configure `APP_BASE_URL=https://shopping.example.com` and `WEBCREDENTIALS_APPS=ABCD123456.com.example.shopping` so the backend can serve `/.well-known/apple-app-site-association` itself.
+
+Apple's native passkey flow only works when those values match. Self-hosters can use the same Invoke flow to build their own signed app variant for their own domain.
+
 ## Release naming
 
 GitHub Releases created from `main` use merged PR metadata for their title.

@@ -113,6 +113,13 @@ A PR may be created when either:
   - failures are clearly identified as environment-related,
   - and code changes are scoped to the requested fix.
 
+## Branch workflow
+
+- On non-`main` branches, commit and push completed changes by default once the requested work and
+  relevant verification are done.
+- Keep commit messages scoped to the concrete change that was made so the PR history stays easy to
+  review.
+
 ## Release naming
 
 - The release workflow uses merged PR metadata to name GitHub Releases created from `main`.

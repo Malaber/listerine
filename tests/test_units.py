@@ -1,11 +1,13 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
 from jose import jwt
+from pydantic import ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from starlette.requests import Request
 
@@ -27,6 +29,8 @@ from app.core.config import (
     load_settings,
     settings,
 )
+from app.core import startup_checks
+from app.core.startup_checks import _sqlite_database_path, ensure_database_path_writable
 from app.core.security import (
     create_access_token,
     hash_password,
@@ -416,6 +420,27 @@ def test_config_error_helpers_cover_edge_cases() -> None:
     assert _join_validation_path(()) == "<settings>"
 
 
+def test_settings_normalize_app_base_url_and_webcredentials_apps() -> None:
+    settings_obj = Settings(
+        app_base_url=" https://listerine.malaber.de/ ",
+        webcredentials_apps="VWKG94374J.de.malaber.listerine, VWKG94374J.de.malaber.listerine.beta",
+    )
+
+    assert settings_obj.app_base_url == "https://listerine.malaber.de"
+    assert settings_obj.webcredentials_apps == [
+        "VWKG94374J.de.malaber.listerine",
+        "VWKG94374J.de.malaber.listerine.beta",
+    ]
+
+
+def test_settings_normalize_app_base_url_empty_none_and_invalid() -> None:
+    assert Settings(app_base_url="   ").app_base_url is None
+    assert Settings(webcredentials_apps=None).webcredentials_apps == []
+
+    with pytest.raises(ValidationError):
+        Settings(app_base_url="not-a-url")
+
+
 def test_passkey_request_helpers() -> None:
     request = Request(
         {
@@ -454,3 +479,92 @@ def test_passkey_request_helper_prefers_configured_rp_id(monkeypatch) -> None:
 
     monkeypatch.setattr("app.api.v1.routes.auth.settings.webauthn_rp_id", "review.example.com")
     assert _rp_id_for_request(request) == "review.example.com"
+
+
+def test_passkey_request_helpers_prefer_configured_app_base_url(monkeypatch) -> None:
+    request = Request(
+        {
+            "type": "http",
+            "scheme": "http",
+            "path": "/login",
+            "server": ("localhost", 8000),
+            "headers": [(b"host", b"localhost:8000")],
+        }
+    )
+
+    monkeypatch.setattr("app.api.v1.routes.auth.settings.webauthn_rp_id", None)
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.settings.app_base_url",
+        "https://listerine.malaber.de",
+    )
+
+    assert _rp_id_for_request(request) == "listerine.malaber.de"
+    assert _origin_for_request(request) == "https://listerine.malaber.de"
+
+
+def test_sqlite_database_path_helper_handles_sqlite_and_non_sqlite_urls(tmp_path) -> None:
+    relative_path = _sqlite_database_path("sqlite+aiosqlite:///./var/test.db")
+
+    assert relative_path == Path.cwd() / "var" / "test.db"
+    assert _sqlite_database_path("sqlite:///:memory:") is None
+    assert _sqlite_database_path("postgresql+asyncpg://user:pass@db/app") is None
+
+
+def test_database_path_writable_allows_non_sqlite_urls() -> None:
+    ensure_database_path_writable("postgresql+asyncpg://user:pass@db/app")
+
+
+def test_database_path_writable_allows_existing_sqlite_file(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "app.db"
+    db_path.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr("app.core.startup_checks.os.access", lambda path, mode: path == db_path)
+
+    ensure_database_path_writable(f"sqlite+aiosqlite:///{db_path}")
+
+
+def test_database_path_writable_rejects_unwritable_sqlite_file(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "app.db"
+    db_path.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr("app.core.startup_checks.os.access", lambda path, mode: False)
+
+    with pytest.raises(RuntimeError, match="SQLite database file"):
+        ensure_database_path_writable(f"sqlite+aiosqlite:///{db_path}")
+
+
+def test_database_path_writable_rejects_missing_parent_directory(tmp_path) -> None:
+    db_path = tmp_path / "missing" / "app.db"
+
+    with pytest.raises(RuntimeError, match="does not exist"):
+        ensure_database_path_writable(f"sqlite+aiosqlite:///{db_path}")
+
+
+def test_database_path_writable_rejects_unwritable_parent_directory(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "app.db"
+
+    monkeypatch.setattr("app.core.startup_checks.os.access", lambda path, mode: False)
+
+    with pytest.raises(RuntimeError, match="SQLite database directory"):
+        ensure_database_path_writable(f"sqlite+aiosqlite:///{db_path}")
+
+
+def test_database_path_writable_allows_writable_parent_directory(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "app.db"
+
+    monkeypatch.setattr("app.core.startup_checks.os.access", lambda path, mode: path == tmp_path)
+
+    ensure_database_path_writable(f"sqlite+aiosqlite:///{db_path}")
+
+
+def test_startup_checks_main_uses_configured_database_url(monkeypatch) -> None:
+    monkeypatch.setattr("app.core.startup_checks.settings.database_url", "sqlite:///./app.db")
+    seen: list[str] = []
+
+    def _capture(database_url: str) -> None:
+        seen.append(database_url)
+
+    monkeypatch.setattr("app.core.startup_checks.ensure_database_path_writable", _capture)
+
+    assert startup_checks.main() == 0
+    assert seen == ["sqlite:///./app.db"]
