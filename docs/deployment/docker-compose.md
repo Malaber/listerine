@@ -19,7 +19,7 @@ LISTERINE_IMAGE=ghcr.io/malaber/listerine:0.1.2
 SECRET_KEY=replace-this-with-a-long-random-secret
 APP_BASE_URL=https://listerine.example.com
 WEBAUTHN_RP_ID=listerine.example.com
-WEBCREDENTIALS_APPS=VWKG94374J.de.malaber.listerine
+WEBCREDENTIALS_APPS=["VWKG94374J.de.malaber.listerine"]
 SECURE_COOKIES=true
 UVICORN_FORWARDED_ALLOW_IPS=127.0.0.1
 BOOTSTRAP_ADMIN_EMAIL=admin@example.com
@@ -57,6 +57,7 @@ services:
 
 ```bash
 mkdir -p data
+sudo chown -R 100:101 data
 docker compose pull
 docker compose up -d
 ```
@@ -94,7 +95,8 @@ Notes:
 - put the app behind a reverse proxy or load balancer that terminates TLS
 - set `APP_BASE_URL` to the public HTTPS origin users and passkey clients reach
 - set `WEBAUTHN_RP_ID` to that public hostname
-- set `WEBCREDENTIALS_APPS` to the comma-separated Apple app IDs allowed to use native passkeys
+- set `WEBCREDENTIALS_APPS` to a JSON array of Apple app IDs allowed to use native passkeys
+- make the mounted data directory writable by the container user before first start, for example `sudo chown -R 100:101 data`
 - verify `https://YOUR_HOST/.well-known/apple-app-site-association` returns the expected `webcredentials.apps` payload
 - set `UVICORN_FORWARDED_ALLOW_IPS` to the IP or CIDR of your trusted proxy network
 - keep `./data` on persistent storage so `./data/listerine.db` survives container replacement
