@@ -257,12 +257,17 @@ def test_validated_ios_backend_host_rejects_invalid_urls() -> None:
 
 
 def test_write_ios_entitlements_uses_configured_host(tmp_path: Path, monkeypatch) -> None:
-    entitlements_path = tmp_path / "Listerine.entitlements"
-    monkeypatch.setattr(tasks, "IOS_ENTITLEMENTS_PATH", entitlements_path)
+    release_entitlements_path = tmp_path / "Listerine.entitlements"
+    debug_entitlements_path = tmp_path / "Listerine.Debug.entitlements"
+    monkeypatch.setattr(tasks, "IOS_RELEASE_ENTITLEMENTS_PATH", release_entitlements_path)
+    monkeypatch.setattr(tasks, "IOS_DEBUG_ENTITLEMENTS_PATH", debug_entitlements_path)
 
     tasks._write_ios_entitlements("example.com")
 
-    assert "webcredentials:example.com" in entitlements_path.read_text(encoding="utf-8")
+    assert "webcredentials:example.com" in release_entitlements_path.read_text(encoding="utf-8")
+    assert "webcredentials:example.com?mode=developer" in debug_entitlements_path.read_text(
+        encoding="utf-8"
+    )
 
 
 def test_configure_ios_app_updates_project_and_entitlements(monkeypatch, tmp_path: Path) -> None:
@@ -277,12 +282,14 @@ def test_configure_ios_app_updates_project_and_entitlements(monkeypatch, tmp_pat
         ),
         encoding="utf-8",
     )
-    entitlements_path = tmp_path / "Listerine.entitlements"
+    release_entitlements_path = tmp_path / "Listerine.entitlements"
+    debug_entitlements_path = tmp_path / "Listerine.Debug.entitlements"
     generated_config_path = tmp_path / "BuildConfiguration.generated.swift"
     calls: list[str] = []
 
     monkeypatch.setattr(tasks, "IOS_PROJECT_YML_PATH", project_path)
-    monkeypatch.setattr(tasks, "IOS_ENTITLEMENTS_PATH", entitlements_path)
+    monkeypatch.setattr(tasks, "IOS_RELEASE_ENTITLEMENTS_PATH", release_entitlements_path)
+    monkeypatch.setattr(tasks, "IOS_DEBUG_ENTITLEMENTS_PATH", debug_entitlements_path)
     monkeypatch.setattr(tasks, "IOS_GENERATED_CONFIG_PATH", generated_config_path)
     monkeypatch.setattr(tasks.install_xcodegen, "body", lambda c: calls.append("install_xcodegen"))
     monkeypatch.setattr(
@@ -300,7 +307,13 @@ def test_configure_ios_app_updates_project_and_entitlements(monkeypatch, tmp_pat
     project_contents = project_path.read_text(encoding="utf-8")
     assert "PRODUCT_BUNDLE_IDENTIFIER: com.example.selfhost" in project_contents
     assert "INFOPLIST_KEY_ListerineBackendBaseURL: https://selfhost.example.com" in project_contents
-    assert "webcredentials:passkeys.example.com" in entitlements_path.read_text(encoding="utf-8")
+    assert "webcredentials:passkeys.example.com" in release_entitlements_path.read_text(
+        encoding="utf-8"
+    )
+    assert (
+        "webcredentials:passkeys.example.com?mode=developer"
+        in debug_entitlements_path.read_text(encoding="utf-8")
+    )
     assert (
         'static let backendURL = "https://selfhost.example.com"'
         in generated_config_path.read_text(encoding="utf-8")

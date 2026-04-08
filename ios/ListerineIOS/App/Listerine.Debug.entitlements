@@ -4,7 +4,7 @@
 <dict>
 	<key>com.apple.developer.associated-domains</key>
 	<array>
-		<string>webcredentials:pr.listerine.malaber.de</string>
+		<string>webcredentials:pr.listerine.malaber.de?mode=developer</string>
 	</array>
 </dict>
 </plist>
