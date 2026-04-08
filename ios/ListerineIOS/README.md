@@ -27,6 +27,29 @@ Useful native iOS Invoke targets:
 - `.venv/bin/inv build-ios-simulator`
 - `.venv/bin/inv check-ios-ci`
 
+### Common configure commands
+
+Use the same `configure-ios-app` target in two common ways:
+
+1. Normal live app build against the main hosted backend:
+   ```bash
+   .venv/bin/inv configure-ios-app \
+     --backend-url=https://listerine.malaber.de \
+     --bundle-id=de.malaber.listerine
+   ```
+
+2. Review-host build against one PR app while still using the shared review passkey host:
+   ```bash
+   .venv/bin/inv configure-ios-app \
+     --backend-url=https://pr-49.pr.listerine.malaber.de \
+     --passkey-domain=pr.listerine.malaber.de \
+     --bundle-id=de.malaber.listerine
+   ```
+
+The first form is the normal production-style configuration. The second form is
+for native review testing, where the app talks to a specific PR deployment but
+Apple passkeys still validate against the shared review host.
+
 ## Project setup in Xcode
 
 1. Open Xcode 16 or newer on macOS.
