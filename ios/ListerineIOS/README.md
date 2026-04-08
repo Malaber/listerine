@@ -12,18 +12,25 @@ This folder contains a starter SwiftUI iPhone client for Listerine plus a Swift 
 ## Run tests locally
 
 ```bash
-cd ios/ListerineIOS
-./Scripts/check_coverage.sh
+.venv/bin/inv check-ios-e2e
 ```
+
+Useful native iOS Invoke targets:
+
+- `.venv/bin/inv install-xcodegen`
+- `.venv/bin/inv check-ios-package`
+- `.venv/bin/inv run-ios-e2e`
+- `.venv/bin/inv check-ios-e2e`
+- `.venv/bin/inv generate-ios-project`
+- `.venv/bin/inv build-ios-simulator`
+- `.venv/bin/inv check-ios-ci`
 
 ## Project setup in Xcode
 
 1. Open Xcode 16 or newer on macOS.
-2. Open `ios/ListerineIOS/Package.swift` in Xcode to inspect or run the tests for `ListerineCore`.
-3. Create a new **App** project in Xcode named `Listerine` and add `ListerineCore` as a local package dependency from this folder.
-4. Copy the files from `ios/ListerineIOS/App/` into that Xcode app target.
-5. Set the deployment target to **iOS 16.0** or newer.
-6. Run the app on an iPhone simulator or device.
+2. Open `ios/ListerineIOS/ListerineApp.xcodeproj`.
+3. Use the `Listerine` scheme to build and run the native app on an iPhone simulator or device.
+4. Open `ios/ListerineIOS/Package.swift` in Xcode as needed to inspect or run the Swift package tests for `ListerineCore`.
 
 ## Included app flow
 
@@ -37,28 +44,37 @@ cd ios/ListerineIOS
 
 1. **Swift package checks (Linux/macOS):**
    ```bash
-   cd ios/ListerineIOS
-   ./Scripts/check_coverage.sh
+   .venv/bin/inv check-ios-package
    ```
-2. **Generate the Xcode project (macOS):**
+2. **Live backend integration checks with the seeded passkey fixture (macOS):**
    ```bash
-   cd ios/ListerineIOS
-   xcodegen generate
+   .venv/bin/inv check-ios-e2e
    ```
-3. **Build and run in Simulator (macOS):**
+   This Invoke target:
+   - starts the FastAPI backend with `app/fixtures/review_seed_e2e.json`
+   - keeps the backend session cookie for `/auth/login/options` and `/auth/login/verify`
+   - signs a real WebAuthn assertion from the seeded private key fixture
+   - verifies passkey login, list loading, add/edit/check/uncheck/delete item flows
+3. **Generate the Xcode project if you need to regenerate it (macOS):**
    ```bash
-   xcodebuild \
-     -project ListerineApp.xcodeproj \
-     -scheme Listerine \
-     -configuration Debug \
-     -destination "platform=iOS Simulator,name=iPhone 16" \
-     build
+   .venv/bin/inv generate-ios-project
    ```
-4. Launch from Xcode and verify:
+4. **Build and run in Simulator (macOS):**
+   ```bash
+   .venv/bin/inv build-ios-simulator
+   ```
+5. Launch from Xcode and verify:
    - backend can be changed in-app
    - passkey login succeeds for the selected backend
    - list switching works
    - adding/editing/checking/deleting items updates correctly
+   - the device or simulator can satisfy the Apple passkey prompt
+
+## Passkey login notes
+
+- The native app now accepts the backend's current `/api/v1/auth/login/options` response shape directly, whether the WebAuthn options are top-level or nested under `publicKey`.
+- The app relies on the `Set-Cookie` session from `/api/v1/auth/login/options` to complete `/api/v1/auth/login/verify`, so login tests should always use the same session between both requests.
+- For local native passkey checks, use `localhost` as the browser-facing host and RP ID. `127.0.0.1` is not valid for WebAuthn passkey UX in Apple and Chromium clients.
 
 ## Shipping to the App Store
 
@@ -77,7 +93,7 @@ cd ios/ListerineIOS
 Two workflows now automate most of the iOS delivery path:
 
 - `.github/workflows/ci.yml` runs the Linux Swift package tests in parallel with the Python checks.
-- `.github/workflows/ios-build-and-testflight.yml` can generate the Xcode project on GitHub-hosted macOS runners, build the app for the iOS simulator, and optionally archive/export/upload a signed build to TestFlight.
+- `.github/workflows/ios-build-and-testflight.yml` bootstraps the backend dependencies on GitHub-hosted macOS runners, runs `inv check-ios-ci`, and optionally archives/exports/uploads a signed build to TestFlight.
 
 ### Secrets needed for TestFlight uploads
 

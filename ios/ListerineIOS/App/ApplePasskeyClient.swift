@@ -6,8 +6,8 @@ import UIKit
 
 struct ApplePasskeyClient {
     func authenticate(optionsPayload: [String: Any], relyingPartyIdentifier: String) async throws -> [String: Any] {
+        let publicKey = (optionsPayload["publicKey"] as? [String: Any]) ?? optionsPayload
         guard
-            let publicKey = optionsPayload["publicKey"] as? [String: Any],
             let challengeText = publicKey["challenge"] as? String,
             let challenge = Data(base64URLEncoded: challengeText)
         else {
@@ -22,7 +22,6 @@ struct ApplePasskeyClient {
             for item in allowCredentials {
                 guard let id = item["id"] as? String,
                       let credentialID = Data(base64URLEncoded: id) else { continue }
-                // Transports are optional; you can parse them if present. For now, use nil to allow any.
                 let descriptor = ASAuthorizationPlatformPublicKeyCredentialDescriptor(credentialID: credentialID)
                 descriptors.append(descriptor)
             }
@@ -99,4 +98,3 @@ private extension Data {
         base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
     }
 }
-

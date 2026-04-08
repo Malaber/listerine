@@ -214,6 +214,241 @@ def test_run_browser_e2e_for_device_uses_derived_database_and_artifact_paths(mon
     ]
 
 
+def test_ios_e2e_env_uses_absolute_seed_and_workspace_cache(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(tasks, "ROOT", tmp_path)
+
+    env = tasks._ios_e2e_env(
+        base_url="http://localhost:8017",
+        e2e_seed_path="app/fixtures/review_seed_e2e.json",
+        webauthn_rp_id="localhost",
+        user_email="ios@example.com",
+    )
+
+    assert env["LISTERINE_E2E_BASE_URL"] == "http://localhost:8017"
+    assert env["LISTERINE_E2E_SEED_PATH"] == str(
+        (tmp_path / "app" / "fixtures" / "review_seed_e2e.json").resolve()
+    )
+    assert env["LISTERINE_E2E_USER_EMAIL"] == "ios@example.com"
+    assert env["LISTERINE_E2E_RP_ID"] == "localhost"
+    assert env["DEVELOPER_DIR"] == "/Applications/Xcode.app/Contents/Developer"
+    assert env["CLANG_MODULE_CACHE_PATH"] == str(
+        (tmp_path / "ios" / "ListerineIOS" / ".clang-module-cache").resolve()
+    )
+
+
+def test_ios_toolchain_env_uses_workspace_cache(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(tasks, "ROOT", tmp_path)
+
+    env = tasks._ios_toolchain_env()
+
+    assert env["DEVELOPER_DIR"] == "/Applications/Xcode.app/Contents/Developer"
+    assert env["CLANG_MODULE_CACHE_PATH"] == str(
+        (tmp_path / "ios" / "ListerineIOS" / ".clang-module-cache").resolve()
+    )
+
+
+def test_check_ios_package_invokes_swift_test(monkeypatch) -> None:
+    calls: list[tuple[str, dict]] = []
+
+    class Context:
+        def run(self, command, **kwargs):
+            calls.append((command, kwargs))
+            return RunResult(exited=0)
+
+    monkeypatch.setattr(
+        tasks,
+        "_ios_toolchain_env",
+        lambda: {"DEVELOPER_DIR": "/Applications/Xcode.app/Contents/Developer"},
+    )
+
+    tasks.check_ios_package.body(Context(), package_path="ios/ListerineIOS")
+
+    assert calls == [
+        (
+            "xcrun swift test --package-path ios/ListerineIOS --enable-code-coverage",
+            {
+                "env": {"DEVELOPER_DIR": "/Applications/Xcode.app/Contents/Developer"},
+                "pty": False,
+                "shell": "/bin/bash",
+            },
+        )
+    ]
+
+
+def test_generate_ios_project_invokes_xcodegen() -> None:
+    calls: list[tuple[str, dict]] = []
+
+    class Context:
+        def run(self, command, **kwargs):
+            calls.append((command, kwargs))
+            return RunResult(exited=0)
+
+    tasks.generate_ios_project.body(Context(), project_dir="ios/ListerineIOS")
+
+    assert calls == [
+        (
+            "cd ios/ListerineIOS && xcodegen generate",
+            {
+                "pty": False,
+                "shell": "/bin/bash",
+            },
+        )
+    ]
+
+
+def test_install_xcodegen_invokes_brew() -> None:
+    calls: list[tuple[str, dict]] = []
+
+    class Context:
+        def run(self, command, **kwargs):
+            calls.append((command, kwargs))
+            return RunResult(exited=0)
+
+    tasks.install_xcodegen.body(Context())
+
+    assert calls == [
+        (
+            "brew list xcodegen >/dev/null 2>&1 || brew install xcodegen",
+            {
+                "pty": False,
+                "shell": "/bin/bash",
+            },
+        )
+    ]
+
+
+def test_build_ios_simulator_invokes_xcodebuild(monkeypatch) -> None:
+    calls: list[tuple[str, dict]] = []
+
+    class Context:
+        def run(self, command, **kwargs):
+            calls.append((command, kwargs))
+            return RunResult(exited=0)
+
+    monkeypatch.setattr(
+        tasks,
+        "_ios_toolchain_env",
+        lambda: {"DEVELOPER_DIR": "/Applications/Xcode.app/Contents/Developer"},
+    )
+
+    tasks.build_ios_simulator.body(
+        Context(),
+        project_dir="ios/ListerineIOS",
+        scheme="Listerine",
+        configuration="Debug",
+        destination="generic/platform=iOS Simulator",
+    )
+
+    assert calls == [
+        (
+            "cd ios/ListerineIOS && xcodebuild -project ListerineApp.xcodeproj -scheme Listerine -configuration Debug -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build",
+            {
+                "env": {"DEVELOPER_DIR": "/Applications/Xcode.app/Contents/Developer"},
+                "pty": False,
+                "shell": "/bin/bash",
+            },
+        )
+    ]
+
+
+def test_run_ios_e2e_invokes_swift_test_with_expected_env(monkeypatch) -> None:
+    calls: list[tuple[str, dict]] = []
+
+    class Context:
+        def run(self, command, **kwargs):
+            calls.append((command, kwargs))
+            return RunResult(exited=0)
+
+    monkeypatch.setattr(
+        tasks,
+        "_ios_e2e_env",
+        lambda **kwargs: {
+            "LISTERINE_E2E_BASE_URL": kwargs["base_url"],
+            "LISTERINE_E2E_SEED_PATH": kwargs["e2e_seed_path"],
+            "LISTERINE_E2E_RP_ID": kwargs["webauthn_rp_id"],
+            "LISTERINE_E2E_USER_EMAIL": kwargs["user_email"],
+        },
+    )
+
+    tasks.run_ios_e2e.body(
+        Context(),
+        base_url="http://localhost:8017",
+        e2e_seed_path="app/fixtures/review_seed_e2e.json",
+        webauthn_rp_id="localhost",
+        user_email="ios@example.com",
+    )
+
+    assert calls == [
+        (
+            "xcrun swift test --package-path ios/ListerineIOS --filter LiveBackendE2ETests",
+            {
+                "env": {
+                    "LISTERINE_E2E_BASE_URL": "http://localhost:8017",
+                    "LISTERINE_E2E_SEED_PATH": "app/fixtures/review_seed_e2e.json",
+                    "LISTERINE_E2E_RP_ID": "localhost",
+                    "LISTERINE_E2E_USER_EMAIL": "ios@example.com",
+                },
+                "pty": False,
+                "shell": "/bin/bash",
+            },
+        )
+    ]
+
+
+def test_check_ios_e2e_starts_waits_runs_and_stops(monkeypatch) -> None:
+    calls: list[tuple[str, dict]] = []
+
+    monkeypatch.setattr(
+        tasks,
+        "_reset_sqlite_database_file",
+        lambda database_url: calls.append(("reset", {"database_url": database_url})),
+    )
+    monkeypatch.setattr(tasks, "start_app", lambda c, **kwargs: calls.append(("start", kwargs)))
+    monkeypatch.setattr(tasks, "wait_for_app", lambda c, **kwargs: calls.append(("wait", kwargs)))
+    monkeypatch.setattr(tasks, "run_ios_e2e", lambda c, **kwargs: calls.append(("run", kwargs)))
+    monkeypatch.setattr(tasks, "stop_app", lambda c, **kwargs: calls.append(("stop", kwargs)))
+
+    tasks.check_ios_e2e.body(
+        None,
+        seed_path="app/fixtures/review_seed_e2e.json",
+        e2e_seed_path="app/fixtures/review_seed_e2e.json",
+        database_url="sqlite+aiosqlite:///./tmp-ios-e2e.db",
+        webauthn_rp_id="localhost",
+        user_email="ios@example.com",
+        host="127.0.0.1",
+        port=8017,
+        log_path="ios-e2e-server.log",
+        pid_path="ios-e2e-server.pid",
+    )
+
+    assert calls == [
+        ("reset", {"database_url": "sqlite+aiosqlite:///./tmp-ios-e2e.db"}),
+        (
+            "start",
+            {
+                "seed_path": "app/fixtures/review_seed_e2e.json",
+                "database_url": "sqlite+aiosqlite:///./tmp-ios-e2e.db",
+                "webauthn_rp_id": "localhost",
+                "host": "127.0.0.1",
+                "port": 8017,
+                "log_path": "ios-e2e-server.log",
+                "pid_path": "ios-e2e-server.pid",
+            },
+        ),
+        ("wait", {"url": "http://127.0.0.1:8017/health"}),
+        (
+            "run",
+            {
+                "base_url": "http://localhost:8017",
+                "e2e_seed_path": "app/fixtures/review_seed_e2e.json",
+                "webauthn_rp_id": "localhost",
+                "user_email": "ios@example.com",
+            },
+        ),
+        ("stop", {"pid_path": "ios-e2e-server.pid"}),
+    ]
+
+
 def test_install_deps_runs_python_and_js_bootstrap(monkeypatch) -> None:
     calls: list[tuple[str, object]] = []
 

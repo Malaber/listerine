@@ -38,6 +38,13 @@ DEFAULT_BROWSER_SEED_PATH = "app/fixtures/review_seed_e2e.json"
 DEFAULT_BROWSER_DATABASE_URL = "sqlite+aiosqlite:///./tmp-ui-e2e-invoke.db"
 DEFAULT_APP_LOG_PATH = "ui-e2e-server.log"
 DEFAULT_APP_PID_PATH = "ui-e2e-server.pid"
+DEFAULT_IOS_E2E_PORT = 8017
+DEFAULT_IOS_E2E_BASE_URL = f"http://localhost:{DEFAULT_IOS_E2E_PORT}"
+DEFAULT_IOS_E2E_DATABASE_URL = "sqlite+aiosqlite:///./tmp-ios-e2e.db"
+DEFAULT_IOS_E2E_LOG_PATH = "ios-e2e-server.log"
+DEFAULT_IOS_E2E_PID_PATH = "ios-e2e-server.pid"
+DEFAULT_IOS_E2E_USER_EMAIL = "listerine@schaedler.rocks"
+DEFAULT_IOS_SIMULATOR_DESTINATION = "generic/platform=iOS Simulator"
 STABLE_TAG_PATTERN = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 
 
@@ -233,6 +240,52 @@ def _run_browser_e2e_for_device(
         )
     finally:
         stop_app(c, pid_path=pid_path)
+
+
+def _ios_e2e_env(
+    *,
+    base_url: str,
+    e2e_seed_path: str,
+    webauthn_rp_id: str,
+    user_email: str,
+) -> dict[str, str]:
+    package_dir = ROOT / "ios" / "ListerineIOS"
+    clang_module_cache = package_dir / ".clang-module-cache"
+    clang_module_cache.mkdir(parents=True, exist_ok=True)
+
+    env = os.environ.copy()
+    env.update(
+        {
+            "LISTERINE_E2E_BASE_URL": base_url,
+            "LISTERINE_E2E_SEED_PATH": str((ROOT / e2e_seed_path).resolve())
+            if not os.path.isabs(e2e_seed_path)
+            else e2e_seed_path,
+            "LISTERINE_E2E_USER_EMAIL": user_email,
+            "LISTERINE_E2E_RP_ID": webauthn_rp_id,
+            "DEVELOPER_DIR": env.get("DEVELOPER_DIR", "/Applications/Xcode.app/Contents/Developer"),
+            "CLANG_MODULE_CACHE_PATH": env.get(
+                "CLANG_MODULE_CACHE_PATH", str(clang_module_cache.resolve())
+            ),
+        }
+    )
+    return env
+
+
+def _ios_toolchain_env() -> dict[str, str]:
+    package_dir = ROOT / "ios" / "ListerineIOS"
+    clang_module_cache = package_dir / ".clang-module-cache"
+    clang_module_cache.mkdir(parents=True, exist_ok=True)
+
+    env = os.environ.copy()
+    env.update(
+        {
+            "DEVELOPER_DIR": env.get("DEVELOPER_DIR", "/Applications/Xcode.app/Contents/Developer"),
+            "CLANG_MODULE_CACHE_PATH": env.get(
+                "CLANG_MODULE_CACHE_PATH", str(clang_module_cache.resolve())
+            ),
+        }
+    )
+    return env
 
 
 def _latest_stable_version_from_tags(tags: list[str]) -> str:
@@ -533,6 +586,111 @@ def run_browser_e2e(
 
 @task(
     help={
+        "package_path": "Swift package path for the reusable iOS core.",
+    }
+)
+def check_ios_package(c, package_path="ios/ListerineIOS") -> None:
+    env = _ios_toolchain_env()
+    c.run(
+        f"xcrun swift test --package-path {shlex.quote(package_path)} --enable-code-coverage",
+        env=env,
+        pty=False,
+        shell="/bin/bash",
+    )
+
+
+@task(
+    help={
+        "project_dir": "Directory that contains the iOS XcodeGen project spec.",
+    }
+)
+def install_xcodegen(c) -> None:
+    c.run(
+        "brew list xcodegen >/dev/null 2>&1 || brew install xcodegen",
+        pty=False,
+        shell="/bin/bash",
+    )
+
+
+@task(
+    help={
+        "project_dir": "Directory that contains the iOS XcodeGen project spec.",
+    }
+)
+def generate_ios_project(c, project_dir="ios/ListerineIOS") -> None:
+    c.run(
+        f"cd {shlex.quote(project_dir)} && xcodegen generate",
+        pty=False,
+        shell="/bin/bash",
+    )
+
+
+@task(
+    help={
+        "project_dir": "Directory that contains the generated iOS Xcode project.",
+        "scheme": "Xcode scheme to build.",
+        "configuration": "Xcode build configuration to use.",
+        "destination": "Xcode destination used for the simulator build.",
+    }
+)
+def build_ios_simulator(
+    c,
+    project_dir="ios/ListerineIOS",
+    scheme="Listerine",
+    configuration="Debug",
+    destination=DEFAULT_IOS_SIMULATOR_DESTINATION,
+) -> None:
+    env = _ios_toolchain_env()
+    c.run(
+        " ".join(
+            [
+                f"cd {shlex.quote(project_dir)} &&",
+                "xcodebuild",
+                "-project ListerineApp.xcodeproj",
+                f"-scheme {shlex.quote(scheme)}",
+                f"-configuration {shlex.quote(configuration)}",
+                f"-destination {shlex.quote(destination)}",
+                "CODE_SIGNING_ALLOWED=NO",
+                "build",
+            ]
+        ),
+        env=env,
+        pty=False,
+        shell="/bin/bash",
+    )
+
+
+@task(
+    help={
+        "base_url": "Base URL used by the native iOS backend e2e flow.",
+        "e2e_seed_path": "Fixture that contains passkey data for the native iOS flow.",
+        "webauthn_rp_id": "WebAuthn relying party ID exposed to the native iOS flow.",
+        "user_email": "Seeded user email used for the native iOS passkey login.",
+    }
+)
+def run_ios_e2e(
+    c,
+    base_url=DEFAULT_IOS_E2E_BASE_URL,
+    e2e_seed_path=DEFAULT_BROWSER_SEED_PATH,
+    webauthn_rp_id="localhost",
+    user_email=DEFAULT_IOS_E2E_USER_EMAIL,
+) -> None:
+    env = _ios_e2e_env(
+        base_url=base_url,
+        e2e_seed_path=e2e_seed_path,
+        webauthn_rp_id=webauthn_rp_id,
+        user_email=user_email,
+    )
+    c.run(
+        "xcrun swift test --package-path ios/ListerineIOS --filter LiveBackendE2ETests",
+        env=env,
+        pty=False,
+        shell="/bin/bash",
+    )
+
+
+@task(
+    help={
         "seed_path": "Fixture used to seed the local app database.",
         "e2e_seed_path": "Fixture that contains passkey data for the browser flow.",
         "database_url": "Database URL for the temporary local app.",
@@ -575,6 +733,62 @@ def check_browser_e2e(
         )
     finally:
         stop_app(c, pid_path=pid_path)
+
+
+@task(
+    help={
+        "seed_path": "Fixture used to seed the local app database.",
+        "e2e_seed_path": "Fixture that contains passkey data for the native iOS flow.",
+        "database_url": "Database URL for the temporary local app.",
+        "webauthn_rp_id": "WebAuthn relying party ID exposed to the native iOS flow.",
+        "user_email": "Seeded user email used for the native iOS passkey login.",
+        "host": "Host to bind the local app server to.",
+        "port": "Port to bind the local app server to.",
+        "log_path": "File used for uvicorn logs.",
+        "pid_path": "File used to store the started server PID.",
+    }
+)
+def check_ios_e2e(
+    c,
+    seed_path=DEFAULT_BROWSER_SEED_PATH,
+    e2e_seed_path=DEFAULT_BROWSER_SEED_PATH,
+    database_url=DEFAULT_IOS_E2E_DATABASE_URL,
+    webauthn_rp_id="localhost",
+    user_email=DEFAULT_IOS_E2E_USER_EMAIL,
+    host=DEFAULT_HOST,
+    port=DEFAULT_IOS_E2E_PORT,
+    log_path=DEFAULT_IOS_E2E_LOG_PATH,
+    pid_path=DEFAULT_IOS_E2E_PID_PATH,
+) -> None:
+    _reset_sqlite_database_file(database_url)
+    start_app(
+        c,
+        seed_path=seed_path,
+        database_url=database_url,
+        webauthn_rp_id=webauthn_rp_id,
+        host=host,
+        port=port,
+        log_path=log_path,
+        pid_path=pid_path,
+    )
+    try:
+        wait_for_app(c, url=f"http://{host}:{port}/health")
+        run_ios_e2e(
+            c,
+            base_url=f"http://localhost:{port}",
+            e2e_seed_path=e2e_seed_path,
+            webauthn_rp_id=webauthn_rp_id,
+            user_email=user_email,
+        )
+    finally:
+        stop_app(c, pid_path=pid_path)
+
+
+@task(
+    pre=[install_xcodegen, check_ios_package, check_ios_e2e, generate_ios_project, build_ios_simulator]
+)
+def check_ios_ci(c) -> None:
+    """Run the full native iOS CI flow: package checks, live backend e2e, project generation, and simulator build."""
 
 
 @task(

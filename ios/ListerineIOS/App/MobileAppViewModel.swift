@@ -3,7 +3,6 @@ import os.log
 import ListerineCore
 
 private let netLog = Logger(subsystem: "com.example.ListerineIOS", category: "network")
-
 @MainActor
 final class MobileAppViewModel: ObservableObject {
     @Published var backendURLInput: String
@@ -44,7 +43,6 @@ final class MobileAppViewModel: ObservableObject {
         }
 
         netLog.debug("Starting passkey login flow for backend: \(backendURL.absoluteString, privacy: .public)")
-
         isAuthenticating = true
         defer { isAuthenticating = false }
 
@@ -58,62 +56,8 @@ final class MobileAppViewModel: ObservableObject {
             )
             netLog.debug("Received login options keys: \(String(describing: Array(options.keys)), privacy: .public)")
             netLog.debug("Invoking platform authenticator with RP ID: \(backendURL.host ?? "<nil>", privacy: .public)")
-            
-            netLog.debug("About to call passkeyClient.authenticate", privacy: .public)
             let credential = try await passkeyClient.authenticate(optionsPayload: options, relyingPartyIdentifier: backendURL.host ?? "")
-            netLog.debug("Authenticate returned successfully", privacy: .public)
-            netLog.debug("Credential top-level type: \(String(describing: type(of: credential)), privacy: .public)")
-
-            #if DEBUG
-            if let credDict = credential as? [String: Any] {
-                let topKeys = Array(credDict.keys)
-                netLog.debug("Credential top-level keys: \(String(describing: topKeys), privacy: .public)")
-                if let resp = credDict["response"] as? [String: Any] {
-                    netLog.debug("Credential.response keys: \(String(describing: Array(resp.keys)), privacy: .public)")
-                    // Helpful hint: binary fields must be base64url strings, not Data
-                    let suspectedBinaryKeys = ["clientDataJSON", "authenticatorData", "signature", "userHandle"]
-                    for key in suspectedBinaryKeys {
-                        if let value = resp[key] {
-                            netLog.debug("response[\(key)] type: \(String(describing: type(of: value)), privacy: .public)")
-                        }
-                    }
-                }
-            }
-            #endif
-
-            // Normalize credential to be JSON-safe (convert Data to base64url strings)
-            var normalizedAny: Any = normalizeCredentialJSON(credential)
-
-            // If the credential isn't a dictionary/array after normalization, fall back to a stringified wrapper
-            if (normalizedAny as? [String: Any]) == nil && (normalizedAny as? [Any]) == nil {
-                netLog.error("Credential is not a dictionary/array after normalization. Applying fallback wrapper.")
-                normalizedAny = ["raw": String(describing: credential)]
-            }
-
-            var normalized = normalizedAny
-            if let problem = findFirstNonJSONValue(in: normalized) {
-                netLog.error("Credential contains non-JSON value at path: \(problem.path.joined(separator: "."), privacy: .public); type=\(String(describing: type(of: problem.value)), privacy: .public)")
-                // Apply broader normalization to coerce remaining values
-                normalized = deepNormalizeToJSON(normalized)
-            }
-
-            let verifyEnvelope: [String: Any] = ["credential": normalized]
-
-            // Pre-encode to catch JSONSerialization errors early and log raw issues
-            let verifyBodyData: Data
-            do {
-                verifyBodyData = try JSONSerialization.data(withJSONObject: verifyEnvelope)
-                #if DEBUG
-                if let jsonString = String(data: verifyBodyData, encoding: .utf8) {
-                    netLog.debug("Verify request body JSON: \(jsonString, privacy: .public)")
-                }
-                #endif
-            } catch {
-                netLog.error("Failed to encode verify body. Ensure binary fields are base64url strings. Error: \(String(describing: error), privacy: .public)")
-                throw error
-            }
-
-            // Send verify request using the normalized envelope
+            let verifyEnvelope: [String: Any] = ["credential": credential]
             let tokenJson = try await requestJSON(
                 backendURL: backendURL,
                 path: "/api/v1/auth/login/verify",
@@ -145,83 +89,6 @@ final class MobileAppViewModel: ObservableObject {
             netLog.error("Passkey login failed. Type=\(String(describing: type(of: error)), privacy: .public) Domain=\(nsErr.domain, privacy: .public) Code=\(nsErr.code) Desc=\(nsErr.localizedDescription, privacy: .public)")
             errorMessage = nsErr.localizedDescription
         }
-    }
-
-    // MARK: - Passkey credential normalization
-    private func base64url(_ data: Data) -> String {
-        let base64 = data.base64EncodedString()
-        // Convert to base64url by replacing characters and trimming padding
-        return base64
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .trimmingCharacters(in: CharacterSet(charactersIn: "="))
-    }
-
-    private func normalizeCredentialJSON(_ credential: Any) -> Any {
-        // Recursively walk the structure and convert Data to base64url strings.
-        if let data = credential as? Data {
-            return base64url(data)
-        } else if let dict = credential as? [String: Any] {
-            var out: [String: Any] = [:]
-            for (k, v) in dict {
-                out[k] = normalizeCredentialJSON(v)
-            }
-            return out
-        } else if let array = credential as? [Any] {
-            return array.map { normalizeCredentialJSON($0) }
-        } else {
-            return credential
-        }
-    }
-
-    // Validate JSON-encodability and provide diagnostics
-    private func findFirstNonJSONValue(in value: Any, path: [String] = []) -> (path: [String], value: Any)? {
-        // JSONSerialization allows: NSDictionary/Array, String, Number, Bool, NSNull
-        if value is String || value is NSNumber || value is NSNull || value is Bool { return nil }
-        if let dict = value as? [String: Any] {
-            for (k, v) in dict {
-                if let problem = findFirstNonJSONValue(in: v, path: path + [k]) {
-                    return problem
-                }
-            }
-            return nil
-        }
-        if let array = value as? [Any] {
-            for (idx, v) in array.enumerated() {
-                if let problem = findFirstNonJSONValue(in: v, path: path + ["[\(idx)]"]) {
-                    return problem
-                }
-            }
-            return nil
-        }
-        // Anything else is non-JSON-encodable
-        return (path, value)
-    }
-
-    // Broader normalization to coerce common Foundation types to strings and keys to String
-    private func deepNormalizeToJSON(_ value: Any) -> Any {
-        if let data = value as? Data { return base64url(data) }
-        if let date = value as? Date {
-            let iso = ISO8601DateFormatter().string(from: date)
-            return iso
-        }
-        if let url = value as? URL { return url.absoluteString }
-        if let str = value as? String { return str }
-        if let num = value as? NSNumber { return num }
-        if value is NSNull { return NSNull() }
-        if let b = value as? Bool { return b }
-        if let dict = value as? [String: Any] {
-            var out: [String: Any] = [:]
-            for (k, v) in dict {
-                out[String(describing: k)] = deepNormalizeToJSON(v)
-            }
-            return out
-        }
-        if let array = value as? [Any] {
-            return array.map { deepNormalizeToJSON($0) }
-        }
-        // Fallback: stringify unknown types for debug robustness
-        return String(describing: value)
     }
 
     func reloadAllData() async throws {

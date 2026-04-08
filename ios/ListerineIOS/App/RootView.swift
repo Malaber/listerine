@@ -1,4 +1,5 @@
 import SwiftUI
+import ListerineCore
 
 struct RootView: View {
     @EnvironmentObject private var viewModel: MobileAppViewModel
