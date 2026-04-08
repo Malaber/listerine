@@ -19,7 +19,7 @@ targets:
     settings:
       base:
         PRODUCT_NAME: Listerine
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.listerine
+        PRODUCT_BUNDLE_IDENTIFIER: de.malaber.listerine
         MARKETING_VERSION: 0.1.0
         CURRENT_PROJECT_VERSION: 1
         SWIFT_VERSION: 5.10
