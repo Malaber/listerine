@@ -256,6 +256,7 @@ def _ios_e2e_env(
     e2e_seed_path: str,
     webauthn_rp_id: str,
     user_email: str,
+    origin: str = "",
 ) -> dict[str, str]:
     package_dir = ROOT / "ios" / "ListerineIOS"
     clang_module_cache = package_dir / ".clang-module-cache"
@@ -272,6 +273,7 @@ def _ios_e2e_env(
             ),
             "LISTERINE_E2E_USER_EMAIL": user_email,
             "LISTERINE_E2E_RP_ID": webauthn_rp_id,
+            "LISTERINE_E2E_ORIGIN": origin.strip(),
             "DEVELOPER_DIR": env.get("DEVELOPER_DIR", "/Applications/Xcode.app/Contents/Developer"),
             "CLANG_MODULE_CACHE_PATH": env.get(
                 "CLANG_MODULE_CACHE_PATH", str(clang_module_cache.resolve())
@@ -775,6 +777,11 @@ def build_ios_simulator(
         "e2e_seed_path": "Fixture that contains passkey data for the native iOS flow.",
         "webauthn_rp_id": "WebAuthn relying party ID exposed to the native iOS flow.",
         "user_email": "Seeded user email used for the native iOS passkey login.",
+        "origin": (
+            "Optional origin embedded into the seeded passkey assertion. Defaults to "
+            "the base_url origin, but can be set to a shared native passkey host such "
+            "as https://pr.listerine.malaber.de."
+        ),
     }
 )
 def run_ios_e2e(
@@ -783,12 +790,14 @@ def run_ios_e2e(
     e2e_seed_path=DEFAULT_BROWSER_SEED_PATH,
     webauthn_rp_id="localhost",
     user_email=DEFAULT_IOS_E2E_USER_EMAIL,
+    origin="",
 ) -> None:
     env = _ios_e2e_env(
         base_url=base_url,
         e2e_seed_path=e2e_seed_path,
         webauthn_rp_id=webauthn_rp_id,
         user_email=user_email,
+        origin=origin,
     )
     c.run(
         "xcrun swift test --package-path ios/ListerineIOS --filter LiveBackendE2ETests",
@@ -888,6 +897,11 @@ def start_ios_backend(
         "database_url": "Database URL for the temporary local app.",
         "webauthn_rp_id": "WebAuthn relying party ID exposed to the native iOS flow.",
         "user_email": "Seeded user email used for the native iOS passkey login.",
+        "origin": (
+            "Optional origin embedded into the seeded passkey assertion. Defaults to "
+            "http://localhost:<port>, but can be overridden to model shared native "
+            "passkey hosts."
+        ),
         "host": "Host to bind the local app server to.",
         "port": "Port to bind the local app server to.",
         "log_path": "File used for uvicorn logs.",
@@ -901,6 +915,7 @@ def check_ios_e2e(
     database_url=DEFAULT_IOS_E2E_DATABASE_URL,
     webauthn_rp_id="localhost",
     user_email=DEFAULT_IOS_E2E_USER_EMAIL,
+    origin="",
     host=DEFAULT_HOST,
     port=DEFAULT_IOS_E2E_PORT,
     log_path=DEFAULT_IOS_E2E_LOG_PATH,
@@ -925,6 +940,7 @@ def check_ios_e2e(
             e2e_seed_path=e2e_seed_path,
             webauthn_rp_id=webauthn_rp_id,
             user_email=user_email,
+            origin=origin,
         )
     finally:
         stop_app(c, pid_path=pid_path)

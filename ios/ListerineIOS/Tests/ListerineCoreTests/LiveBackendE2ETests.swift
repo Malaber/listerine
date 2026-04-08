@@ -133,9 +133,11 @@ private struct LiveBackendE2EConfiguration {
     let seedPath: URL
     let userEmail: String
     let rpID: String?
+    let configuredOrigin: String?
 
     var origin: String {
-        baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        configuredOrigin?.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            ?? baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     }
 
     static func fromEnvironment() -> Self? {
@@ -152,7 +154,17 @@ private struct LiveBackendE2EConfiguration {
         let seedPath = URL(fileURLWithPath: seedPathText)
         let userEmail = environment["LISTERINE_E2E_USER_EMAIL"] ?? "listerine@schaedler.rocks"
         let rpID = environment["LISTERINE_E2E_RP_ID"]
-        return Self(baseURL: baseURL, seedPath: seedPath, userEmail: userEmail, rpID: rpID)
+        let origin = environment["LISTERINE_E2E_ORIGIN"].flatMap { value in
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        return Self(
+            baseURL: baseURL,
+            seedPath: seedPath,
+            userEmail: userEmail,
+            rpID: rpID,
+            configuredOrigin: origin
+        )
     }
 }
 

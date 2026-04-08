@@ -222,6 +222,7 @@ def test_ios_e2e_env_uses_absolute_seed_and_workspace_cache(tmp_path: Path, monk
         e2e_seed_path="app/fixtures/review_seed_e2e.json",
         webauthn_rp_id="localhost",
         user_email="ios@example.com",
+        origin="https://passkeys.example.com",
     )
 
     assert env["LISTERINE_E2E_BASE_URL"] == "http://localhost:8017"
@@ -230,6 +231,7 @@ def test_ios_e2e_env_uses_absolute_seed_and_workspace_cache(tmp_path: Path, monk
     )
     assert env["LISTERINE_E2E_USER_EMAIL"] == "ios@example.com"
     assert env["LISTERINE_E2E_RP_ID"] == "localhost"
+    assert env["LISTERINE_E2E_ORIGIN"] == "https://passkeys.example.com"
     assert env["DEVELOPER_DIR"] == "/Applications/Xcode.app/Contents/Developer"
     assert env["CLANG_MODULE_CACHE_PATH"] == str(
         (tmp_path / "ios" / "ListerineIOS" / ".clang-module-cache").resolve()
@@ -462,6 +464,7 @@ def test_run_ios_e2e_invokes_swift_test_with_expected_env(monkeypatch) -> None:
             "LISTERINE_E2E_SEED_PATH": kwargs["e2e_seed_path"],
             "LISTERINE_E2E_RP_ID": kwargs["webauthn_rp_id"],
             "LISTERINE_E2E_USER_EMAIL": kwargs["user_email"],
+            "LISTERINE_E2E_ORIGIN": kwargs["origin"],
         },
     )
 
@@ -471,6 +474,7 @@ def test_run_ios_e2e_invokes_swift_test_with_expected_env(monkeypatch) -> None:
         e2e_seed_path="app/fixtures/review_seed_e2e.json",
         webauthn_rp_id="localhost",
         user_email="ios@example.com",
+        origin="https://passkeys.example.com",
     )
 
     assert calls == [
@@ -482,6 +486,7 @@ def test_run_ios_e2e_invokes_swift_test_with_expected_env(monkeypatch) -> None:
                     "LISTERINE_E2E_SEED_PATH": "app/fixtures/review_seed_e2e.json",
                     "LISTERINE_E2E_RP_ID": "localhost",
                     "LISTERINE_E2E_USER_EMAIL": "ios@example.com",
+                    "LISTERINE_E2E_ORIGIN": "https://passkeys.example.com",
                 },
                 "pty": False,
                 "shell": "/bin/bash",
@@ -510,6 +515,7 @@ def test_check_ios_e2e_starts_waits_runs_and_stops(monkeypatch) -> None:
         database_url="sqlite+aiosqlite:///./tmp-ios-e2e.db",
         webauthn_rp_id="localhost",
         user_email="ios@example.com",
+        origin="https://passkeys.example.com",
         host="127.0.0.1",
         port=8017,
         log_path="ios-e2e-server.log",
@@ -538,6 +544,7 @@ def test_check_ios_e2e_starts_waits_runs_and_stops(monkeypatch) -> None:
                 "e2e_seed_path": "app/fixtures/review_seed_e2e.json",
                 "webauthn_rp_id": "localhost",
                 "user_email": "ios@example.com",
+                "origin": "https://passkeys.example.com",
             },
         ),
         ("stop", {"pid_path": "ios-e2e-server.pid"}),
