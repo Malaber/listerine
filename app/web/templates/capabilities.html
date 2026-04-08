@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="capabilities-shell">
+  <section class="capabilities-hero">
+    <div class="capabilities-copy">
+      <p class="dashboard-kicker">Feature roundup</p>
+      <h1>What Listerine can do for shared grocery and to-do lists.</h1>
+      <p class="dashboard-intro">
+        Listerine is built to make household planning simple: shared shopping lists, practical task
+        tracking, privacy-friendly collaboration, and a fast interface that stays calm even when daily
+        life gets messy.
+      </p>
+      <div class="capabilities-actions">
+        <a class="primary-button" href="/capabilities/live-demo">Try the live demo</a>
+        <a class="secondary-button" href="/login">Open your real lists</a>
+      </div>
+      <p class="capabilities-note">
+        The live demo uses the same list page and interaction code as the real product, just with local
+        seeded data instead of backend calls.
+      </p>
+    </div>
+
+    <aside class="dashboard-card dashboard-card-accent capabilities-summary">
+      <h2>Why people use it</h2>
+      <ul class="capabilities-summary-list">
+        <li>Shared household lists that stay easy to scan</li>
+        <li>Fast grocery check-off with category grouping</li>
+        <li>Simple task capture without clutter or friction</li>
+        <li>Passkey-first access with privacy in mind</li>
+      </ul>
+    </aside>
+  </section>
+
+  <section class="capabilities-grid">
+    <article class="dashboard-card capabilities-card capabilities-card-accent">
+      <p class="dashboard-label">Live demo</p>
+      <h2>Use the real list UI right now</h2>
+      <p class="dashboard-helper">
+        Add items, check them off, reorder category sections, and explore the actual interaction model.
+      </p>
+      <a class="primary-button" href="/capabilities/live-demo">Open the live demo</a>
+    </article>
+
+    <article class="dashboard-card capabilities-card">
+      <p class="dashboard-label">Weekly groceries</p>
+      <h2>Built for the way people shop</h2>
+      <p class="dashboard-helper">
+        Group items by aisle-friendly categories, keep quantity notes visible, and move quickly while
+        you are in the store.
+      </p>
+    </article>
+
+    <article class="dashboard-card capabilities-card">
+      <p class="dashboard-label">Household to-dos</p>
+      <h2>One list style, many practical uses</h2>
+      <p class="dashboard-helper">
+        The same list flow works for errands, chores, packing lists, weekend prep, and recurring home
+        tasks without switching mental models.
+      </p>
+    </article>
+
+    <article class="dashboard-card capabilities-card">
+      <p class="dashboard-label">Privacy and usability</p>
+      <h2>Simple on purpose</h2>
+      <p class="dashboard-helper">
+        Listerine keeps the interface focused on the list itself, with passkey-based sign-in and no need
+        to expose private household data on public pages.
+      </p>
+    </article>
+  </section>
+</section>
+{% endblock %}

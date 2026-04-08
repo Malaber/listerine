@@ -294,7 +294,7 @@ def _write_github_output(values: dict[str, str]) -> None:
 
 @task
 def setup(c) -> None:
-    c.run("./scripts/setup_env.sh", pty=False, shell="/bin/bash")
+    c.run("./.codex/setup.sh", pty=False, shell="/bin/bash")
 
 
 @task(pre=[setup])

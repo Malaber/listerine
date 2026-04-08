@@ -157,9 +157,12 @@ def test_capabilities_page_is_public_and_contains_interactive_demo(client) -> No
     response = client.get("/capabilities")
 
     assert response.status_code == 200
-    assert 'data-list-detail' in response.text
-    assert 'data-list-mode="demo"' in response.text
-    assert "Saturday Groceries" in response.text
+    assert "What Listerine can do for shared grocery and to-do lists." in response.text
+    assert 'href="/capabilities/live-demo"' in response.text
+    assert (
+        "The live demo uses the same list page and interaction code as the real product"
+        in response.text
+    )
 
 
 def test_full_flow(client) -> None:
@@ -356,6 +359,7 @@ def test_indexing_and_llm_metadata_files_are_exposed(client) -> None:
     assert "- The web app requires sign-in for household data." in llms.text
     assert "- Do not attempt to access or infer private user content." in llms.text
     assert "- http://testserver/capabilities" in llms.text
+    assert "- http://testserver/capabilities/live-demo" in llms.text
     assert "- http://testserver/login" in llms.text
     assert "- http://testserver/sitemap.xml" in llms.text
 
@@ -364,6 +368,7 @@ def test_indexing_and_llm_metadata_files_are_exposed(client) -> None:
     assert sitemap.headers["content-type"].startswith("application/xml")
     assert "<urlset" in sitemap.text
     assert "<loc>http://testserver/capabilities</loc>" in sitemap.text
+    assert "<loc>http://testserver/capabilities/live-demo</loc>" in sitemap.text
     assert "<loc>http://testserver/login</loc>" in sitemap.text
     assert "<loc>http://testserver/llms.txt</loc>" in sitemap.text
 
@@ -378,13 +383,25 @@ def test_capabilities_page_is_public_and_describes_real_features(client) -> None
     page = client.get("/capabilities")
 
     assert page.status_code == 200
-    assert 'data-list-detail' in page.text
+    assert "Feature roundup" in page.text
+    assert "Weekly groceries" in page.text
+    assert "Household to-dos" in page.text
+    assert "Privacy and usability" in page.text
+    assert 'href="/capabilities/live-demo"' in page.text
+    assert 'href="/login"' in page.text
+
+
+def test_capabilities_live_demo_page_uses_real_list_ui(client) -> None:
+    page = client.get("/capabilities/live-demo")
+
+    assert page.status_code == 200
+    assert "data-list-detail" in page.text
     assert 'data-list-mode="demo"' in page.text
     assert "Interactive showcase" in page.text
     assert "Saturday Groceries" in page.text
     assert "Interactive demo running locally." in page.text
     assert "real list UI with local demo data" in page.text
-    assert 'href="/login"' in page.text
+    assert 'href="/capabilities"' in page.text
 
 
 def test_auth_and_access_error_paths(client) -> None:

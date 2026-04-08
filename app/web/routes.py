@@ -224,6 +224,7 @@ async def llms_txt(request: Request) -> PlainTextResponse:
         "",
         "## Public endpoints",
         f"- {_absolute_url(request, '/capabilities')}",
+        f"- {_absolute_url(request, '/capabilities/live-demo')}",
         f"- {canonical_root}login",
         f"- {_absolute_url(request, '/manifest.webmanifest')}",
         f"- {_absolute_url(request, '/robots.txt')}",
@@ -237,6 +238,7 @@ async def sitemap_xml(request: Request) -> FastAPIResponse:
     urls = [
         _absolute_url(request, "/"),
         _absolute_url(request, "/capabilities"),
+        _absolute_url(request, "/capabilities/live-demo"),
         _absolute_url(request, "/login"),
         _absolute_url(request, "/settings"),
         _absolute_url(request, "/manifest.webmanifest"),
@@ -256,6 +258,18 @@ async def sitemap_xml(request: Request) -> FastAPIResponse:
 @router.get("/capabilities", response_class=HTMLResponse, response_model=None)
 async def capabilities_page(request: Request, db: AsyncSession = Depends(get_db)) -> Response:
     user = await _get_session_user(request, db)
+    return templates.TemplateResponse(
+        request,
+        "capabilities.html",
+        _template_context(request, user),
+    )
+
+
+@router.get("/capabilities/live-demo", response_class=HTMLResponse, response_model=None)
+async def capabilities_live_demo_page(
+    request: Request, db: AsyncSession = Depends(get_db)
+) -> Response:
+    user = await _get_session_user(request, db)
     demo_payload = _capabilities_demo_payload()
     return templates.TemplateResponse(
         request,
@@ -267,10 +281,11 @@ async def capabilities_page(request: Request, db: AsyncSession = Depends(get_db)
             list_id=demo_payload["list"]["id"],
             list_kicker="Interactive showcase",
             list_sync_text="Interactive demo running locally.",
-            list_back_href="/login",
-            list_back_label="Open your real lists",
+            list_back_href="/capabilities",
+            list_back_label="Back to feature roundup",
             list_page_note=(
-                "This page uses the real list UI with local demo data, so what you try here matches "
+                "This page uses the real list UI with local demo data, "
+                "so what you try here matches "
                 "how the actual product behaves."
             ),
             demo_payload_json=json.dumps(demo_payload),
@@ -294,6 +309,8 @@ async def login_page(request: Request, db: AsyncSession = Depends(get_db)) -> Re
             next_url=next_path,
         ),
     )
+
+
 @router.post("/logout")
 async def logout_page(request: Request, db: AsyncSession = Depends(get_db)) -> Response:
     await revoke_auth_session(request, db)

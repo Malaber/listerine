@@ -4,6 +4,10 @@
 
 Always run `.codex/setup.sh` first.
 
+Do not bypass the shared Invoke entrypoints with ad hoc `pytest`, `node --test`, `c8`, or similar
+commands when an Invoke target exists. If a check is covered by `inv verify` or another `inv` task,
+run that task instead and treat missing worktree setup as an environment problem to fix first.
+
 For local dependency installation and verification, prefer the repo virtualenv at `.venv`. If
 `.codex/setup.sh` fails because the host Python is externally managed, continue in `.venv` instead
 of stopping:
@@ -26,6 +30,10 @@ of stopping:
 
 Then run:
 - `inv verify`
+
+In git worktrees, `.codex/setup.sh` may link `.venv` from another checkout that already has the repo
+virtualenv bootstrapped. After that, still use `.venv/bin/inv ...` or `inv ...` targets from the
+current worktree rather than falling back to direct tool invocations.
 
 ## Local testing workflow
 
