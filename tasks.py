@@ -9,6 +9,7 @@ import sys
 import time
 from pathlib import Path
 from urllib.error import URLError
+from urllib.parse import urlparse
 from urllib.request import urlopen
 
 try:
@@ -45,6 +46,10 @@ DEFAULT_IOS_E2E_LOG_PATH = "ios-e2e-server.log"
 DEFAULT_IOS_E2E_PID_PATH = "ios-e2e-server.pid"
 DEFAULT_IOS_E2E_USER_EMAIL = "listerine@schaedler.rocks"
 DEFAULT_IOS_SIMULATOR_DESTINATION = "generic/platform=iOS Simulator"
+DEFAULT_IOS_APP_BACKEND_URL = "https://listerine.malaber.de"
+DEFAULT_IOS_APP_BUNDLE_IDENTIFIER = "com.example.listerine"
+IOS_PROJECT_YML_PATH = ROOT / "ios" / "ListerineIOS" / "project.yml"
+IOS_ENTITLEMENTS_PATH = ROOT / "ios" / "ListerineIOS" / "App" / "Listerine.entitlements"
 STABLE_TAG_PATTERN = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 
 
@@ -288,6 +293,43 @@ def _ios_toolchain_env() -> dict[str, str]:
         }
     )
     return env
+
+
+def _validated_ios_backend_host(backend_url: str) -> str:
+    parsed = urlparse(backend_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise Exit("configure-ios-app requires a valid http or https backend_url.")
+    return parsed.hostname
+
+
+def _replace_project_setting(contents: str, key: str, value: str) -> str:
+    pattern = re.compile(rf"^(\s*{re.escape(key)}:\s*).*$", re.MULTILINE)
+    replacement = rf"\1{value}"
+    if pattern.search(contents):
+        return pattern.sub(replacement, contents, count=1)
+    raise Exit(f"Could not find {key} in {IOS_PROJECT_YML_PATH}.")
+
+
+def _write_ios_entitlements(host: str) -> None:
+    IOS_ENTITLEMENTS_PATH.write_text(
+        "\n".join(
+            [
+                '<?xml version="1.0" encoding="UTF-8"?>',
+                '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+                '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
+                '<plist version="1.0">',
+                "<dict>",
+                "\t<key>com.apple.developer.associated-domains</key>",
+                "\t<array>",
+                f"\t\t<string>webcredentials:{host}</string>",
+                "\t</array>",
+                "</dict>",
+                "</plist>",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
 
 
 def _latest_stable_version_from_tags(tags: list[str]) -> str:
@@ -612,6 +654,38 @@ def install_xcodegen(c) -> None:
 
 @task(
     help={
+        "backend_url": "Build-time backend URL embedded into the native app.",
+        "bundle_id": "Bundle identifier used for the native app build.",
+        "regenerate_project": "Regenerate the Xcode project after updating the config.",
+    }
+)
+def configure_ios_app(
+    c,
+    backend_url=DEFAULT_IOS_APP_BACKEND_URL,
+    bundle_id=DEFAULT_IOS_APP_BUNDLE_IDENTIFIER,
+    regenerate_project=True,
+) -> None:
+    host = _validated_ios_backend_host(backend_url)
+    project_yml = IOS_PROJECT_YML_PATH.read_text(encoding="utf-8")
+    project_yml = _replace_project_setting(
+        project_yml,
+        "PRODUCT_BUNDLE_IDENTIFIER",
+        bundle_id,
+    )
+    project_yml = _replace_project_setting(
+        project_yml,
+        "INFOPLIST_KEY_ListerineBackendBaseURL",
+        backend_url,
+    )
+    IOS_PROJECT_YML_PATH.write_text(project_yml, encoding="utf-8")
+    _write_ios_entitlements(host)
+    if str(regenerate_project).lower() not in {"0", "false", "no"}:
+        install_xcodegen.body(c)
+        generate_ios_project.body(c)
+
+
+@task(
+    help={
         "project_dir": "Directory that contains the iOS XcodeGen project spec.",
     }
 )
@@ -731,6 +805,39 @@ def check_browser_e2e(
         )
     finally:
         stop_app(c, pid_path=pid_path)
+
+
+@task(
+    help={
+        "backend_url": "Backend URL whose hostname should be used as the WebAuthn RP ID.",
+        "seed_path": "Fixture used to seed the local app database.",
+        "database_url": "Database URL for the temporary local app.",
+        "host": "Host to bind the local app server to.",
+        "port": "Port to bind the local app server to.",
+        "log_path": "File used for uvicorn logs.",
+        "pid_path": "File used to store the started server PID.",
+    }
+)
+def start_ios_backend(
+    c,
+    backend_url=DEFAULT_IOS_APP_BACKEND_URL,
+    seed_path=DEFAULT_BROWSER_SEED_PATH,
+    database_url=DEFAULT_IOS_E2E_DATABASE_URL,
+    host=DEFAULT_HOST,
+    port=DEFAULT_IOS_E2E_PORT,
+    log_path=DEFAULT_IOS_E2E_LOG_PATH,
+    pid_path=DEFAULT_IOS_E2E_PID_PATH,
+) -> None:
+    start_app(
+        c,
+        seed_path=seed_path,
+        database_url=database_url,
+        webauthn_rp_id=_validated_ios_backend_host(backend_url),
+        host=host,
+        port=port,
+        log_path=log_path,
+        pid_path=pid_path,
+    )
 
 
 @task(

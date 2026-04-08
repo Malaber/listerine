@@ -1,5 +1,4 @@
 import SwiftUI
-import ListerineCore
 
 struct RootView: View {
     @EnvironmentObject private var viewModel: MobileAppViewModel
@@ -38,11 +37,7 @@ struct RootView: View {
     private var loginPane: some View {
         Form {
             Section("Backend") {
-                TextField("https://listerine.malaber.de", text: $viewModel.backendURLInput)
-                    .keyboardType(.URL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                Button("Save") { viewModel.saveBackendURL() }
+                LabeledContent("Configured host", value: viewModel.backendDisplayName)
             }
 
             Section("Sign in") {

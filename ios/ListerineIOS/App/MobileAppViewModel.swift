@@ -1,11 +1,27 @@
 import Foundation
 import os.log
-import ListerineCore
 
 private let netLog = Logger(subsystem: "com.example.ListerineIOS", category: "network")
+
+private enum AppBuildConfiguration {
+    private static let backendURLKey = "ListerineBackendBaseURL"
+
+    static var backendURL: URL? {
+        guard
+            let rawValue = Bundle.main.object(forInfoDictionaryKey: backendURLKey) as? String,
+            let url = URL(string: rawValue),
+            let scheme = url.scheme?.lowercased(),
+            ["http", "https"].contains(scheme),
+            url.host != nil
+        else {
+            return nil
+        }
+        return url
+    }
+}
+
 @MainActor
 final class MobileAppViewModel: ObservableObject {
-    @Published var backendURLInput: String
     @Published private(set) var backendURL: URL?
     @Published private(set) var isAuthenticating = false
     @Published private(set) var authToken: String?
@@ -16,29 +32,20 @@ final class MobileAppViewModel: ObservableObject {
     @Published var newItemName = ""
     @Published var errorMessage: String?
 
-    private let urlStore = BackendURLStore()
     private let passkeyClient: ApplePasskeyClient
 
     init(passkeyClient: ApplePasskeyClient = ApplePasskeyClient()) {
         self.passkeyClient = passkeyClient
-        let config = urlStore.load()
-        backendURL = config.backendURL
-        backendURLInput = config.backendURL?.absoluteString ?? "https://listerine.malaber.de"
+        backendURL = AppBuildConfiguration.backendURL
     }
 
-    func saveBackendURL() {
-        do {
-            let config = try urlStore.save(backendURLString: backendURLInput)
-            backendURL = config.backendURL
-            errorMessage = nil
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+    var backendDisplayName: String {
+        backendURL?.host ?? backendURL?.absoluteString ?? "Not configured"
     }
 
     func loginWithPasskey() async {
         guard let backendURL else {
-            errorMessage = "Please save a backend URL first."
+            errorMessage = "This build is missing a backend URL configuration."
             return
         }
 

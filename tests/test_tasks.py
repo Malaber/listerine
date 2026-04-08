@@ -247,6 +247,89 @@ def test_ios_toolchain_env_uses_workspace_cache(tmp_path: Path, monkeypatch) -> 
     )
 
 
+def test_validated_ios_backend_host_rejects_invalid_urls() -> None:
+    try:
+        tasks._validated_ios_backend_host("notaurl")
+    except tasks.Exit as exc:
+        assert "configure-ios-app requires a valid http or https backend_url." in str(exc)
+    else:
+        raise AssertionError("expected invalid backend URL to fail")
+
+
+def test_write_ios_entitlements_uses_configured_host(tmp_path: Path, monkeypatch) -> None:
+    entitlements_path = tmp_path / "Listerine.entitlements"
+    monkeypatch.setattr(tasks, "IOS_ENTITLEMENTS_PATH", entitlements_path)
+
+    tasks._write_ios_entitlements("example.com")
+
+    assert "webcredentials:example.com" in entitlements_path.read_text(encoding="utf-8")
+
+
+def test_configure_ios_app_updates_project_and_entitlements(monkeypatch, tmp_path: Path) -> None:
+    project_path = tmp_path / "project.yml"
+    project_path.write_text(
+        "\n".join(
+            [
+                "PRODUCT_BUNDLE_IDENTIFIER: com.example.old",
+                "INFOPLIST_KEY_ListerineBackendBaseURL: https://old.example.com",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    entitlements_path = tmp_path / "Listerine.entitlements"
+    calls: list[str] = []
+
+    monkeypatch.setattr(tasks, "IOS_PROJECT_YML_PATH", project_path)
+    monkeypatch.setattr(tasks, "IOS_ENTITLEMENTS_PATH", entitlements_path)
+    monkeypatch.setattr(tasks.install_xcodegen, "body", lambda c: calls.append("install_xcodegen"))
+    monkeypatch.setattr(
+        tasks.generate_ios_project, "body", lambda c: calls.append("generate_ios_project")
+    )
+
+    tasks.configure_ios_app.body(
+        None,
+        backend_url="https://selfhost.example.com",
+        bundle_id="com.example.selfhost",
+        regenerate_project=True,
+    )
+
+    project_contents = project_path.read_text(encoding="utf-8")
+    assert "PRODUCT_BUNDLE_IDENTIFIER: com.example.selfhost" in project_contents
+    assert "INFOPLIST_KEY_ListerineBackendBaseURL: https://selfhost.example.com" in project_contents
+    assert "webcredentials:selfhost.example.com" in entitlements_path.read_text(encoding="utf-8")
+    assert calls == ["install_xcodegen", "generate_ios_project"]
+
+
+def test_start_ios_backend_derives_rp_id_from_backend_url(monkeypatch) -> None:
+    calls: list[dict] = []
+
+    monkeypatch.setattr(tasks, "start_app", lambda c, **kwargs: calls.append(kwargs))
+
+    tasks.start_ios_backend.body(
+        None,
+        backend_url="https://shopping.example.com",
+        seed_path="app/fixtures/review_seed_e2e.json",
+        database_url="sqlite+aiosqlite:///./tmp-ios-e2e.db",
+        host="127.0.0.1",
+        port=8017,
+        log_path="ios-e2e-server.log",
+        pid_path="ios-e2e-server.pid",
+    )
+
+    assert calls == [
+        {
+            "seed_path": "app/fixtures/review_seed_e2e.json",
+            "database_url": "sqlite+aiosqlite:///./tmp-ios-e2e.db",
+            "webauthn_rp_id": "shopping.example.com",
+            "host": "127.0.0.1",
+            "port": 8017,
+            "log_path": "ios-e2e-server.log",
+            "pid_path": "ios-e2e-server.pid",
+        }
+    ]
+
+
 def test_check_ios_package_invokes_swift_test(monkeypatch) -> None:
     calls: list[tuple[str, dict]] = []
 

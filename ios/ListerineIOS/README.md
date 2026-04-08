@@ -18,6 +18,8 @@ This folder contains a starter SwiftUI iPhone client for Listerine plus a Swift 
 Useful native iOS Invoke targets:
 
 - `.venv/bin/inv install-xcodegen`
+- `.venv/bin/inv configure-ios-app --backend-url=https://your.domain --bundle-id=com.example.yourapp`
+- `.venv/bin/inv start-ios-backend --backend-url=https://your.domain`
 - `.venv/bin/inv check-ios-package`
 - `.venv/bin/inv run-ios-e2e`
 - `.venv/bin/inv check-ios-e2e`
@@ -34,7 +36,7 @@ Useful native iOS Invoke targets:
 
 ## Included app flow
 
-- configurable backend URL with `https://listerine.malaber.de` as the default suggestion
+- build-time configured backend URL with `https://listerine.malaber.de` as the default
 - passkey login against `/api/v1/auth/login/options` and `/api/v1/auth/login/verify`
 - bearer-token authenticated loading of households, lists, and list items
 - list switching plus add, remove, check/uncheck, and edit item details
@@ -64,17 +66,47 @@ Useful native iOS Invoke targets:
    .venv/bin/inv build-ios-simulator
    ```
 5. Launch from Xcode and verify:
-   - backend can be changed in-app
+   - the configured backend matches the build settings you generated the app with
    - passkey login succeeds for the selected backend
    - list switching works
    - adding/editing/checking/deleting items updates correctly
    - the device or simulator can satisfy the Apple passkey prompt
+
+## Self-hosted builds
+
+Use Invoke to stamp the app with your backend domain and bundle identifier before building:
+
+```bash
+.venv/bin/inv configure-ios-app \
+  --backend-url=https://shopping.example.com \
+  --bundle-id=com.example.shopping
+```
+
+That task updates:
+- the iOS app's embedded backend URL
+- the associated-domain entitlement for `webcredentials:<your host>`
+- the generated Xcode project
+
+The backend URL is no longer edited inside the app.
+
+To start a local backend with a matching WebAuthn RP ID for that build:
+
+```bash
+.venv/bin/inv start-ios-backend --backend-url=https://shopping.example.com
+```
+
+That derives `WEBAUTHN_RP_ID` from the configured backend host automatically.
 
 ## Passkey login notes
 
 - The native app now accepts the backend's current `/api/v1/auth/login/options` response shape directly, whether the WebAuthn options are top-level or nested under `publicKey`.
 - The app relies on the `Set-Cookie` session from `/api/v1/auth/login/options` to complete `/api/v1/auth/login/verify`, so login tests should always use the same session between both requests.
 - For local native passkey checks, use `localhost` as the browser-facing host and RP ID. `127.0.0.1` is not valid for WebAuthn passkey UX in Apple and Chromium clients.
+- The app target now includes the Associated Domains entitlement for `webcredentials:listerine.malaber.de`.
+- Production passkey login still requires a real Apple team ID and bundle identifier that match the `appID` entries served by `https://listerine.malaber.de/.well-known/apple-app-site-association`.
+- A locally signed placeholder app such as `FAKETEAMID.com.example.listerine` will be rejected by `AuthenticationServices`, even if the backend URL and RP ID are otherwise correct.
+- Self-hosted builds work when the builder signs the app themselves and uses `configure-ios-app` so the bundle ID, associated domain, and backend host all match.
+- An App Store build cannot support arbitrary self-hosted passkey domains at runtime, because Apple Associated Domains are static entitlements.
 
 ## Shipping to the App Store
 
@@ -82,6 +114,10 @@ Useful native iOS Invoke targets:
 2. In Xcode, configure the bundle identifier, signing team, app icon, launch assets, and display metadata.
 3. Add privacy disclosures in App Store Connect, including whether account identifiers or diagnostics are collected.
 4. If passkeys are used in production, verify the associated domains and WebAuthn relying party configuration you will use for the final backend.
+   This includes:
+   - setting the final Apple Developer team and bundle identifier
+   - adding the matching `webcredentials:` domain entitlement to the app
+   - serving an Apple App Site Association file for that exact app identifier on the backend domain
 5. Test on physical devices, especially sign-in flows, keyboard behavior, and network error handling.
 6. Archive the app in Xcode, validate it, and upload it through Organizer.
 7. In App Store Connect, create the app record, complete screenshots, pricing, age rating, and submission notes.
