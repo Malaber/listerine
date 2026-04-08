@@ -49,8 +49,7 @@ DEFAULT_IOS_SIMULATOR_DESTINATION = "generic/platform=iOS Simulator"
 DEFAULT_IOS_APP_BACKEND_URL = "https://listerine.malaber.de"
 DEFAULT_IOS_APP_BUNDLE_IDENTIFIER = "de.malaber.listerine"
 IOS_PROJECT_YML_PATH = ROOT / "ios" / "ListerineIOS" / "project.yml"
-IOS_RELEASE_ENTITLEMENTS_PATH = ROOT / "ios" / "ListerineIOS" / "App" / "Listerine.entitlements"
-IOS_DEBUG_ENTITLEMENTS_PATH = ROOT / "ios" / "ListerineIOS" / "App" / "Listerine.Debug.entitlements"
+IOS_ENTITLEMENTS_PATH = ROOT / "ios" / "ListerineIOS" / "App" / "Listerine.entitlements"
 IOS_GENERATED_CONFIG_PATH = (
     ROOT / "ios" / "ListerineIOS" / "App" / "BuildConfiguration.generated.swift"
 )
@@ -314,37 +313,26 @@ def _replace_project_setting(contents: str, key: str, value: str) -> str:
     raise Exit(f"Could not find {key} in {IOS_PROJECT_YML_PATH}.")
 
 
-def _ios_entitlements_contents(host: str, *, developer_mode: bool) -> str:
-    domain = f"webcredentials:{host}"
-    if developer_mode:
-        domain = f"{domain}?mode=developer"
-    return "\n".join(
-        [
-            '<?xml version="1.0" encoding="UTF-8"?>',
-            '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
-            '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
-            '<plist version="1.0">',
-            "<dict>",
-            "\t<key>com.apple.developer.associated-domains</key>",
-            "\t<array>",
-            f"\t\t<string>{domain}</string>",
-            "\t</array>",
-            "</dict>",
-            "</plist>",
-            "",
-        ]
-    )
-
-
 def _write_ios_entitlements(host: str) -> None:
-    # Debug builds use Apple's associated-domains developer mode so newly
-    # created review hosts and AASA changes work without waiting on CDN caches.
-    IOS_RELEASE_ENTITLEMENTS_PATH.write_text(
-        _ios_entitlements_contents(host, developer_mode=False),
-        encoding="utf-8",
-    )
-    IOS_DEBUG_ENTITLEMENTS_PATH.write_text(
-        _ios_entitlements_contents(host, developer_mode=True),
+    # Native Apple passkeys only work when the signed app declares the same
+    # webcredentials host that the backend advertises in its AASA file.
+    IOS_ENTITLEMENTS_PATH.write_text(
+        "\n".join(
+            [
+                '<?xml version="1.0" encoding="UTF-8"?>',
+                '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+                '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
+                '<plist version="1.0">',
+                "<dict>",
+                "\t<key>com.apple.developer.associated-domains</key>",
+                "\t<array>",
+                f"\t\t<string>webcredentials:{host}</string>",
+                "\t</array>",
+                "</dict>",
+                "</plist>",
+                "",
+            ]
+        ),
         encoding="utf-8",
     )
 
