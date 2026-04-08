@@ -90,6 +90,69 @@ def _origin_for_request(request: Request) -> str:
     return str(request.base_url).rstrip("/")
 
 
+def _expected_origins(pending: dict[str, object]) -> list[str]:
+    origin = pending.get("origin")
+    rp_id = pending.get("rp_id")
+    origins: list[str] = []
+    if isinstance(origin, str) and origin:
+        origins.append(origin)
+    if isinstance(rp_id, str) and rp_id:
+        rp_origin = f"https://{rp_id}"
+        if rp_origin not in origins:
+            origins.append(rp_origin)
+    return origins
+
+
+def _verify_registration_with_expected_origins(
+    *,
+    credential: dict[str, object],
+    expected_challenge: bytes,
+    expected_rp_id: str,
+    pending: dict[str, object],
+) -> object:
+    last_error: Exception | None = None
+    for expected_origin in _expected_origins(pending):
+        try:
+            return verify_registration_response(
+                credential=credential,
+                expected_challenge=expected_challenge,
+                expected_rp_id=expected_rp_id,
+                expected_origin=expected_origin,
+                require_user_verification=True,
+            )
+        except Exception as exc:  # pragma: no cover - covered via tests with monkeypatch
+            last_error = exc
+    assert last_error is not None
+    raise last_error
+
+
+def _verify_authentication_with_expected_origins(
+    *,
+    credential: dict[str, object],
+    expected_challenge: bytes,
+    expected_rp_id: str,
+    pending: dict[str, object],
+    credential_public_key: bytes,
+    credential_current_sign_count: int,
+) -> object:
+    last_error: Exception | None = None
+    for expected_origin in _expected_origins(pending):
+        try:
+            return verify_authentication_response(
+                credential=credential,
+                expected_challenge=expected_challenge,
+                expected_rp_id=expected_rp_id,
+                expected_origin=expected_origin,
+                credential_public_key=credential_public_key,
+                credential_current_sign_count=credential_current_sign_count,
+                require_user_verification=True,
+            )
+        except Exception as exc:  # pragma: no cover - covered via tests with monkeypatch
+            last_error = exc
+    assert last_error is not None
+    raise last_error
+
+
 def _password_auth_disabled() -> HTTPException:
     return HTTPException(
         status_code=400,
@@ -231,12 +294,11 @@ async def finish_passkey_registration(
         raise HTTPException(status_code=400, detail=_REGISTRATION_FAILURE_DETAIL)
 
     try:
-        verified = verify_registration_response(
+        verified = _verify_registration_with_expected_origins(
             credential=payload.credential,
             expected_challenge=base64url_to_bytes(pending["challenge"]),
             expected_rp_id=pending["rp_id"],
-            expected_origin=pending["origin"],
-            require_user_verification=True,
+            pending=pending,
         )
     except Exception as exc:  # pragma: no cover - exercised via API tests with monkeypatch
         raise HTTPException(status_code=400, detail="Passkey registration failed") from exc
@@ -308,14 +370,13 @@ async def finish_passkey_login(
         raise HTTPException(status_code=404, detail="No user found for that passkey")
 
     try:
-        verified = verify_authentication_response(
+        verified = _verify_authentication_with_expected_origins(
             credential=payload.credential,
             expected_challenge=base64url_to_bytes(pending["challenge"]),
             expected_rp_id=pending["rp_id"],
-            expected_origin=pending["origin"],
+            pending=pending,
             credential_public_key=passkey.public_key,
             credential_current_sign_count=passkey.sign_count,
-            require_user_verification=True,
         )
     except Exception as exc:  # pragma: no cover - exercised via API tests with monkeypatch
         raise HTTPException(
@@ -382,12 +443,11 @@ async def finish_passkey_replace(
         raise HTTPException(status_code=404, detail="User not found")
 
     try:
-        verified = verify_registration_response(
+        verified = _verify_registration_with_expected_origins(
             credential=payload.credential,
             expected_challenge=base64url_to_bytes(pending["challenge"]),
             expected_rp_id=pending["rp_id"],
-            expected_origin=pending["origin"],
-            require_user_verification=True,
+            pending=pending,
         )
     except Exception as exc:  # pragma: no cover - exercised via API tests with monkeypatch
         raise HTTPException(status_code=400, detail="Passkey update failed") from exc
@@ -493,12 +553,11 @@ async def finish_add_passkey(
         raise HTTPException(status_code=400, detail="Passkey registration session expired")
 
     try:
-        verified = verify_registration_response(
+        verified = _verify_registration_with_expected_origins(
             credential=payload.credential,
             expected_challenge=base64url_to_bytes(pending["challenge"]),
             expected_rp_id=pending["rp_id"],
-            expected_origin=pending["origin"],
-            require_user_verification=True,
+            pending=pending,
         )
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=400, detail="Passkey registration failed") from exc
@@ -569,12 +628,11 @@ async def finish_passkey_add_from_link(
         raise HTTPException(status_code=404, detail="Passkey add link not found")
 
     try:
-        verified = verify_registration_response(
+        verified = _verify_registration_with_expected_origins(
             credential=payload.credential,
             expected_challenge=base64url_to_bytes(pending["challenge"]),
             expected_rp_id=pending["rp_id"],
-            expected_origin=pending["origin"],
-            require_user_verification=True,
+            pending=pending,
         )
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=400, detail="Passkey add failed") from exc
@@ -670,14 +728,13 @@ async def finish_rename_passkey(
         )
 
     try:
-        verified = verify_authentication_response(
+        verified = _verify_authentication_with_expected_origins(
             credential=payload.credential,
             expected_challenge=base64url_to_bytes(pending["challenge"]),
             expected_rp_id=pending["rp_id"],
-            expected_origin=pending["origin"],
+            pending=pending,
             credential_public_key=target.public_key,
             credential_current_sign_count=target.sign_count,
-            require_user_verification=True,
         )
     except Exception as exc:  # pragma: no cover
         raise HTTPException(
@@ -771,14 +828,13 @@ async def finish_delete_passkey(
         )
 
     try:
-        verified = verify_authentication_response(
+        verified = _verify_authentication_with_expected_origins(
             credential=payload.credential,
             expected_challenge=base64url_to_bytes(pending["challenge"]),
             expected_rp_id=pending["rp_id"],
-            expected_origin=pending["origin"],
+            pending=pending,
             credential_public_key=confirming_passkey.public_key,
             credential_current_sign_count=confirming_passkey.sign_count,
-            require_user_verification=True,
         )
     except Exception as exc:  # pragma: no cover
         raise HTTPException(
