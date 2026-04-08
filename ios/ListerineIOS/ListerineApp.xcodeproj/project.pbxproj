@@ -23,7 +23,7 @@
 		5EC61542B67179C9B0637940 /* MobileAppViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileAppViewModel.swift; sourceTree = "<group>"; };
 		6FD39624D7CA829381C145D7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Assets.xcassets; sourceTree = SOURCE_ROOT; };
 		8491C1AEF2BC348977951F06 /* ListerineApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListerineApp.swift; sourceTree = "<group>"; };
-		9A95B42A45718A5C30DA8559 /* Listerine.Debug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Listerine.Debug.entitlements; sourceTree = "<group>"; };
+		95963E1CE07B0E5A50525067 /* Listerine.Debug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Listerine.Debug.entitlements; sourceTree = "<group>"; };
 		AF9BDC88BED8495FB5471C16 /* Listerine.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Listerine.entitlements; sourceTree = "<group>"; };
 		B2E20E622D1483C4892ECDE4 /* BuildConfiguration.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildConfiguration.generated.swift; sourceTree = "<group>"; };
 		C2EC8AC13D3FBD3F3FA08CF7 /* ListerineIOS */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ListerineIOS; path = .; sourceTree = SOURCE_ROOT; };
@@ -54,7 +54,7 @@
 			children = (
 				551B3360068D6020C456D4B0 /* ApplePasskeyClient.swift */,
 				B2E20E622D1483C4892ECDE4 /* BuildConfiguration.generated.swift */,
-				9A95B42A45718A5C30DA8559 /* Listerine.Debug.entitlements */,
+				95963E1CE07B0E5A50525067 /* Listerine.Debug.entitlements */,
 				AF9BDC88BED8495FB5471C16 /* Listerine.entitlements */,
 				8491C1AEF2BC348977951F06 /* ListerineApp.swift */,
 				5EC61542B67179C9B0637940 /* MobileAppViewModel.swift */,
