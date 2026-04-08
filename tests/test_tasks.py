@@ -341,7 +341,12 @@ def test_build_ios_simulator_invokes_xcodebuild(monkeypatch) -> None:
 
     assert calls == [
         (
-            "cd ios/ListerineIOS && xcodebuild -project ListerineApp.xcodeproj -scheme Listerine -configuration Debug -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build",
+            "cd ios/ListerineIOS && "
+            "xcodebuild -project ListerineApp.xcodeproj "
+            "-scheme Listerine "
+            "-configuration Debug "
+            "-destination 'generic/platform=iOS Simulator' "
+            "CODE_SIGNING_ALLOWED=NO build",
             {
                 "env": {"DEVELOPER_DIR": "/Applications/Xcode.app/Contents/Developer"},
                 "pty": False,

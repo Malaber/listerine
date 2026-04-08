@@ -257,9 +257,11 @@ def _ios_e2e_env(
     env.update(
         {
             "LISTERINE_E2E_BASE_URL": base_url,
-            "LISTERINE_E2E_SEED_PATH": str((ROOT / e2e_seed_path).resolve())
-            if not os.path.isabs(e2e_seed_path)
-            else e2e_seed_path,
+            "LISTERINE_E2E_SEED_PATH": (
+                str((ROOT / e2e_seed_path).resolve())
+                if not os.path.isabs(e2e_seed_path)
+                else e2e_seed_path
+            ),
             "LISTERINE_E2E_USER_EMAIL": user_email,
             "LISTERINE_E2E_RP_ID": webauthn_rp_id,
             "DEVELOPER_DIR": env.get("DEVELOPER_DIR", "/Applications/Xcode.app/Contents/Developer"),
@@ -781,10 +783,20 @@ def check_ios_e2e(
 
 
 @task(
-    pre=[install_xcodegen, check_ios_package, check_ios_e2e, generate_ios_project, build_ios_simulator]
+    pre=[
+        install_xcodegen,
+        check_ios_package,
+        check_ios_e2e,
+        generate_ios_project,
+        build_ios_simulator,
+    ]
 )
 def check_ios_ci(c) -> None:
-    """Run the full native iOS CI flow: package checks, live backend e2e, project generation, and simulator build."""
+    """Run the full native iOS CI flow.
+
+    This includes package checks, live backend e2e, project generation,
+    and simulator build.
+    """
 
 
 @task(
