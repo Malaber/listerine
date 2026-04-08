@@ -32,19 +32,21 @@ Useful native iOS Invoke targets:
 Use the same `configure-ios-app` target in two common ways:
 
 1. Normal live app build against the main hosted backend:
-   ```bash
-   .venv/bin/inv configure-ios-app \
-     --backend-url=https://listerine.malaber.de \
-     --bundle-id=de.malaber.listerine
-   ```
+```bash
+.venv/bin/inv configure-ios-app \
+  --backend-url=https://listerine.malaber.de \
+  --bundle-id=de.malaber.listerine \
+  --development-team=VWKG94374J
+```
 
 2. Review-host build against one PR app while still using the shared review passkey host:
-   ```bash
-   .venv/bin/inv configure-ios-app \
-     --backend-url=https://pr-49.pr.listerine.malaber.de \
-     --passkey-domain=pr.listerine.malaber.de \
-     --bundle-id=de.malaber.listerine
-   ```
+```bash
+.venv/bin/inv configure-ios-app \
+  --backend-url=https://pr-49.pr.listerine.malaber.de \
+  --passkey-domain=pr.listerine.malaber.de \
+  --bundle-id=de.malaber.listerine \
+  --development-team=VWKG94374J
+```
 
 The first form is the normal production-style configuration. The second form is
 for native review testing, where the app talks to a specific PR deployment but
@@ -102,7 +104,8 @@ Use Invoke to stamp the app with your backend domain and bundle identifier befor
 ```bash
 .venv/bin/inv configure-ios-app \
   --backend-url=https://shopping.example.com \
-  --bundle-id=com.example.shopping
+  --bundle-id=com.example.shopping \
+  --development-team=YOURTEAMID
 ```
 
 That task updates:
@@ -141,7 +144,8 @@ The app and backend now have a strict deployment contract for native Apple passk
    ```bash
    .venv/bin/inv configure-ios-app \
      --backend-url=https://shopping.example.com \
-     --bundle-id=com.example.shopping
+     --bundle-id=com.example.shopping \
+     --development-team=YOURTEAMID
    ```
 2. Sign the app with the Apple Developer team that will ship the build.
 3. Confirm the generated entitlement includes `webcredentials:shopping.example.com`.
