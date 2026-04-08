@@ -70,6 +70,64 @@ API and worker services in the infra repo.
 - both modes use host-mounted SQLite
 - both modes join the external Traefik network `system_traefik_external`
 
+## Shared review passkey host
+
+Native iOS passkeys for review deployments need one extra host in addition to the
+per-PR app URLs:
+
+- app host: `https://pr-<PR>.pr.listerine.malaber.de`
+- shared passkey host: `https://pr.listerine.malaber.de`
+
+The iOS app can talk to `pr-<PR>.pr.listerine.malaber.de`, but Apple validates the
+Associated Domains entitlement against the exact host named in the app entitlement
+and the WebAuthn RP ID. In the shared review setup that host is
+`pr.listerine.malaber.de`, so that domain must serve the Apple App Site Association
+response independently of each PR app container.
+
+That means review passkey validation only works when all of these are true:
+
+- the app is built with `webcredentials:pr.listerine.malaber.de`
+- review deployments set `WEBAUTHN_RP_ID=pr.listerine.malaber.de`
+- `pr.listerine.malaber.de` serves the Apple App Site Association file
+- the AASA payload contains the signed app ID in `webcredentials.apps`
+
+Example Nginx config behind Traefik for `pr.listerine.malaber.de`:
+
+```nginx
+server {
+    listen 80;
+    listen [::]:80;
+    server_name pr.listerine.malaber.de;
+
+    location = /.well-known/apple-app-site-association {
+        default_type application/json;
+        add_header Cache-Control "public, max-age=300";
+        return 200 '{"webcredentials":{"apps":["VWKG94374J.de.malaber.listerine"]}}';
+    }
+
+    location = /apple-app-site-association {
+        default_type application/json;
+        add_header Cache-Control "public, max-age=300";
+        return 200 '{"webcredentials":{"apps":["VWKG94374J.de.malaber.listerine"]}}';
+    }
+
+    location = /health {
+        default_type application/json;
+        return 200 '{"status":"ok"}';
+    }
+
+    location / {
+        return 404;
+    }
+}
+```
+
+After deploying that shared host, verify both of these return `200` with the same
+JSON payload:
+
+- `https://pr.listerine.malaber.de/.well-known/apple-app-site-association`
+- `https://pr.listerine.malaber.de/apple-app-site-association`
+
 ## Review deployment layout
 
 The intended contained host layout keeps everything for review deploys under `/srv/listerine-pr/`:

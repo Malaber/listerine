@@ -150,6 +150,17 @@ The app and backend now have a strict deployment contract for native Apple passk
 
 If any of those values drift apart, the simulator or device will fail passkey login before the app can complete `/api/v1/auth/login/verify`.
 
+### Review deployment note
+
+Review deployments can intentionally split the app host from the passkey host:
+
+- app backend URL: `https://pr-<PR>.pr.listerine.malaber.de`
+- passkey entitlement and RP ID: `pr.listerine.malaber.de`
+
+That shared-review setup only works if `pr.listerine.malaber.de` itself serves
+the Apple App Site Association payload for the signed app ID. It is not enough
+for only the individual `pr-<PR>` app host to serve the AASA response.
+
 ## Shipping to the App Store
 
 1. Join the Apple Developer Program and create an App ID for the iOS app.
