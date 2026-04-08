@@ -599,11 +599,7 @@ def check_ios_package(c, package_path="ios/ListerineIOS") -> None:
     )
 
 
-@task(
-    help={
-        "project_dir": "Directory that contains the iOS XcodeGen project spec.",
-    }
-)
+@task
 def install_xcodegen(c) -> None:
     c.run(
         "brew list xcodegen >/dev/null 2>&1 || brew install xcodegen",
