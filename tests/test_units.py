@@ -8,6 +8,7 @@ import pytest
 from fastapi import HTTPException
 from jose import jwt
 from pydantic import ValidationError
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from starlette.requests import Request
 
 from app.admin import SessionAdminAuth, get_application_version
@@ -19,7 +20,15 @@ from app.api.v1.routes.auth import (
     _password_auth_disabled,
     _rp_id_for_request,
 )
-from app.core.config import Settings, settings
+from app.core.config import (
+    ConfigurationError,
+    FriendlyEnvSettingsSource,
+    Settings,
+    _format_invalid_env_value,
+    _join_validation_path,
+    load_settings,
+    settings,
+)
 from app.core import startup_checks
 from app.core.startup_checks import _sqlite_database_path, ensure_database_path_writable
 from app.core.security import (
@@ -358,6 +367,57 @@ def test_settings_normalize_blank_bootstrap_admin_email() -> None:
     assert str(Settings(bootstrap_admin_email="admin@example.com").bootstrap_admin_email) == (
         "admin@example.com"
     )
+
+
+def test_load_settings_reports_invalid_json_env_value(monkeypatch) -> None:
+    class ComplexSettings(BaseSettings):
+        model_config = SettingsConfigDict(env_prefix="", case_sensitive=False)
+
+        webcredentials_apps: list[str]
+
+        @classmethod
+        def settings_customise_sources(
+            cls,
+            settings_cls,
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            file_secret_settings,
+        ):
+            return (
+                init_settings,
+                FriendlyEnvSettingsSource(settings_cls),
+                dotenv_settings,
+                file_secret_settings,
+            )
+
+    monkeypatch.setenv("WEBCREDENTIALS_APPS", "not-json")
+
+    with pytest.raises(ConfigurationError) as exc_info:
+        load_settings(ComplexSettings)
+
+    assert str(exc_info.value) == (
+        "Invalid application configuration. Invalid JSON in environment variable "
+        '"webcredentials_apps" for settings field "webcredentials_apps". '
+        "Expected JSON compatible with list[str]. Received 'not-json'."
+    )
+
+
+def test_load_settings_reports_validation_errors() -> None:
+    class InvalidSettings(BaseSettings):
+        required_count: int
+
+    with pytest.raises(ConfigurationError) as exc_info:
+        load_settings(InvalidSettings)
+
+    assert str(exc_info.value) == (
+        "Invalid application configuration. required_count: Field required"
+    )
+
+
+def test_config_error_helpers_cover_edge_cases() -> None:
+    assert _format_invalid_env_value("x" * 200, limit=20) == "'xxxxxxxxxxxxxxxx..."
+    assert _join_validation_path(()) == "<settings>"
 
 
 def test_settings_normalize_app_base_url_and_webcredentials_apps() -> None:
