@@ -286,6 +286,7 @@ async def capabilities_live_demo_page(
     request: Request, db: AsyncSession = Depends(get_db)
 ) -> Response:
     user = await _get_session_user(request, db)
+    t = translator_for(getattr(request.state, "locale", "en"))
     demo_payload = _capabilities_demo_payload()
     return templates.TemplateResponse(
         request,
@@ -295,15 +296,11 @@ async def capabilities_live_demo_page(
             user,
             is_demo_list=True,
             list_id=demo_payload["list"]["id"],
-            list_kicker="Interactive showcase",
-            list_sync_text="Interactive demo running locally.",
+            list_kicker=t("capabilities.demo_kicker"),
+            list_sync_text=t("capabilities.demo_sync_text"),
             list_back_href="/capabilities",
-            list_back_label="Back to feature roundup",
-            list_page_note=(
-                "This page uses the real list UI with local demo data, "
-                "so what you try here matches "
-                "how the actual product behaves."
-            ),
+            list_back_label=t("capabilities.back_to_roundup"),
+            list_page_note=t("capabilities.demo_note"),
             demo_payload_json=json.dumps(demo_payload),
         ),
     )

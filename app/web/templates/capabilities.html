@@ -3,69 +3,51 @@
 <section class="capabilities-shell">
   <section class="capabilities-hero">
     <div class="capabilities-copy">
-      <p class="dashboard-kicker">Feature roundup</p>
-      <h1>What Listerine can do for shared grocery and to-do lists.</h1>
-      <p class="dashboard-intro">
-        Listerine is built to make household planning simple: shared shopping lists, practical task
-        tracking, privacy-friendly collaboration, and a fast interface that stays calm even when daily
-        life gets messy.
-      </p>
+      <p class="dashboard-kicker">{{ t("capabilities.kicker") }}</p>
+      <h1>{{ t("capabilities.title") }}</h1>
+      <p class="dashboard-intro">{{ t("capabilities.intro") }}</p>
       <div class="capabilities-actions">
-        <a class="primary-button" href="/capabilities/live-demo">Try the live demo</a>
-        <a class="secondary-button" href="/login">Open your real lists</a>
+        <a class="primary-button" href="/capabilities/live-demo">{{ t("capabilities.try_live_demo") }}</a>
+        <a class="secondary-button" href="/login">{{ t("capabilities.open_real_lists") }}</a>
       </div>
-      <p class="capabilities-note">
-        The live demo uses the same list page and interaction code as the real product, just with local
-        seeded data instead of backend calls.
-      </p>
+      <p class="capabilities-note">{{ t("capabilities.live_demo_note") }}</p>
     </div>
 
     <aside class="dashboard-card dashboard-card-accent capabilities-summary">
-      <h2>Why people use it</h2>
+      <h2>{{ t("capabilities.why_people_use_it") }}</h2>
       <ul class="capabilities-summary-list">
-        <li>Shared household lists that stay easy to scan</li>
-        <li>Fast grocery check-off with category grouping</li>
-        <li>Simple task capture without clutter or friction</li>
-        <li>Passkey-first access with privacy in mind</li>
+        <li>{{ t("capabilities.why_shared_lists") }}</li>
+        <li>{{ t("capabilities.why_grocery_checkoff") }}</li>
+        <li>{{ t("capabilities.why_task_capture") }}</li>
+        <li>{{ t("capabilities.why_passkeys") }}</li>
       </ul>
     </aside>
   </section>
 
   <section class="capabilities-grid">
     <article class="dashboard-card capabilities-card capabilities-card-accent">
-      <p class="dashboard-label">Live demo</p>
-      <h2>Use the real list UI right now</h2>
-      <p class="dashboard-helper">
-        Add items, check them off, reorder category sections, and explore the actual interaction model.
-      </p>
-      <a class="primary-button" href="/capabilities/live-demo">Open the live demo</a>
+      <p class="dashboard-label">{{ t("capabilities.live_demo_label") }}</p>
+      <h2>{{ t("capabilities.live_demo_title") }}</h2>
+      <p class="dashboard-helper">{{ t("capabilities.live_demo_body") }}</p>
+      <a class="primary-button" href="/capabilities/live-demo">{{ t("capabilities.try_live_demo") }}</a>
     </article>
 
     <article class="dashboard-card capabilities-card">
-      <p class="dashboard-label">Weekly groceries</p>
-      <h2>Built for the way people shop</h2>
-      <p class="dashboard-helper">
-        Group items by aisle-friendly categories, keep quantity notes visible, and move quickly while
-        you are in the store.
-      </p>
+      <p class="dashboard-label">{{ t("capabilities.weekly_groceries_label") }}</p>
+      <h2>{{ t("capabilities.weekly_groceries_title") }}</h2>
+      <p class="dashboard-helper">{{ t("capabilities.weekly_groceries_body") }}</p>
     </article>
 
     <article class="dashboard-card capabilities-card">
-      <p class="dashboard-label">Household to-dos</p>
-      <h2>One list style, many practical uses</h2>
-      <p class="dashboard-helper">
-        The same list flow works for errands, chores, packing lists, weekend prep, and recurring home
-        tasks without switching mental models.
-      </p>
+      <p class="dashboard-label">{{ t("capabilities.household_todos_label") }}</p>
+      <h2>{{ t("capabilities.household_todos_title") }}</h2>
+      <p class="dashboard-helper">{{ t("capabilities.household_todos_body") }}</p>
     </article>
 
     <article class="dashboard-card capabilities-card">
-      <p class="dashboard-label">Privacy and usability</p>
-      <h2>Simple on purpose</h2>
-      <p class="dashboard-helper">
-        Listerine keeps the interface focused on the list itself, with passkey-based sign-in and no need
-        to expose private household data on public pages.
-      </p>
+      <p class="dashboard-label">{{ t("capabilities.privacy_label") }}</p>
+      <h2>{{ t("capabilities.privacy_title") }}</h2>
+      <p class="dashboard-helper">{{ t("capabilities.privacy_body") }}</p>
     </article>
   </section>
 </section>
