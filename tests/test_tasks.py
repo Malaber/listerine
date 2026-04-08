@@ -273,6 +273,7 @@ def test_configure_ios_app_updates_project_and_entitlements(monkeypatch, tmp_pat
         "\n".join(
             [
                 "PRODUCT_BUNDLE_IDENTIFIER: com.example.old",
+                "DEVELOPMENT_TEAM: OLDTEAM123",
                 "INFOPLIST_KEY_ListerineBackendBaseURL: https://old.example.com",
                 "",
             ]
@@ -296,11 +297,13 @@ def test_configure_ios_app_updates_project_and_entitlements(monkeypatch, tmp_pat
         backend_url="https://selfhost.example.com",
         passkey_domain="passkeys.example.com",
         bundle_id="com.example.selfhost",
+        development_team="NEWTEAM456",
         regenerate_project=True,
     )
 
     project_contents = project_path.read_text(encoding="utf-8")
     assert "PRODUCT_BUNDLE_IDENTIFIER: com.example.selfhost" in project_contents
+    assert "DEVELOPMENT_TEAM: NEWTEAM456" in project_contents
     assert "INFOPLIST_KEY_ListerineBackendBaseURL: https://selfhost.example.com" in project_contents
     assert "webcredentials:passkeys.example.com" in entitlements_path.read_text(encoding="utf-8")
     assert (

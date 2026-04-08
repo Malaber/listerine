@@ -48,6 +48,7 @@ DEFAULT_IOS_E2E_USER_EMAIL = "listerine@schaedler.rocks"
 DEFAULT_IOS_SIMULATOR_DESTINATION = "generic/platform=iOS Simulator"
 DEFAULT_IOS_APP_BACKEND_URL = "https://listerine.malaber.de"
 DEFAULT_IOS_APP_BUNDLE_IDENTIFIER = "de.malaber.listerine"
+DEFAULT_IOS_APP_DEVELOPMENT_TEAM = "VWKG94374J"
 IOS_PROJECT_YML_PATH = ROOT / "ios" / "ListerineIOS" / "project.yml"
 IOS_ENTITLEMENTS_PATH = ROOT / "ios" / "ListerineIOS" / "App" / "Listerine.entitlements"
 IOS_GENERATED_CONFIG_PATH = (
@@ -690,6 +691,10 @@ def install_xcodegen(c) -> None:
             "Bundle identifier used for the native app build; the final Apple "
             "appID is TEAM_ID.bundle_id."
         ),
+        "development_team": (
+            "Apple Developer team ID to stamp into the generated Xcode project. "
+            "Defaults to the repo's current shipping team."
+        ),
         "regenerate_project": "Regenerate the Xcode project after updating the config.",
     }
 )
@@ -698,6 +703,7 @@ def configure_ios_app(
     backend_url=DEFAULT_IOS_APP_BACKEND_URL,
     passkey_domain="",
     bundle_id=DEFAULT_IOS_APP_BUNDLE_IDENTIFIER,
+    development_team=DEFAULT_IOS_APP_DEVELOPMENT_TEAM,
     regenerate_project=True,
 ) -> None:
     # Keep the embedded backend URL and associated domain aligned so self-hosted
@@ -709,6 +715,11 @@ def configure_ios_app(
         project_yml,
         "PRODUCT_BUNDLE_IDENTIFIER",
         bundle_id,
+    )
+    project_yml = _replace_project_setting(
+        project_yml,
+        "DEVELOPMENT_TEAM",
+        development_team,
     )
     project_yml = _replace_project_setting(
         project_yml,
