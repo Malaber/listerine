@@ -17,7 +17,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		235BABE9DE69DE7A433B762A /* Listerine.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Listerine.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		235BABE9DE69DE7A433B762A /* Listerine.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Listerine.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4E59F81D2ECEBDEED61800D9 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		551B3360068D6020C456D4B0 /* ApplePasskeyClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplePasskeyClient.swift; sourceTree = "<group>"; };
 		5EC61542B67179C9B0637940 /* MobileAppViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileAppViewModel.swift; sourceTree = "<group>"; };
@@ -110,6 +110,11 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					4E911D4D424651A104F1C399 = {
+						DevelopmentTeam = VWKG94374J;
+					};
+				};
 			};
 			buildConfigurationList = 93B4E8A38794984F6996627A /* Build configuration list for PBXProject "ListerineApp" */;
 			developmentRegion = en;
