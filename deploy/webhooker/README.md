@@ -311,7 +311,9 @@ webhooker_worker_extra_mounts:
 ## Runtime behavior
 
 - Review deployments seed deterministic real data from `/app/app/fixtures/review_seed.json`.
-- Review deployments set `WEBAUTHN_RP_ID=listerine.example.com` so the same passkey RP can work across PR subdomains.
+- Review deployments set `APP_BASE_URL=https://pr-<PR>.pr.listerine.malaber.de`.
+- Review deployments set `WEBAUTHN_RP_ID=pr-<PR>.pr.listerine.malaber.de`.
+- Review deployments set `WEBCREDENTIALS_APPS` to the JSON array of signed iOS app IDs allowed to use native passkeys.
 - Both modes mount the host data directory at `/data` in the container and use `DATABASE_URL=sqlite+aiosqlite:////data/listerine.db`.
 - The rendered `APP_DATA_DIR` should stay relative when possible, for example `./data`, so the Compose bundle remains portable with its sibling folders.
 - Both modes join the external Traefik network `system_traefik_external`.

@@ -64,7 +64,9 @@ API and worker services in the infra repo.
 ## Runtime behavior
 
 - review deployments seed deterministic real data from `/app/app/fixtures/review_seed.json`
-- review deployments set `WEBAUTHN_RP_ID=listerine.example.com` so one RP can work across PR subdomains
+- review deployments set `APP_BASE_URL=https://pr-<PR>.pr.listerine.malaber.de`
+- review deployments set `WEBAUTHN_RP_ID=pr-<PR>.pr.listerine.malaber.de`
+- review deployments set `WEBCREDENTIALS_APPS` to the JSON array of signed iOS app IDs allowed to use native passkeys
 - both modes use host-mounted SQLite
 - both modes join the external Traefik network `system_traefik_external`
 
