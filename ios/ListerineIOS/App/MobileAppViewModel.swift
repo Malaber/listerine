@@ -7,8 +7,19 @@ private enum AppBuildConfiguration {
     private static let backendURLKey = "ListerineBackendBaseURL"
 
     static var backendURL: URL? {
+        if
+            let generatedURL = validatedURL(from: GeneratedBuildConfiguration.backendURL)
+        {
+            return generatedURL
+        }
+        return validatedURL(
+            from: Bundle.main.object(forInfoDictionaryKey: backendURLKey) as? String
+        )
+    }
+
+    private static func validatedURL(from rawValue: String?) -> URL? {
         guard
-            let rawValue = Bundle.main.object(forInfoDictionaryKey: backendURLKey) as? String,
+            let rawValue,
             let url = URL(string: rawValue),
             let scheme = url.scheme?.lowercased(),
             ["http", "https"].contains(scheme),

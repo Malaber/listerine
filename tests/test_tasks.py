@@ -278,10 +278,12 @@ def test_configure_ios_app_updates_project_and_entitlements(monkeypatch, tmp_pat
         encoding="utf-8",
     )
     entitlements_path = tmp_path / "Listerine.entitlements"
+    generated_config_path = tmp_path / "BuildConfiguration.generated.swift"
     calls: list[str] = []
 
     monkeypatch.setattr(tasks, "IOS_PROJECT_YML_PATH", project_path)
     monkeypatch.setattr(tasks, "IOS_ENTITLEMENTS_PATH", entitlements_path)
+    monkeypatch.setattr(tasks, "IOS_GENERATED_CONFIG_PATH", generated_config_path)
     monkeypatch.setattr(tasks.install_xcodegen, "body", lambda c: calls.append("install_xcodegen"))
     monkeypatch.setattr(
         tasks.generate_ios_project, "body", lambda c: calls.append("generate_ios_project")
@@ -298,6 +300,10 @@ def test_configure_ios_app_updates_project_and_entitlements(monkeypatch, tmp_pat
     assert "PRODUCT_BUNDLE_IDENTIFIER: com.example.selfhost" in project_contents
     assert "INFOPLIST_KEY_ListerineBackendBaseURL: https://selfhost.example.com" in project_contents
     assert "webcredentials:selfhost.example.com" in entitlements_path.read_text(encoding="utf-8")
+    assert (
+        'static let backendURL = "https://selfhost.example.com"'
+        in generated_config_path.read_text(encoding="utf-8")
+    )
     assert calls == ["install_xcodegen", "generate_ios_project"]
 
 

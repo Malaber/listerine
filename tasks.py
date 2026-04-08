@@ -47,9 +47,12 @@ DEFAULT_IOS_E2E_PID_PATH = "ios-e2e-server.pid"
 DEFAULT_IOS_E2E_USER_EMAIL = "listerine@schaedler.rocks"
 DEFAULT_IOS_SIMULATOR_DESTINATION = "generic/platform=iOS Simulator"
 DEFAULT_IOS_APP_BACKEND_URL = "https://listerine.malaber.de"
-DEFAULT_IOS_APP_BUNDLE_IDENTIFIER = "com.example.listerine"
+DEFAULT_IOS_APP_BUNDLE_IDENTIFIER = "de.malaber.listerine"
 IOS_PROJECT_YML_PATH = ROOT / "ios" / "ListerineIOS" / "project.yml"
 IOS_ENTITLEMENTS_PATH = ROOT / "ios" / "ListerineIOS" / "App" / "Listerine.entitlements"
+IOS_GENERATED_CONFIG_PATH = (
+    ROOT / "ios" / "ListerineIOS" / "App" / "BuildConfiguration.generated.swift"
+)
 STABLE_TAG_PATTERN = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 
 
@@ -327,6 +330,22 @@ def _write_ios_entitlements(host: str) -> None:
                 "\t</array>",
                 "</dict>",
                 "</plist>",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_ios_generated_config(backend_url: str) -> None:
+    IOS_GENERATED_CONFIG_PATH.write_text(
+        "\n".join(
+            [
+                "import Foundation",
+                "",
+                "enum GeneratedBuildConfiguration {",
+                f'    static let backendURL = "{backend_url}"',
+                "}",
                 "",
             ]
         ),
@@ -689,6 +708,7 @@ def configure_ios_app(
     )
     IOS_PROJECT_YML_PATH.write_text(project_yml, encoding="utf-8")
     _write_ios_entitlements(host)
+    _write_ios_generated_config(backend_url)
     if str(regenerate_project).lower() not in {"0", "false", "no"}:
         install_xcodegen.body(c)
         generate_ios_project.body(c)
