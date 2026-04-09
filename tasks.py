@@ -165,6 +165,7 @@ def _app_env(
 def _ios_ui_test_env(
     *,
     base_url: str,
+    bootstrap_base_url: str,
     user_email: str,
     artifact_dir: str,
     initial_list_name: str,
@@ -173,6 +174,7 @@ def _ios_ui_test_env(
     env.update(
         {
             "LISTERINE_UI_TEST_BASE_URL": base_url,
+            "LISTERINE_UI_TEST_BOOTSTRAP_BASE_URL": bootstrap_base_url,
             "LISTERINE_UI_TEST_USER_EMAIL": user_email,
             "LISTERINE_UI_TEST_ARTIFACT_DIR": str((ROOT / artifact_dir).resolve()),
             "LISTERINE_UI_TEST_INITIAL_LIST_NAME": initial_list_name,
@@ -885,6 +887,7 @@ def run_ios_e2e(
 @task(
     help={
         "base_url": "Base URL used by the native iOS UI e2e flow.",
+        "bootstrap_base_url": "Host-side base URL used by XCTest to bootstrap a seeded session.",
         "user_email": "Seeded user email used for bootstrap login into the app.",
         "artifact_dir": "Directory used to store native iOS UI screenshots.",
         "device_name": "Simulator device name used for XCUITest.",
@@ -894,6 +897,7 @@ def run_ios_e2e(
 def run_ios_ui_e2e(
     c,
     base_url=DEFAULT_IOS_UI_E2E_BASE_URL,
+    bootstrap_base_url=f"http://127.0.0.1:{DEFAULT_IOS_UI_E2E_PORT}",
     user_email=DEFAULT_IOS_E2E_USER_EMAIL,
     artifact_dir=DEFAULT_IOS_UI_E2E_ARTIFACT_DIR,
     device_name=DEFAULT_IOS_UI_E2E_DEVICE,
@@ -908,6 +912,7 @@ def run_ios_ui_e2e(
 
     env = _ios_ui_test_env(
         base_url=base_url,
+        bootstrap_base_url=bootstrap_base_url,
         user_email=user_email,
         artifact_dir=artifact_dir,
         initial_list_name=initial_list_name,
@@ -1119,6 +1124,7 @@ def check_ios_ui_e2e(
         run_ios_ui_e2e(
             c,
             base_url=f"http://localhost:{port}",
+            bootstrap_base_url=f"http://127.0.0.1:{port}",
             user_email=user_email,
             artifact_dir=artifact_dir,
             device_name=device_name,

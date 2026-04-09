@@ -13,6 +13,11 @@ struct PasskeyAuthServiceTests {
                 backendURL: try #require(URL(string: "https://api.example.com"))
             )
         }
+
+        #expect(
+            PasskeyAuthError.invalidUsername.errorDescription
+                == "Enter an email or username before continuing."
+        )
     }
 
     @Test func rejectsBackendURLWithoutHost() async {
@@ -41,6 +46,25 @@ struct PasskeyAuthServiceTests {
         #expect(result.request.challenge == Data("listerine-placeholder-challenge".utf8))
         #expect(result.request.operation == .logIn)
     }
+
+    #if !canImport(Combine)
+        @Test func linuxObservableObjectFallbacksAreCovered() {
+            let published = Published(wrappedValue: "https://api.example.com")
+            #expect(published.wrappedValue == "https://api.example.com")
+
+            let viewModel = AuthViewModel(
+                urlStore: InMemoryBackendURLStore(configuration: AppConfiguration(backendURL: nil)),
+                passkeyService: PasskeyAuthService(client: SpyPasskeyClient())
+            )
+
+            #expect(acceptsObservableObject(viewModel))
+        }
+
+        private func acceptsObservableObject(_ object: some ObservableObject) -> Bool {
+            _ = object
+            return true
+        }
+    #endif
 
     @Test func preparesRequestAndReturnsSummary() async throws {
         let recorder = PasskeyClientRecorder()

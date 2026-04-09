@@ -103,6 +103,16 @@ final class ListerineUITests: XCTestCase {
         {
             return url
         }
+        return URL(string: "http://localhost:8018")!
+    }
+
+    private var bootstrapBaseURL: URL {
+        if
+            let value = ProcessInfo.processInfo.environment["LISTERINE_UI_TEST_BOOTSTRAP_BASE_URL"],
+            let url = URL(string: value)
+        {
+            return url
+        }
         return URL(string: "http://127.0.0.1:8018")!
     }
 
@@ -116,7 +126,12 @@ final class ListerineUITests: XCTestCase {
     }
 
     private func assertLocalTestBackend() throws {
-        guard let host = baseURL.host?.lowercased(),
+        try assertLoopbackURL(baseURL, label: "app backend")
+        try assertLoopbackURL(bootstrapBaseURL, label: "bootstrap backend")
+    }
+
+    private func assertLoopbackURL(_ url: URL, label: String) throws {
+        guard let host = url.host?.lowercased(),
             ["localhost", "127.0.0.1", "::1"].contains(host)
         else {
             throw NSError(
@@ -124,7 +139,7 @@ final class ListerineUITests: XCTestCase {
                 code: 2,
                 userInfo: [
                     NSLocalizedDescriptionKey:
-                        "Refusing to run iOS UI tests against a non-local backend URL: \(baseURL.absoluteString)"
+                        "Refusing to run iOS UI tests against a non-local \(label) URL: \(url.absoluteString)"
                 ]
             )
         }
@@ -135,7 +150,8 @@ final class ListerineUITests: XCTestCase {
             path: "/api/v1/auth/ui-test-bootstrap",
             method: "POST",
             token: nil,
-            body: ["email": email]
+            body: ["email": email],
+            baseURL: bootstrapBaseURL
         )
         let capturedData = try performRequest(request)
         return try JSONDecoder().decode(UITestSession.self, from: capturedData)
@@ -196,9 +212,11 @@ final class ListerineUITests: XCTestCase {
         path: String,
         method: String,
         token: String?,
-        body: [String: Any]? = nil
+        body: [String: Any]? = nil,
+        baseURL overrideBaseURL: URL? = nil
     ) -> URLRequest {
-        var request = URLRequest(url: baseURL.appending(path: path))
+        let targetBaseURL = overrideBaseURL ?? baseURL
+        var request = URLRequest(url: targetBaseURL.appending(path: path))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpMethod = method
@@ -220,10 +238,20 @@ final class ListerineUITests: XCTestCase {
             capturedError = error
             semaphore.signal()
         }.resume()
-        _ = semaphore.wait(timeout: .now() + 10)
+        let waitResult = semaphore.wait(timeout: .now() + 10)
 
         if let capturedError {
             throw capturedError
+        }
+        if waitResult == .timedOut {
+            throw NSError(
+                domain: "ListerineUITests",
+                code: 3,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Timed out waiting for response from \(request.url?.absoluteString ?? "unknown request")"
+                ]
+            )
         }
         guard let capturedData else {
             throw NSError(domain: "ListerineUITests", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing bootstrap response"])
