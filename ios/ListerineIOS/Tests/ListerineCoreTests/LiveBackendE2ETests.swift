@@ -4,6 +4,7 @@ import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
+import ListerineCore
 import Testing
 
 struct LiveBackendE2ETests {
@@ -59,6 +60,39 @@ struct LiveBackendE2ETests {
         let list = try #require(lists.first { $0["name"] as? String == fixture.primaryListName })
         let listID = try #require(list["id"] as? String)
 
+        let categoriesPayload = try await client.jsonArray(
+            path: "/api/v1/lists/\(listID)/categories",
+            token: accessToken
+        )
+        let categories = categoriesPayload.compactMap(GroceryCategorySummary.init)
+        #expect(categories.contains(where: { $0.name == "Konserven" }))
+        #expect(categories.contains(where: { $0.name == "Gemuese" }))
+
+        let categoryOrderPayload = try await client.jsonArray(
+            path: "/api/v1/lists/\(listID)/category-order",
+            token: accessToken
+        )
+        let categoryOrder = categoryOrderPayload.compactMap(ListCategoryOrderEntry.init)
+        #expect(categoryOrder.count >= 10)
+
+        let initialItemsPayload = try await client.jsonArray(
+            path: "/api/v1/lists/\(listID)/items",
+            token: accessToken
+        )
+        let initialItems = initialItemsPayload.compactMap(GroceryItemRecord.init)
+        let initialSections = GroceryItemSectionBuilder.build(
+            items: initialItems,
+            categories: categories,
+            categoryOrder: categoryOrder
+        )
+        #expect(initialSections.map(\.title).prefix(4).elementsEqual(["Uncategorized", "Konserven", "Milch & Eier", "Nudeln"]))
+        #expect(initialSections.first?.items.map(\.name) == ["Loose item"])
+        #expect(initialSections.last?.title == "Checked off")
+        #expect(initialSections.last?.items.contains(where: { $0.name == "Brot" }) == true)
+
+        let konservenID = try #require(categories.first { $0.name == "Konserven" }?.id)
+        let gemueseID = try #require(categories.first { $0.name == "Gemuese" }?.id)
+
         let uniqueSuffix = UUID().uuidString.prefix(8)
         let originalName = "iOS E2E \(uniqueSuffix)"
         let updatedName = "\(originalName) Updated"
@@ -69,13 +103,15 @@ struct LiveBackendE2ETests {
             body: [
                 "name": originalName,
                 "quantity_text": "2 jars",
-                "note": "Created by iOS backend e2e"
+                "note": "Created by iOS backend e2e",
+                "category_id": konservenID.uuidString
             ],
             token: accessToken
         )
         let itemID = try #require(created["id"] as? String)
         #expect(created["name"] as? String == originalName)
         #expect(created["checked"] as? Bool == false)
+        #expect((created["category_id"] as? String)?.lowercased() == konservenID.uuidString.lowercased())
 
         let itemsAfterCreate = try await client.jsonArray(
             path: "/api/v1/lists/\(listID)/items",
@@ -89,13 +125,27 @@ struct LiveBackendE2ETests {
             body: [
                 "name": updatedName,
                 "quantity_text": "3 jars",
-                "note": "Updated by iOS backend e2e"
+                "note": "Updated by iOS backend e2e",
+                "category_id": gemueseID.uuidString
             ],
             token: accessToken
         )
         #expect(updated["name"] as? String == updatedName)
         #expect(updated["quantity_text"] as? String == "3 jars")
         #expect(updated["note"] as? String == "Updated by iOS backend e2e")
+        #expect((updated["category_id"] as? String)?.lowercased() == gemueseID.uuidString.lowercased())
+
+        let itemsAfterUpdate = try await client.jsonArray(
+            path: "/api/v1/lists/\(listID)/items",
+            token: accessToken
+        )
+        let updatedSections = GroceryItemSectionBuilder.build(
+            items: itemsAfterUpdate.compactMap(GroceryItemRecord.init),
+            categories: categories,
+            categoryOrder: categoryOrder
+        )
+        let gemueseSection = try #require(updatedSections.first { $0.title == "Gemuese" })
+        #expect(gemueseSection.items.contains(where: { $0.name == updatedName }))
 
         let checked = try await client.jsonObject(
             path: "/api/v1/items/\(itemID)/check",
