@@ -1,0 +1,165 @@
+import Foundation
+import ListerineCore
+
+enum WatchBackendClientError: LocalizedError {
+    case missingSession
+    case missingFavoriteList
+    case invalidResponse
+    case serverMessage(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .missingSession:
+            return "Open the iPhone app to sync your account to the watch."
+        case .missingFavoriteList:
+            return "Pick a favorite list on iPhone before using the watch app."
+        case .invalidResponse:
+            return "The watch received an unexpected response from the backend."
+        case let .serverMessage(message):
+            return message
+        }
+    }
+}
+
+struct WatchBackendClient {
+    func refreshFavoriteItems(using state: SharedAppState) async throws -> SharedAppState {
+        let session = try requireSession(from: state)
+        let items = try await requestArray(
+            backendURL: session.backendURL,
+            path: "/api/v1/lists/\(session.favoriteListID.uuidString)/items",
+            token: session.authToken
+        ).compactMap(GroceryItemRecord.init)
+
+        var updatedState = state
+        updatedState.items = items
+        return updatedState
+    }
+
+    func addItem(named name: String, using state: SharedAppState) async throws -> SharedAppState {
+        let session = try requireSession(from: state)
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedName.isEmpty == false else { return state }
+
+        _ = try await requestJSON(
+            backendURL: session.backendURL,
+            path: "/api/v1/lists/\(session.favoriteListID.uuidString)/items",
+            method: "POST",
+            body: [
+                "name": trimmedName,
+                "quantity_text": NSNull(),
+                "note": NSNull(),
+                "category_id": NSNull(),
+            ],
+            token: session.authToken
+        )
+
+        return try await refreshFavoriteItems(using: state)
+    }
+
+    func toggle(_ item: GroceryItemRecord, using state: SharedAppState) async throws -> SharedAppState {
+        let session = try requireSession(from: state)
+        let suffix = item.checked ? "uncheck" : "check"
+
+        _ = try await requestJSON(
+            backendURL: session.backendURL,
+            path: "/api/v1/items/\(item.id.uuidString)/\(suffix)",
+            method: "POST",
+            body: [:],
+            token: session.authToken
+        )
+
+        return try await refreshFavoriteItems(using: state)
+    }
+
+    private func requireSession(from state: SharedAppState) throws -> (
+        backendURL: URL,
+        authToken: String,
+        favoriteListID: UUID
+    ) {
+        guard
+            let backendURL = state.backendURL,
+            let authToken = state.authToken,
+            authToken.isEmpty == false
+        else {
+            throw WatchBackendClientError.missingSession
+        }
+        guard let favoriteListID = state.favoriteListID else {
+            throw WatchBackendClientError.missingFavoriteList
+        }
+        return (backendURL, authToken, favoriteListID)
+    }
+
+    private func requestArray(
+        backendURL: URL,
+        path: String,
+        token: String
+    ) async throws -> [[String: Any]] {
+        let data = try await requestData(
+            backendURL: backendURL,
+            path: path,
+            method: "GET",
+            body: nil,
+            token: token
+        )
+        guard let payload = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            throw WatchBackendClientError.invalidResponse
+        }
+        return payload
+    }
+
+    private func requestJSON(
+        backendURL: URL,
+        path: String,
+        method: String,
+        body: [String: Any]?,
+        token: String
+    ) async throws -> [String: Any] {
+        let data = try await requestData(
+            backendURL: backendURL,
+            path: path,
+            method: method,
+            body: body,
+            token: token
+        )
+        guard let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw WatchBackendClientError.invalidResponse
+        }
+        return payload
+    }
+
+    private func requestData(
+        backendURL: URL,
+        path: String,
+        method: String,
+        body: [String: Any]?,
+        token: String
+    ) async throws -> Data {
+        var request = URLRequest(url: backendURL.appending(path: path))
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let body {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        }
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let http = response as? HTTPURLResponse else {
+            throw WatchBackendClientError.invalidResponse
+        }
+        guard (200 ... 299).contains(http.statusCode) else {
+            if
+                let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let detail = payload["detail"] as? String,
+                detail.isEmpty == false
+            {
+                throw WatchBackendClientError.serverMessage(detail)
+            }
+            throw WatchBackendClientError.serverMessage(
+                HTTPURLResponse.localizedString(forStatusCode: http.statusCode)
+            )
+        }
+        return data
+    }
+}

@@ -200,6 +200,23 @@ private struct SettingsTab: View {
                 LabeledContent("Available lists", value: "\(viewModel.lists.count)")
                 LabeledContent("Visible categories", value: "\(viewModel.categories.count)")
             }
+
+            Section("Watch") {
+                TextField(
+                    "Quick add item",
+                    text: Binding(
+                        get: { viewModel.quickAddItemName },
+                        set: { viewModel.updateQuickAddItemName($0) }
+                    )
+                )
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled(false)
+                .accessibilityIdentifier("settings-watch-quick-add-field")
+
+                Text("The watch complication adds this item straight into your favorite list.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
         }
         .navigationTitle("Settings")
         .accessibilityIdentifier("settings-screen")

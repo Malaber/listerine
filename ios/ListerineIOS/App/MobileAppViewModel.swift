@@ -37,6 +37,9 @@ private enum AppBuildConfiguration {
 @MainActor
 final class MobileAppViewModel: ObservableObject {
     private static let favoriteListKey = "listerine.favoriteListID"
+    private static let authTokenKey = "listerine.authToken"
+    private static let displayNameKey = "listerine.displayName"
+    private static let quickAddItemKey = "listerine.quickAddItemName"
 
     @Published private(set) var backendURL: URL?
     @Published private(set) var isAuthenticating = false
@@ -48,27 +51,41 @@ final class MobileAppViewModel: ObservableObject {
     @Published private(set) var categoryOrder: [ListCategoryOrderEntry] = []
     @Published var selectedListID: UUID?
     @Published private(set) var favoriteListID: UUID?
+    @Published var quickAddItemName: String
     @Published var errorMessage: String?
 
     private let passkeyClient: ApplePasskeyClient
     private let userDefaults: UserDefaults
     private let processInfo: ProcessInfo
+    private let watchSyncCoordinator: WatchSyncCoordinator
     private var didAttemptLaunchBootstrap = false
 
     init(
         passkeyClient: ApplePasskeyClient = ApplePasskeyClient(),
         userDefaults: UserDefaults = .standard,
-        processInfo: ProcessInfo = .processInfo
+        processInfo: ProcessInfo = .processInfo,
+        watchSyncCoordinator: WatchSyncCoordinator = .shared
     ) {
         self.passkeyClient = passkeyClient
         self.userDefaults = userDefaults
         self.processInfo = processInfo
+        self.watchSyncCoordinator = watchSyncCoordinator
         backendURL = AppBuildConfiguration.backendURL
         if processInfo.environment["LISTERINE_UI_TEST_MODE"] == "1" {
             favoriteListID = nil
+            authToken = nil
+            displayName = nil
+            quickAddItemName = SharedAppState.defaultQuickAddItemName
         } else {
             favoriteListID = userDefaults.string(forKey: Self.favoriteListKey).flatMap(UUID.init(uuidString:))
+            authToken = userDefaults.string(forKey: Self.authTokenKey)
+            displayName = userDefaults.string(forKey: Self.displayNameKey)
+            quickAddItemName = userDefaults.string(forKey: Self.quickAddItemKey) ?? SharedAppState.defaultQuickAddItemName
         }
+        watchSyncCoordinator.setStateProvider { [weak self] in
+            self?.makeSharedAppState() ?? SharedAppState()
+        }
+        watchSyncCoordinator.publishCurrentState()
     }
 
     var backendDisplayName: String {
@@ -136,6 +153,7 @@ final class MobileAppViewModel: ObservableObject {
             }
 
             authToken = accessToken
+            userDefaults.set(accessToken, forKey: Self.authTokenKey)
 
             let me = try await requestJSON(
                 backendURL: backendURL,
@@ -145,8 +163,10 @@ final class MobileAppViewModel: ObservableObject {
                 token: accessToken
             )
             displayName = me["display_name"] as? String
+            userDefaults.set(displayName, forKey: Self.displayNameKey)
             try await reloadAllData()
             errorMessage = nil
+            watchSyncCoordinator.publishCurrentState()
         } catch {
             let nsErr = error as NSError
             netLog.error("Passkey login failed. Type=\(String(describing: type(of: error)), privacy: .public) Domain=\(nsErr.domain, privacy: .public) Code=\(nsErr.code) Desc=\(nsErr.localizedDescription, privacy: .public)")
@@ -168,6 +188,7 @@ final class MobileAppViewModel: ObservableObject {
         }
 
         authToken = accessToken
+        userDefaults.set(accessToken, forKey: Self.authTokenKey)
 
         do {
             if let backendURL {
@@ -179,6 +200,7 @@ final class MobileAppViewModel: ObservableObject {
                     token: accessToken
                 )
                 displayName = me["display_name"] as? String
+                userDefaults.set(displayName, forKey: Self.displayNameKey)
             } else if let displayName = environment["LISTERINE_UI_TEST_DISPLAY_NAME"], displayName.isEmpty == false {
                 self.displayName = displayName
             }
@@ -196,6 +218,7 @@ final class MobileAppViewModel: ObservableObject {
             }
 
             errorMessage = nil
+            watchSyncCoordinator.publishCurrentState()
         } catch {
             authToken = nil
             errorMessage = error.localizedDescription
@@ -211,6 +234,9 @@ final class MobileAppViewModel: ObservableObject {
         categoryOrder = []
         selectedListID = nil
         errorMessage = nil
+        userDefaults.removeObject(forKey: Self.authTokenKey)
+        userDefaults.removeObject(forKey: Self.displayNameKey)
+        watchSyncCoordinator.publishCurrentState()
     }
 
     func showFavoriteList() async {
@@ -222,6 +248,14 @@ final class MobileAppViewModel: ObservableObject {
     func setFavoriteList(id: UUID) {
         favoriteListID = id
         userDefaults.set(id.uuidString, forKey: Self.favoriteListKey)
+        watchSyncCoordinator.publishCurrentState()
+    }
+
+    func updateQuickAddItemName(_ rawValue: String) {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        quickAddItemName = trimmed.isEmpty ? SharedAppState.defaultQuickAddItemName : trimmed
+        userDefaults.set(quickAddItemName, forKey: Self.quickAddItemKey)
+        watchSyncCoordinator.publishCurrentState()
     }
 
     func reloadAllData() async throws {
@@ -295,6 +329,7 @@ final class MobileAppViewModel: ObservableObject {
         }
 
         try await reloadItems()
+        watchSyncCoordinator.publishCurrentState()
     }
 
     func selectList(id: UUID) async {
@@ -330,6 +365,7 @@ final class MobileAppViewModel: ObservableObject {
         items = try await itemPayload.compactMap(GroceryItemRecord.init)
         categories = try await categoryPayload.compactMap(GroceryCategorySummary.init)
         categoryOrder = try await categoryOrderPayload.compactMap(ListCategoryOrderEntry.init)
+        watchSyncCoordinator.publishCurrentState()
     }
 
     @discardableResult
@@ -353,6 +389,7 @@ final class MobileAppViewModel: ObservableObject {
                 token: authToken
             )
             try await reloadItems()
+            watchSyncCoordinator.publishCurrentState()
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -373,6 +410,7 @@ final class MobileAppViewModel: ObservableObject {
                 token: authToken
             )
             try await reloadItems()
+            watchSyncCoordinator.publishCurrentState()
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -406,6 +444,7 @@ final class MobileAppViewModel: ObservableObject {
                 token: authToken
             )
             try await reloadItems()
+            watchSyncCoordinator.publishCurrentState()
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -426,11 +465,25 @@ final class MobileAppViewModel: ObservableObject {
                 token: authToken
             )
             try await reloadItems()
+            watchSyncCoordinator.publishCurrentState()
             return true
         } catch {
             errorMessage = error.localizedDescription
             return false
         }
+    }
+
+    private func makeSharedAppState() -> SharedAppState {
+        let syncedItems = selectedListID == favoriteListID ? items : []
+        return SharedAppState(
+            backendURL: backendURL,
+            authToken: authToken,
+            displayName: displayName,
+            favoriteListID: favoriteListID,
+            quickAddItemName: quickAddItemName,
+            lists: lists,
+            items: syncedItems
+        )
     }
 
     private func rpID(from optionsPayload: [String: Any]) -> String? {
