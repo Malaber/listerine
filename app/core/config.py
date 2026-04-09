@@ -2,7 +2,7 @@ import json
 from collections.abc import Iterable
 from urllib.parse import urlparse
 
-from pydantic import EmailStr, ValidationError, field_validator
+from pydantic import EmailStr, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict, SettingsError
 from pydantic_settings.sources import EnvSettingsSource
 
@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     webcredentials_apps: list[str] = []
     seed_data_path: str | None = None
     bootstrap_admin_email: EmailStr | None = None
+    ui_test_bootstrap_enabled: bool = False
 
     @field_validator("app_base_url", mode="before")
     @classmethod
@@ -81,6 +82,30 @@ class Settings(BaseSettings):
         if isinstance(value, str) and value.strip() == "":
             return None
         return value
+
+    @model_validator(mode="after")
+    def validate_ui_test_bootstrap_safety(self) -> "Settings":
+        if self.ui_test_bootstrap_enabled is False:
+            return self
+
+        failures: list[str] = []
+        if self.app_base_url and _url_uses_non_localhost_host(self.app_base_url):
+            failures.append(
+                f"APP_BASE_URL={self.app_base_url!r} must point to localhost or a loopback host"
+            )
+        if self.webauthn_rp_id and self.webauthn_rp_id != "localhost":
+            failures.append("WEBAUTHN_RP_ID must be 'localhost'")
+        if self.webcredentials_apps:
+            failures.append("WEBCREDENTIALS_APPS must be empty")
+
+        if failures:
+            details = "; ".join(failures)
+            raise ValueError(
+                "Refusing startup because UI_TEST_BOOTSTRAP_ENABLED may only be used with "
+                f"localhost-only auth settings. {details}."
+            )
+
+        return self
 
     @classmethod
     def settings_customise_sources(
@@ -114,6 +139,11 @@ def load_settings(settings_class: type[BaseSettings]) -> BaseSettings:
 
 def build_settings() -> Settings:
     return load_settings(Settings)
+
+
+def _url_uses_non_localhost_host(value: str) -> bool:
+    parsed = urlparse(value)
+    return parsed.hostname not in {"localhost", "127.0.0.1", "::1"}
 
 
 settings = build_settings()

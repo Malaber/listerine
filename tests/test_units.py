@@ -441,6 +441,47 @@ def test_settings_normalize_app_base_url_empty_none_and_invalid() -> None:
         Settings(app_base_url="not-a-url")
 
 
+def test_ui_test_bootstrap_allows_only_localhost_safe_settings() -> None:
+    settings_obj = Settings(
+        ui_test_bootstrap_enabled=True,
+        app_base_url="http://127.0.0.1:8018",
+        webauthn_rp_id="localhost",
+        webcredentials_apps=[],
+    )
+
+    assert settings_obj.ui_test_bootstrap_enabled is True
+
+
+def test_ui_test_bootstrap_rejects_non_localhost_auth_configuration() -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(
+            ui_test_bootstrap_enabled=True,
+            app_base_url="https://listerine.malaber.de",
+            webauthn_rp_id="listerine.malaber.de",
+            webcredentials_apps=["VWKG94374J.de.malaber.listerine"],
+        )
+
+    message = str(exc_info.value)
+    assert "Refusing startup because UI_TEST_BOOTSTRAP_ENABLED may only be used" in message
+    assert "APP_BASE_URL='https://listerine.malaber.de' must point to localhost" in message
+    assert "WEBAUTHN_RP_ID must be 'localhost'" in message
+    assert "WEBCREDENTIALS_APPS must be empty" in message
+
+
+def test_load_settings_rejects_ui_test_bootstrap_with_production_env(monkeypatch) -> None:
+    monkeypatch.setenv("UI_TEST_BOOTSTRAP_ENABLED", "true")
+    monkeypatch.setenv("APP_BASE_URL", "https://listerine.malaber.de")
+    monkeypatch.setenv("WEBAUTHN_RP_ID", "listerine.malaber.de")
+    monkeypatch.setenv("WEBCREDENTIALS_APPS", '["VWKG94374J.de.malaber.listerine"]')
+
+    with pytest.raises(ConfigurationError) as exc_info:
+        load_settings(Settings)
+
+    message = str(exc_info.value)
+    assert "Refusing startup because UI_TEST_BOOTSTRAP_ENABLED may only be used" in message
+    assert "APP_BASE_URL='https://listerine.malaber.de' must point to localhost" in message
+
+
 def test_passkey_request_helpers() -> None:
     request = Request(
         {

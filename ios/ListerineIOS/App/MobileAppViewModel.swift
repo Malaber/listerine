@@ -1,15 +1,18 @@
 import Foundation
+import ListerineCore
 import os.log
 
 private let netLog = Logger(subsystem: "com.example.ListerineIOS", category: "network")
 
 private enum AppBuildConfiguration {
     private static let backendURLKey = "ListerineBackendBaseURL"
+    private static let backendURLOverrideKey = "LISTERINE_BACKEND_BASE_URL_OVERRIDE"
 
     static var backendURL: URL? {
-        if
-            let generatedURL = validatedURL(from: GeneratedBuildConfiguration.backendURL)
-        {
+        if let overriddenURL = validatedURL(from: ProcessInfo.processInfo.environment[backendURLOverrideKey]) {
+            return overriddenURL
+        }
+        if let generatedURL = validatedURL(from: GeneratedBuildConfiguration.backendURL) {
             return generatedURL
         }
         return validatedURL(
@@ -33,25 +36,67 @@ private enum AppBuildConfiguration {
 
 @MainActor
 final class MobileAppViewModel: ObservableObject {
+    private static let favoriteListKey = "listerine.favoriteListID"
+
     @Published private(set) var backendURL: URL?
     @Published private(set) var isAuthenticating = false
     @Published private(set) var authToken: String?
     @Published private(set) var displayName: String?
-    @Published private(set) var lists: [AppGroceryList] = []
-    @Published private(set) var items: [AppGroceryItem] = []
+    @Published private(set) var lists: [GroceryListSummary] = []
+    @Published private(set) var items: [GroceryItemRecord] = []
+    @Published private(set) var categories: [GroceryCategorySummary] = []
+    @Published private(set) var categoryOrder: [ListCategoryOrderEntry] = []
     @Published var selectedListID: UUID?
-    @Published var newItemName = ""
+    @Published private(set) var favoriteListID: UUID?
     @Published var errorMessage: String?
 
     private let passkeyClient: ApplePasskeyClient
+    private let userDefaults: UserDefaults
+    private let processInfo: ProcessInfo
+    private var didAttemptLaunchBootstrap = false
 
-    init(passkeyClient: ApplePasskeyClient = ApplePasskeyClient()) {
+    init(
+        passkeyClient: ApplePasskeyClient = ApplePasskeyClient(),
+        userDefaults: UserDefaults = .standard,
+        processInfo: ProcessInfo = .processInfo
+    ) {
         self.passkeyClient = passkeyClient
+        self.userDefaults = userDefaults
+        self.processInfo = processInfo
         backendURL = AppBuildConfiguration.backendURL
+        if processInfo.environment["LISTERINE_UI_TEST_MODE"] == "1" {
+            favoriteListID = nil
+        } else {
+            favoriteListID = userDefaults.string(forKey: Self.favoriteListKey).flatMap(UUID.init(uuidString:))
+        }
     }
 
     var backendDisplayName: String {
         backendURL?.host ?? backendURL?.absoluteString ?? "Not configured"
+    }
+
+    var selectedList: GroceryListSummary? {
+        lists.first { $0.id == selectedListID }
+    }
+
+    var favoriteList: GroceryListSummary? {
+        lists.first { $0.id == favoriteListID }
+    }
+
+    var availableCategories: [GroceryCategorySummary] {
+        categories.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    var sections: [GroceryItemSection] {
+        GroceryItemSectionBuilder.build(
+            items: items,
+            categories: categories,
+            categoryOrder: categoryOrder
+        )
+    }
+
+    var isRunningUITests: Bool {
+        processInfo.environment["LISTERINE_UI_TEST_MODE"] == "1"
     }
 
     func loginWithPasskey() async {
@@ -74,27 +119,22 @@ final class MobileAppViewModel: ObservableObject {
                 token: nil
             )
             let relyingPartyIdentifier = rpID(from: options) ?? backendURL.host ?? ""
-            netLog.debug("Received login options keys: \(String(describing: Array(options.keys)), privacy: .public)")
-            netLog.debug("Invoking platform authenticator with RP ID: \(relyingPartyIdentifier, privacy: .public)")
             let credential = try await passkeyClient.authenticate(
                 optionsPayload: options,
                 relyingPartyIdentifier: relyingPartyIdentifier
             )
-            let verifyEnvelope: [String: Any] = ["credential": credential]
             let tokenJson = try await requestJSON(
                 backendURL: backendURL,
                 path: "/api/v1/auth/login/verify",
                 method: "POST",
-                body: verifyEnvelope,
+                body: ["credential": credential],
                 token: nil
             )
-
-            netLog.debug("Verify response keys: \(String(describing: Array(tokenJson.keys)), privacy: .public)")
 
             guard let accessToken = tokenJson["access_token"] as? String else {
                 throw AppError.invalidResponse
             }
-            netLog.info("Passkey login succeeded; received access token (length=\(accessToken.count))")
+
             authToken = accessToken
 
             let me = try await requestJSON(
@@ -111,6 +151,285 @@ final class MobileAppViewModel: ObservableObject {
             let nsErr = error as NSError
             netLog.error("Passkey login failed. Type=\(String(describing: type(of: error)), privacy: .public) Domain=\(nsErr.domain, privacy: .public) Code=\(nsErr.code) Desc=\(nsErr.localizedDescription, privacy: .public)")
             errorMessage = nsErr.localizedDescription
+        }
+    }
+
+    func bootstrapLaunchSessionIfNeeded() async {
+        guard didAttemptLaunchBootstrap == false else { return }
+        didAttemptLaunchBootstrap = true
+
+        let environment = processInfo.environment
+        guard
+            environment["LISTERINE_UI_TEST_MODE"] == "1",
+            let accessToken = environment["LISTERINE_UI_TEST_ACCESS_TOKEN"],
+            accessToken.isEmpty == false
+        else {
+            return
+        }
+
+        authToken = accessToken
+
+        do {
+            if let backendURL {
+                let me = try await requestJSON(
+                    backendURL: backendURL,
+                    path: "/api/v1/auth/me",
+                    method: "GET",
+                    body: nil,
+                    token: accessToken
+                )
+                displayName = me["display_name"] as? String
+            } else if let displayName = environment["LISTERINE_UI_TEST_DISPLAY_NAME"], displayName.isEmpty == false {
+                self.displayName = displayName
+            }
+
+            try await reloadAllData()
+
+            if
+                let preferredListName = environment["LISTERINE_UI_TEST_INITIAL_LIST_NAME"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+                preferredListName.isEmpty == false,
+                let matchingList = lists.first(where: { $0.name == preferredListName })
+            {
+                selectedListID = matchingList.id
+                setFavoriteList(id: matchingList.id)
+                try await reloadItems()
+            }
+
+            errorMessage = nil
+        } catch {
+            authToken = nil
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func signOut() {
+        authToken = nil
+        displayName = nil
+        lists = []
+        items = []
+        categories = []
+        categoryOrder = []
+        selectedListID = nil
+        errorMessage = nil
+    }
+
+    func showFavoriteList() async {
+        let targetID = favoriteListID ?? lists.first?.id
+        guard let targetID else { return }
+        await selectList(id: targetID)
+    }
+
+    func setFavoriteList(id: UUID) {
+        favoriteListID = id
+        userDefaults.set(id.uuidString, forKey: Self.favoriteListKey)
+    }
+
+    func reloadAllData() async throws {
+        guard let backendURL, let authToken else { return }
+
+        let households = try await requestArray(
+            backendURL: backendURL,
+            path: "/api/v1/households",
+            token: authToken
+        )
+
+        var loadedLists: [GroceryListSummary] = []
+        for household in households {
+            guard
+                let householdIDText = household["id"] as? String,
+                let householdID = UUID(uuidString: householdIDText),
+                let householdName = household["name"] as? String
+            else {
+                continue
+            }
+
+            let householdLists = try await requestArray(
+                backendURL: backendURL,
+                path: "/api/v1/households/\(householdID.uuidString)/lists",
+                token: authToken
+            )
+
+            loadedLists.append(
+                contentsOf: householdLists.compactMap { listJSON in
+                    guard
+                        let idText = listJSON["id"] as? String,
+                        let id = UUID(uuidString: idText),
+                        let name = listJSON["name"] as? String
+                    else {
+                        return nil
+                    }
+
+                    return GroceryListSummary(
+                        id: id,
+                        householdID: householdID,
+                        householdName: householdName,
+                        name: name,
+                        archived: (listJSON["archived"] as? Bool) ?? false
+                    )
+                }
+            )
+        }
+
+        lists = loadedLists.sorted {
+            if $0.householdName != $1.householdName {
+                return $0.householdName.localizedCaseInsensitiveCompare($1.householdName) == .orderedAscending
+            }
+            return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
+
+        if let favoriteListID, lists.contains(where: { $0.id == favoriteListID }) == false {
+            self.favoriteListID = nil
+            userDefaults.removeObject(forKey: Self.favoriteListKey)
+        }
+
+        if favoriteListID == nil, let firstListID = lists.first?.id {
+            setFavoriteList(id: firstListID)
+        }
+
+        if let selectedListID, lists.contains(where: { $0.id == selectedListID }) == false {
+            self.selectedListID = nil
+        }
+
+        if selectedListID == nil {
+            selectedListID = favoriteListID ?? lists.first?.id
+        }
+
+        try await reloadItems()
+    }
+
+    func selectList(id: UUID) async {
+        guard selectedListID != id else { return }
+        selectedListID = id
+        try? await reloadItems()
+    }
+
+    func reloadItems() async throws {
+        guard let backendURL, let authToken, let selectedListID else {
+            items = []
+            categories = []
+            categoryOrder = []
+            return
+        }
+
+        async let itemPayload = requestArray(
+            backendURL: backendURL,
+            path: "/api/v1/lists/\(selectedListID.uuidString)/items",
+            token: authToken
+        )
+        async let categoryPayload = requestArray(
+            backendURL: backendURL,
+            path: "/api/v1/lists/\(selectedListID.uuidString)/categories",
+            token: authToken
+        )
+        async let categoryOrderPayload = requestArray(
+            backendURL: backendURL,
+            path: "/api/v1/lists/\(selectedListID.uuidString)/category-order",
+            token: authToken
+        )
+
+        items = try await itemPayload.compactMap(GroceryItemRecord.init)
+        categories = try await categoryPayload.compactMap(GroceryCategorySummary.init)
+        categoryOrder = try await categoryOrderPayload.compactMap(ListCategoryOrderEntry.init)
+    }
+
+    @discardableResult
+    func addItem(name: String, quantity: String, note: String, categoryID: UUID?) async -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let backendURL, let authToken, let selectedListID, trimmed.isEmpty == false else {
+            return false
+        }
+
+        var body: [String: Any] = ["name": trimmed]
+        body["quantity_text"] = quantity.isEmpty ? NSNull() : quantity
+        body["note"] = note.isEmpty ? NSNull() : note
+        body["category_id"] = categoryID?.uuidString ?? NSNull()
+
+        do {
+            _ = try await requestJSON(
+                backendURL: backendURL,
+                path: "/api/v1/lists/\(selectedListID.uuidString)/items",
+                method: "POST",
+                body: body,
+                token: authToken
+            )
+            try await reloadItems()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    @discardableResult
+    func toggle(_ item: GroceryItemRecord) async -> Bool {
+        guard let backendURL, let authToken else { return false }
+        let suffix = item.checked ? "uncheck" : "check"
+        do {
+            _ = try await requestJSON(
+                backendURL: backendURL,
+                path: "/api/v1/items/\(item.id.uuidString)/\(suffix)",
+                method: "POST",
+                body: [:],
+                token: authToken
+            )
+            try await reloadItems()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    @discardableResult
+    func saveEdit(
+        item: GroceryItemRecord,
+        name: String,
+        quantity: String,
+        note: String,
+        categoryID: UUID?
+    ) async -> Bool {
+        guard let backendURL, let authToken else { return false }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else { return false }
+
+        do {
+            _ = try await requestJSON(
+                backendURL: backendURL,
+                path: "/api/v1/items/\(item.id.uuidString)",
+                method: "PATCH",
+                body: [
+                    "name": trimmed,
+                    "quantity_text": quantity.isEmpty ? NSNull() : quantity,
+                    "note": note.isEmpty ? NSNull() : note,
+                    "category_id": categoryID?.uuidString ?? NSNull()
+                ],
+                token: authToken
+            )
+            try await reloadItems()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    @discardableResult
+    func delete(item: GroceryItemRecord) async -> Bool {
+        guard let backendURL, let authToken else { return false }
+
+        do {
+            _ = try await requestData(
+                backendURL: backendURL,
+                path: "/api/v1/items/\(item.id.uuidString)",
+                method: "DELETE",
+                body: nil,
+                token: authToken
+            )
+            try await reloadItems()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
         }
     }
 
@@ -138,128 +457,17 @@ final class MobileAppViewModel: ObservableObject {
         }
     }
 
-    func reloadAllData() async throws {
-        guard let backendURL, let authToken else { return }
-
-        let households = try await requestArray(
-            backendURL: backendURL,
-            path: "/api/v1/households",
-            token: authToken
-        )
-        var allLists: [AppGroceryList] = []
-        for household in households {
-            guard let householdIDText = household["id"] as? String, let householdID = UUID(uuidString: householdIDText) else { continue }
-            let householdLists = try await requestArray(
-                backendURL: backendURL,
-                path: "/api/v1/households/\(householdID.uuidString)/lists",
-                token: authToken
-            )
-            let mapped = householdLists.compactMap(AppGroceryList.init)
-            allLists.append(contentsOf: mapped)
-        }
-
-        lists = allLists.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        if selectedListID == nil {
-            selectedListID = lists.first?.id
-        }
-        try await reloadItems()
-    }
-
-    func reloadItems() async throws {
-        guard let backendURL, let authToken, let selectedListID else {
-            items = []
-            return
-        }
-
-        let payload = try await requestArray(
-            backendURL: backendURL,
-            path: "/api/v1/lists/\(selectedListID.uuidString)/items",
-            token: authToken
-        )
-        items = payload.compactMap(AppGroceryItem.init).sorted { lhs, rhs in
-            if lhs.checked != rhs.checked { return lhs.checked == false }
-            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
-        }
-    }
-
-    func addItem() async {
-        let trimmed = newItemName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let backendURL, let authToken, let selectedListID, trimmed.isEmpty == false else { return }
-
-        do {
-            _ = try await requestJSON(
-                backendURL: backendURL,
-                path: "/api/v1/lists/\(selectedListID.uuidString)/items",
-                method: "POST",
-                body: ["name": trimmed],
-                token: authToken
-            )
-            newItemName = ""
-            try await reloadItems()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    func toggle(_ item: AppGroceryItem) async {
-        guard let backendURL, let authToken else { return }
-        let suffix = item.checked ? "uncheck" : "check"
-        do {
-            _ = try await requestJSON(
-                backendURL: backendURL,
-                path: "/api/v1/items/\(item.id.uuidString)/\(suffix)",
-                method: "POST",
-                body: [:],
-                token: authToken
-            )
-            try await reloadItems()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    func saveEdit(item: AppGroceryItem, name: String, quantity: String, note: String) async {
-        guard let backendURL, let authToken else { return }
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.isEmpty == false else { return }
-
-        do {
-            _ = try await requestJSON(
-                backendURL: backendURL,
-                path: "/api/v1/items/\(item.id.uuidString)",
-                method: "PATCH",
-                body: ["name": trimmed, "quantity_text": quantity.isEmpty ? NSNull() : quantity, "note": note.isEmpty ? NSNull() : note],
-                token: authToken
-            )
-            try await reloadItems()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    func delete(item: AppGroceryItem) async {
-        guard let backendURL, let authToken else { return }
-
-        do {
-            _ = try await requestData(
-                backendURL: backendURL,
-                path: "/api/v1/items/\(item.id.uuidString)",
-                method: "DELETE",
-                body: nil,
-                token: authToken
-            )
-            try await reloadItems()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
     private func requestArray(backendURL: URL, path: String, token: String) async throws -> [[String: Any]] {
-        let data = try await requestData(backendURL: backendURL, path: path, method: "GET", body: nil, token: token)
+        let data = try await requestData(
+            backendURL: backendURL,
+            path: path,
+            method: "GET",
+            body: nil,
+            token: token
+        )
         do {
             let obj = try JSONSerialization.jsonObject(with: data)
             guard let array = obj as? [[String: Any]] else {
-                netLog.error("Invalid JSON object type (expected array). Raw: \(String(data: data, encoding: .utf8) ?? "<non-utf8>", privacy: .public)")
                 throw AppError.invalidResponse
             }
             return array
@@ -270,11 +478,16 @@ final class MobileAppViewModel: ObservableObject {
     }
 
     private func requestJSON(backendURL: URL, path: String, method: String, body: [String: Any]?, token: String?) async throws -> [String: Any] {
-        let data = try await requestData(backendURL: backendURL, path: path, method: method, body: body, token: token)
+        let data = try await requestData(
+            backendURL: backendURL,
+            path: path,
+            method: method,
+            body: body,
+            token: token
+        )
         do {
             let obj = try JSONSerialization.jsonObject(with: data)
             guard let payload = obj as? [String: Any] else {
-                netLog.error("Invalid JSON object type (expected dictionary). Raw: \(String(data: data, encoding: .utf8) ?? "<non-utf8>", privacy: .public)")
                 throw AppError.invalidResponse
             }
             return payload
@@ -296,42 +509,19 @@ final class MobileAppViewModel: ObservableObject {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
         }
 
-        #if DEBUG
-        let debugBody: String? = {
-            guard let body = request.httpBody else { return nil }
-            return String(data: body, encoding: .utf8)
-        }()
-        netLog.debug("→ \(request.httpMethod ?? "<NO_METHOD>", privacy: .public) \(request.url?.absoluteString ?? "<NO_URL>", privacy: .public)")
-        if let headers = request.allHTTPHeaderFields, !headers.isEmpty {
-            netLog.debug("Headers: \(String(describing: headers), privacy: .public)")
-        }
-        if let debugBody {
-            netLog.debug("Body: \(debugBody, privacy: .public)")
-        }
-        #endif
-
         let (data, response) = try await URLSession.shared.data(for: request)
 
-        #if DEBUG
-        if let http = response as? HTTPURLResponse {
-            netLog.debug("← status \(http.statusCode) for \(request.url?.absoluteString ?? "<NO_URL>", privacy: .public)")
-            netLog.debug("Response headers: \(String(describing: http.allHeaderFields), privacy: .public)")
-        }
-        if let bodyString = String(data: data, encoding: .utf8) {
-            netLog.debug("Response body: \(bodyString, privacy: .public)")
-        }
-        #endif
-
         guard let http = response as? HTTPURLResponse else {
-            netLog.error("Non-HTTP response for \(request.url?.absoluteString ?? "<NO_URL>", privacy: .public)")
             throw AppError.invalidResponse
         }
         guard (200 ... 299).contains(http.statusCode) else {
             if let temporaryBackendError = backendAvailabilityError(response: http, data: data) {
                 throw temporaryBackendError
             }
-            netLog.error("Request failed with status \(http.statusCode); detail=\(String(describing: (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["detail"]), privacy: .public)")
-            if let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let detail = payload["detail"] as? String {
+            if
+                let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let detail = payload["detail"] as? String
+            {
                 throw AppError.server(detail)
             }
             throw AppError.server("Request failed (\(http.statusCode)).")
@@ -355,34 +545,6 @@ final class MobileAppViewModel: ObservableObject {
             )
         }
         return nil
-    }
-}
-
-struct AppGroceryList: Identifiable {
-    let id: UUID
-    let name: String
-
-    init?(json: [String: Any]) {
-        guard let idText = json["id"] as? String, let id = UUID(uuidString: idText), let name = json["name"] as? String else { return nil }
-        self.id = id
-        self.name = name
-    }
-}
-
-struct AppGroceryItem: Identifiable {
-    let id: UUID
-    let name: String
-    let checked: Bool
-    let quantityText: String?
-    let note: String?
-
-    init?(json: [String: Any]) {
-        guard let idText = json["id"] as? String, let id = UUID(uuidString: idText), let name = json["name"] as? String else { return nil }
-        self.id = id
-        self.name = name
-        self.checked = (json["checked"] as? Bool) ?? false
-        self.quantityText = json["quantity_text"] as? String
-        self.note = json["note"] as? String
     }
 }
 

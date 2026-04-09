@@ -34,3 +34,28 @@ targets:
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.food-and-drink
+  ListerineUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: UITests
+    dependencies:
+      - target: Listerine
+    settings:
+      base:
+        PRODUCT_NAME: ListerineUITests
+        PRODUCT_BUNDLE_IDENTIFIER: de.malaber.listerine.ui-tests
+        DEVELOPMENT_TEAM: VWKG94374J
+        SWIFT_VERSION: 5.10
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Listerine
+schemes:
+  Listerine:
+    build:
+      targets:
+        Listerine: all
+    test:
+      gatherCoverageData: false
+      targets:
+        - name: ListerineUITests

@@ -1,4 +1,6 @@
 import importlib.util
+import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 TASKS_PATH = Path(__file__).resolve().parents[1] / "tasks.py"
@@ -69,6 +71,42 @@ def test_wait_for_pid_exit_reaps_child_process(monkeypatch) -> None:
     monkeypatch.setattr(tasks.os, "waitpid", lambda pid, flags: (pid, 0))
 
     tasks._wait_for_pid_exit(123)
+
+
+def test_ios_ui_e2e_failure_summaries_returns_empty_without_database(tmp_path: Path) -> None:
+    assert tasks._ios_ui_e2e_failure_summaries(tmp_path / "missing.xcresult") == []
+
+
+def test_ios_ui_e2e_failure_summaries_reads_failed_test_messages(tmp_path: Path) -> None:
+    bundle_path = tmp_path / "ListerineUITests.xcresult"
+    bundle_path.mkdir()
+    database_path = bundle_path / "database.sqlite3"
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE TestCases (name TEXT);
+            CREATE TABLE TestCaseRuns (testCase_fk INTEGER, result TEXT);
+            CREATE TABLE TestIssues (
+                testCaseRun_fk INTEGER,
+                compactDescription TEXT,
+                detailedDescription TEXT,
+                orderInOwner INTEGER
+            );
+            INSERT INTO TestCases(rowid, name) VALUES (1, 'testListViewFlow()');
+            INSERT INTO TestCaseRuns(rowid, testCase_fk, result) VALUES (1, 1, 'Failure');
+            INSERT INTO TestIssues(
+                testCaseRun_fk,
+                compactDescription,
+                detailedDescription,
+                orderInOwner
+            ) VALUES (1, 'Compact failure', 'Detailed failure', 0);
+            """
+        )
+
+    assert tasks._ios_ui_e2e_failure_summaries(bundle_path) == [
+        "testListViewFlow() [Failure]: Detailed failure"
+    ]
 
 
 def test_stop_app_waits_for_exit_before_removing_pid_file(tmp_path: Path, monkeypatch) -> None:
@@ -247,6 +285,113 @@ def test_ios_toolchain_env_uses_workspace_cache(tmp_path: Path, monkeypatch) -> 
     assert env["CLANG_MODULE_CACHE_PATH"] == str(
         (tmp_path / "ios" / "ListerineIOS" / ".clang-module-cache").resolve()
     )
+
+
+def test_ios_ui_test_env_uses_absolute_artifact_path(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(tasks, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        tasks,
+        "_ios_toolchain_env",
+        lambda: {"DEVELOPER_DIR": "/Applications/Xcode.app/Contents/Developer"},
+    )
+
+    env = tasks._ios_ui_test_env(
+        base_url="http://localhost:8018",
+        bootstrap_base_url="http://127.0.0.1:8018",
+        user_email="ios@example.com",
+        artifact_dir="e2e-artifacts/ios-ui-e2e",
+        initial_list_name="Browser Test Shop",
+    )
+
+    assert env["LISTERINE_UI_TEST_BASE_URL"] == "http://localhost:8018"
+    assert env["LISTERINE_UI_TEST_BOOTSTRAP_BASE_URL"] == "http://127.0.0.1:8018"
+    assert env["LISTERINE_UI_TEST_USER_EMAIL"] == "ios@example.com"
+    assert env["LISTERINE_UI_TEST_INITIAL_LIST_NAME"] == "Browser Test Shop"
+    assert env["LISTERINE_UI_TEST_ARTIFACT_DIR"] == str(
+        (tmp_path / "e2e-artifacts" / "ios-ui-e2e").resolve()
+    )
+
+
+def test_ios_ui_test_env_includes_injected_session_values(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(tasks, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        tasks,
+        "_ios_toolchain_env",
+        lambda: {"DEVELOPER_DIR": "/Applications/Xcode.app/Contents/Developer"},
+    )
+
+    env = tasks._ios_ui_test_env(
+        base_url="http://localhost:8018",
+        bootstrap_base_url="http://127.0.0.1:8018",
+        user_email="ios@example.com",
+        artifact_dir="e2e-artifacts/ios-ui-e2e",
+        initial_list_name="Browser Test Shop",
+        access_token="test-token",
+        display_name="Test User",
+    )
+
+    assert env["LISTERINE_UI_TEST_ACCESS_TOKEN"] == "test-token"
+    assert env["LISTERINE_UI_TEST_DISPLAY_NAME"] == "Test User"
+
+
+def test_bootstrap_ios_ui_test_session_returns_access_token(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self) -> bytes:
+            return b'{"access_token":"token-123","display_name":"Test User"}'
+
+    def fake_urlopen(request, timeout):
+        captured["url"] = request.full_url
+        captured["method"] = request.get_method()
+        captured["body"] = request.data.decode("utf-8")
+        captured["timeout"] = timeout
+        return Response()
+
+    monkeypatch.setattr(tasks, "urlopen", fake_urlopen)
+
+    session = tasks._bootstrap_ios_ui_test_session(
+        base_url="http://localhost:8018",
+        user_email="ios@example.com",
+    )
+
+    assert session == {"access_token": "token-123", "display_name": "Test User"}
+    assert captured == {
+        "url": "http://localhost:8018/api/v1/auth/ui-test-bootstrap",
+        "method": "POST",
+        "body": '{"email": "ios@example.com"}',
+        "timeout": 10,
+    }
+
+
+def test_bootstrap_ios_ui_test_session_rejects_incomplete_payload(monkeypatch) -> None:
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self) -> bytes:
+            return b'{"display_name":"Test User"}'
+
+    monkeypatch.setattr(tasks, "urlopen", lambda request, timeout: Response())
+
+    try:
+        tasks._bootstrap_ios_ui_test_session(
+            base_url="http://localhost:8018",
+            user_email="ios@example.com",
+        )
+    except tasks.Exit as exc:
+        assert "incomplete payload" in str(exc)
+    else:
+        raise AssertionError("expected incomplete iOS UI bootstrap payload to fail")
 
 
 def test_validated_ios_backend_host_rejects_invalid_urls() -> None:
@@ -441,6 +586,7 @@ def test_build_ios_simulator_invokes_xcodebuild(monkeypatch) -> None:
             "-scheme Listerine "
             "-configuration Debug "
             "-destination 'generic/platform=iOS Simulator' "
+            "-quiet "
             "CODE_SIGNING_ALLOWED=NO build",
             {
                 "env": {"DEVELOPER_DIR": "/Applications/Xcode.app/Contents/Developer"},
@@ -498,6 +644,125 @@ def test_run_ios_e2e_invokes_swift_test_with_expected_env(monkeypatch) -> None:
     ]
 
 
+def test_run_ios_ui_e2e_invokes_xcodebuild_with_expected_env(monkeypatch, tmp_path: Path) -> None:
+    calls: list[tuple[str, dict]] = []
+
+    class Context:
+        def run(self, command, **kwargs):
+            calls.append((command, kwargs))
+            return RunResult(exited=0)
+
+    monkeypatch.setattr(tasks, "ROOT", tmp_path)
+    artifact_path = tmp_path / "e2e-artifacts" / "ios-ui-e2e"
+    result_bundle_path = artifact_path / tasks.DEFAULT_IOS_UI_E2E_RESULT_BUNDLE
+    result_bundle_path.mkdir(parents=True)
+    monkeypatch.setattr(
+        tasks,
+        "_ios_ui_test_env",
+        lambda **kwargs: {
+            "LISTERINE_UI_TEST_BASE_URL": kwargs["base_url"],
+            "LISTERINE_UI_TEST_BOOTSTRAP_BASE_URL": kwargs["bootstrap_base_url"],
+            "LISTERINE_UI_TEST_USER_EMAIL": kwargs["user_email"],
+            "LISTERINE_UI_TEST_ARTIFACT_DIR": kwargs["artifact_dir"],
+            "LISTERINE_UI_TEST_INITIAL_LIST_NAME": kwargs["initial_list_name"],
+            "LISTERINE_UI_TEST_ACCESS_TOKEN": kwargs["access_token"],
+            "LISTERINE_UI_TEST_DISPLAY_NAME": kwargs["display_name"],
+        },
+    )
+    summaries: list[str] = []
+    monkeypatch.setattr(
+        tasks, "_write_ios_ui_e2e_summary", lambda artifact_dir: summaries.append(artifact_dir)
+    )
+
+    tasks.run_ios_ui_e2e.body(
+        Context(),
+        base_url="http://localhost:8018",
+        bootstrap_base_url="http://127.0.0.1:8018",
+        user_email="ios@example.com",
+        artifact_dir="e2e-artifacts/ios-ui-e2e",
+        device_name="iPhone 17",
+        initial_list_name="Browser Test Shop",
+        access_token="token-123",
+        display_name="Test User",
+    )
+
+    assert calls == [
+        (
+            "cd ios/ListerineIOS && xcodebuild -project ListerineApp.xcodeproj "
+            "-scheme Listerine -destination 'platform=iOS Simulator,name=iPhone 17' "
+            f"-resultBundlePath {str(result_bundle_path.resolve())} -quiet "
+            "-only-testing:ListerineUITests test",
+            {
+                "env": {
+                    "LISTERINE_UI_TEST_BASE_URL": "http://localhost:8018",
+                    "LISTERINE_UI_TEST_BOOTSTRAP_BASE_URL": "http://127.0.0.1:8018",
+                    "LISTERINE_UI_TEST_USER_EMAIL": "ios@example.com",
+                    "LISTERINE_UI_TEST_ARTIFACT_DIR": "e2e-artifacts/ios-ui-e2e",
+                    "LISTERINE_UI_TEST_INITIAL_LIST_NAME": "Browser Test Shop",
+                    "LISTERINE_UI_TEST_ACCESS_TOKEN": "token-123",
+                    "LISTERINE_UI_TEST_DISPLAY_NAME": "Test User",
+                },
+                "pty": False,
+                "shell": "/bin/bash",
+                "warn": True,
+            },
+        )
+    ]
+    assert summaries == ["e2e-artifacts/ios-ui-e2e"]
+    assert not result_bundle_path.exists()
+
+
+def test_run_ios_ui_e2e_retries_once_before_succeeding(monkeypatch, tmp_path: Path, capsys) -> None:
+    calls: list[tuple[str, dict]] = []
+    results = iter([RunResult(exited=65), RunResult(exited=0)])
+
+    class Context:
+        def run(self, command, **kwargs):
+            calls.append((command, kwargs))
+            return next(results)
+
+    monkeypatch.setattr(tasks, "ROOT", tmp_path)
+    monkeypatch.setattr(tasks, "_ios_ui_test_env", lambda **kwargs: {})
+    monkeypatch.setattr(tasks, "_write_ios_ui_e2e_summary", lambda artifact_dir: None)
+
+    tasks.run_ios_ui_e2e.body(Context(), artifact_dir="e2e-artifacts/ios-ui-e2e")
+
+    assert len(calls) == 2
+    assert (
+        capsys.readouterr().out.count("Retrying iOS UI e2e after an initial xcodebuild failure...")
+        == 1
+    )
+
+
+def test_run_ios_ui_e2e_prints_failure_summary_before_exiting(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    class Context:
+        def run(self, command, **kwargs):
+            return RunResult(exited=65)
+
+    monkeypatch.setattr(tasks, "ROOT", tmp_path)
+    monkeypatch.setattr(tasks, "_ios_ui_test_env", lambda **kwargs: {})
+    monkeypatch.setattr(tasks, "_write_ios_ui_e2e_summary", lambda artifact_dir: None)
+    monkeypatch.setattr(
+        tasks,
+        "_ios_ui_e2e_failure_summaries",
+        lambda result_bundle_path: ["testListViewFlow() [Failure]: Timed out waiting for response"],
+    )
+
+    try:
+        tasks.run_ios_ui_e2e.body(Context(), artifact_dir="e2e-artifacts/ios-ui-e2e")
+    except tasks.Exit as exc:
+        assert "exit code 65" in str(exc)
+    else:
+        raise AssertionError("expected run_ios_ui_e2e to fail")
+
+    captured = capsys.readouterr()
+    assert captured.out.count("Retrying iOS UI e2e after an initial xcodebuild failure...") == 1
+    assert "iOS UI e2e failure summary:" in captured.out
+    assert "testListViewFlow() [Failure]: Timed out waiting for response" in captured.out
+
+
 def test_check_ios_e2e_starts_waits_runs_and_stops(monkeypatch) -> None:
     calls: list[tuple[str, dict]] = []
 
@@ -543,7 +808,7 @@ def test_check_ios_e2e_starts_waits_runs_and_stops(monkeypatch) -> None:
         (
             "run",
             {
-                "base_url": "http://localhost:8017",
+                "base_url": "http://127.0.0.1:8017",
                 "e2e_seed_path": "app/fixtures/review_seed_e2e.json",
                 "webauthn_rp_id": "localhost",
                 "user_email": "ios@example.com",
@@ -551,6 +816,84 @@ def test_check_ios_e2e_starts_waits_runs_and_stops(monkeypatch) -> None:
             },
         ),
         ("stop", {"pid_path": "ios-e2e-server.pid"}),
+    ]
+
+
+def test_check_ios_ui_e2e_starts_waits_runs_and_stops(monkeypatch) -> None:
+    calls: list[tuple[str, dict]] = []
+
+    monkeypatch.setattr(
+        tasks,
+        "_reset_sqlite_database_file",
+        lambda database_url: calls.append(("reset", {"database_url": database_url})),
+    )
+    monkeypatch.setattr(tasks, "start_app", lambda c, **kwargs: calls.append(("start", kwargs)))
+    monkeypatch.setattr(tasks, "wait_for_app", lambda c, **kwargs: calls.append(("wait", kwargs)))
+    monkeypatch.setattr(
+        tasks,
+        "_bootstrap_ios_ui_test_session",
+        lambda **kwargs: calls.append(("bootstrap", kwargs))
+        or {"access_token": "token-123", "display_name": "Test User"},
+    )
+    monkeypatch.setattr(
+        tasks.generate_ios_project, "body", lambda c: calls.append(("generate", {}))
+    )
+    monkeypatch.setattr(tasks, "run_ios_ui_e2e", lambda c, **kwargs: calls.append(("run", kwargs)))
+    monkeypatch.setattr(tasks, "stop_app", lambda c, **kwargs: calls.append(("stop", kwargs)))
+
+    tasks.check_ios_ui_e2e.body(
+        None,
+        seed_path="app/fixtures/review_seed_e2e.json",
+        database_url="sqlite+aiosqlite:///./tmp-ios-ui-e2e.db",
+        webauthn_rp_id="localhost",
+        user_email="ios@example.com",
+        artifact_dir="e2e-artifacts/ios-ui-e2e",
+        device_name="iPhone 17",
+        initial_list_name="Browser Test Shop",
+        host="127.0.0.1",
+        port=8018,
+        log_path="ios-ui-e2e-server.log",
+        pid_path="ios-ui-e2e-server.pid",
+    )
+
+    assert calls == [
+        ("reset", {"database_url": "sqlite+aiosqlite:///./tmp-ios-ui-e2e.db"}),
+        (
+            "start",
+            {
+                "seed_path": "app/fixtures/review_seed_e2e.json",
+                "database_url": "sqlite+aiosqlite:///./tmp-ios-ui-e2e.db",
+                "webauthn_rp_id": "localhost",
+                "host": "127.0.0.1",
+                "port": 8018,
+                "log_path": "ios-ui-e2e-server.log",
+                "pid_path": "ios-ui-e2e-server.pid",
+                "ui_test_bootstrap_enabled": True,
+            },
+        ),
+        ("wait", {"url": "http://127.0.0.1:8018/health"}),
+        (
+            "bootstrap",
+            {
+                "base_url": "http://localhost:8018",
+                "user_email": "ios@example.com",
+            },
+        ),
+        ("generate", {}),
+        (
+            "run",
+            {
+                "base_url": "http://localhost:8018",
+                "bootstrap_base_url": "http://127.0.0.1:8018",
+                "user_email": "ios@example.com",
+                "artifact_dir": "e2e-artifacts/ios-ui-e2e",
+                "device_name": "iPhone 17",
+                "initial_list_name": "Browser Test Shop",
+                "access_token": "token-123",
+                "display_name": "Test User",
+            },
+        ),
+        ("stop", {"pid_path": "ios-ui-e2e-server.pid"}),
     ]
 
 

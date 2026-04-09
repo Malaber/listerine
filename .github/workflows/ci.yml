@@ -139,6 +139,22 @@ jobs:
         run: python -m invoke bootstrap-ci
       - name: Run native iOS CI flow
         run: python -m invoke check-ios-ci
+      - name: Upload native iOS UI artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-native-ui-e2e
+          retention-days: 2
+          path: |
+            e2e-artifacts/ios-ui-e2e
+            ios-ui-e2e-server.log
+      - name: Add native iOS UI summary
+        if: always()
+        run: |
+          if [ -f e2e-artifacts/ios-ui-e2e/summary.md ]; then
+            echo "### Native iOS UI e2e" >> "$GITHUB_STEP_SUMMARY"
+            cat e2e-artifacts/ios-ui-e2e/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   version:
     runs-on: ubuntu-latest

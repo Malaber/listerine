@@ -3,14 +3,18 @@ from __future__ import annotations
 import os
 import re
 import shlex
+import shutil
 import signal
+import sqlite3
 import subprocess
 import sys
 import time
+import json
+from contextlib import closing
 from pathlib import Path
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 try:
     from invoke import task
@@ -45,6 +49,15 @@ DEFAULT_IOS_E2E_DATABASE_URL = "sqlite+aiosqlite:///./tmp-ios-e2e.db"
 DEFAULT_IOS_E2E_LOG_PATH = "ios-e2e-server.log"
 DEFAULT_IOS_E2E_PID_PATH = "ios-e2e-server.pid"
 DEFAULT_IOS_E2E_USER_EMAIL = "listerine@schaedler.rocks"
+DEFAULT_IOS_UI_E2E_PORT = 8018
+DEFAULT_IOS_UI_E2E_BASE_URL = f"http://localhost:{DEFAULT_IOS_UI_E2E_PORT}"
+DEFAULT_IOS_UI_E2E_DATABASE_URL = "sqlite+aiosqlite:///./tmp-ios-ui-e2e.db"
+DEFAULT_IOS_UI_E2E_LOG_PATH = "ios-ui-e2e-server.log"
+DEFAULT_IOS_UI_E2E_PID_PATH = "ios-ui-e2e-server.pid"
+DEFAULT_IOS_UI_E2E_ARTIFACT_DIR = "e2e-artifacts/ios-ui-e2e"
+DEFAULT_IOS_UI_E2E_RESULT_BUNDLE = "ListerineUITests.xcresult"
+DEFAULT_IOS_UI_E2E_DEVICE = "iPhone 17"
+DEFAULT_IOS_UI_E2E_INITIAL_LIST = "Browser Test Shop"
 DEFAULT_IOS_SIMULATOR_DESTINATION = "generic/platform=iOS Simulator"
 DEFAULT_IOS_APP_BACKEND_URL = "https://listerine.malaber.de"
 DEFAULT_IOS_APP_BUNDLE_IDENTIFIER = "de.malaber.listerine"
@@ -138,12 +151,121 @@ def _app_env(
     seed_path: str,
     database_url: str,
     webauthn_rp_id: str,
+    ui_test_bootstrap_enabled: bool = False,
+    app_base_url: str | None = None,
+    webcredentials_apps: str | None = None,
 ) -> dict[str, str]:
     return _python_env(
         SEED_DATA_PATH=seed_path,
         DATABASE_URL=database_url,
+        APP_BASE_URL=app_base_url,
         WEBAUTHN_RP_ID=webauthn_rp_id,
+        WEBCREDENTIALS_APPS=webcredentials_apps,
+        UI_TEST_BOOTSTRAP_ENABLED="true" if ui_test_bootstrap_enabled else "false",
     )
+
+
+def _ios_ui_test_env(
+    *,
+    base_url: str,
+    bootstrap_base_url: str,
+    user_email: str,
+    artifact_dir: str,
+    initial_list_name: str,
+    access_token: str | None = None,
+    display_name: str | None = None,
+) -> dict[str, str]:
+    env = _ios_toolchain_env()
+    env.update(
+        {
+            "LISTERINE_UI_TEST_BASE_URL": base_url,
+            "LISTERINE_UI_TEST_BOOTSTRAP_BASE_URL": bootstrap_base_url,
+            "LISTERINE_UI_TEST_USER_EMAIL": user_email,
+            "LISTERINE_UI_TEST_ARTIFACT_DIR": str((ROOT / artifact_dir).resolve()),
+            "LISTERINE_UI_TEST_INITIAL_LIST_NAME": initial_list_name,
+        }
+    )
+    if access_token:
+        env["LISTERINE_UI_TEST_ACCESS_TOKEN"] = access_token
+    if display_name:
+        env["LISTERINE_UI_TEST_DISPLAY_NAME"] = display_name
+    return env
+
+
+def _write_ios_ui_e2e_summary(artifact_dir: str) -> None:
+    artifact_path = ROOT / artifact_dir
+    screenshots = sorted(path.name for path in artifact_path.glob("*.png"))
+    result_bundle_path = artifact_path / DEFAULT_IOS_UI_E2E_RESULT_BUNDLE
+    summary_lines = [
+        "# iOS UI e2e",
+        "",
+        f"Stored screenshots: {len(screenshots)}",
+    ]
+    if screenshots:
+        summary_lines.extend(["", "## Screenshots"])
+        summary_lines.extend(f"- {name}" for name in screenshots)
+    if result_bundle_path.exists():
+        summary_lines.extend(
+            [
+                "",
+                "## Result Bundle",
+                f"- {DEFAULT_IOS_UI_E2E_RESULT_BUNDLE}",
+                "- XCTest screenshot attachments are preserved inside this bundle for CI download.",
+            ]
+        )
+    (artifact_path / "summary.md").write_text("\n".join(summary_lines) + "\n", encoding="utf-8")
+
+
+def _ios_ui_e2e_failure_summaries(result_bundle_path: Path) -> list[str]:
+    database_path = result_bundle_path / "database.sqlite3"
+    if database_path.exists() is False:
+        return []
+
+    query = """
+        SELECT
+            t.name,
+            r.result,
+            COALESCE(i.compactDescription, ''),
+            COALESCE(i.detailedDescription, '')
+        FROM TestCaseRuns r
+        JOIN TestCases t ON t.rowid = r.testCase_fk
+        LEFT JOIN TestIssues i ON i.testCaseRun_fk = r.rowid
+        WHERE r.result != 'Success'
+        ORDER BY t.name, i.orderInOwner
+    """
+    with closing(sqlite3.connect(database_path)) as connection:
+        rows = connection.execute(query).fetchall()
+
+    summaries: list[str] = []
+    for test_name, result, compact_description, detailed_description in rows:
+        message = detailed_description or compact_description or "No failure details recorded."
+        summaries.append(f"{test_name} [{result}]: {message}")
+    return summaries
+
+
+def _bootstrap_ios_ui_test_session(*, base_url: str, user_email: str) -> dict[str, str]:
+    request = Request(
+        url=f"{base_url.rstrip('/')}/api/v1/auth/ui-test-bootstrap",
+        data=json.dumps({"email": user_email}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=10) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise Exit(
+            f"iOS UI bootstrap failed with HTTP {exc.code} from {request.full_url}: {detail}"
+        ) from exc
+    except URLError as exc:
+        raise Exit(f"iOS UI bootstrap failed for {request.full_url}: {exc}") from exc
+
+    access_token = payload.get("access_token")
+    display_name = payload.get("display_name")
+    if not access_token or not display_name:
+        raise Exit(f"iOS UI bootstrap returned an incomplete payload from {request.full_url}")
+    return {"access_token": access_token, "display_name": display_name}
 
 
 def _wait_for_healthcheck(url: str, attempts: int, sleep_seconds: float) -> None:
@@ -555,6 +677,7 @@ def start_app(
     port=DEFAULT_PORT,
     log_path=DEFAULT_APP_LOG_PATH,
     pid_path=DEFAULT_APP_PID_PATH,
+    ui_test_bootstrap_enabled=False,
 ) -> None:
     pid_file = ROOT / pid_path
     existing_pid = _read_pid(pid_file)
@@ -569,6 +692,9 @@ def start_app(
         seed_path=seed_path,
         database_url=database_url,
         webauthn_rp_id=webauthn_rp_id,
+        ui_test_bootstrap_enabled=str(ui_test_bootstrap_enabled).lower() in {"1", "true", "yes"},
+        app_base_url=f"http://localhost:{port}" if ui_test_bootstrap_enabled else None,
+        webcredentials_apps="[]" if ui_test_bootstrap_enabled else None,
     )
     with log_file.open("w", encoding="utf-8") as log_handle:
         process = subprocess.Popen(
@@ -772,6 +898,7 @@ def build_ios_simulator(
                 f"-scheme {shlex.quote(scheme)}",
                 f"-configuration {shlex.quote(configuration)}",
                 f"-destination {shlex.quote(destination)}",
+                "-quiet",
                 "CODE_SIGNING_ALLOWED=NO",
                 "build",
             ]
@@ -816,6 +943,82 @@ def run_ios_e2e(
         pty=False,
         shell="/bin/bash",
     )
+
+
+@task(
+    help={
+        "base_url": "Base URL used by the native iOS UI e2e flow.",
+        "bootstrap_base_url": "Host-side base URL used by XCTest to bootstrap a seeded session.",
+        "user_email": "Seeded user email used for bootstrap login into the app.",
+        "artifact_dir": "Directory used to store native iOS UI screenshots.",
+        "device_name": "Simulator device name used for XCUITest.",
+        "initial_list_name": "Seeded list name that should open first inside the app.",
+    }
+)
+def run_ios_ui_e2e(
+    c,
+    base_url=DEFAULT_IOS_UI_E2E_BASE_URL,
+    bootstrap_base_url=f"http://127.0.0.1:{DEFAULT_IOS_UI_E2E_PORT}",
+    user_email=DEFAULT_IOS_E2E_USER_EMAIL,
+    artifact_dir=DEFAULT_IOS_UI_E2E_ARTIFACT_DIR,
+    device_name=DEFAULT_IOS_UI_E2E_DEVICE,
+    initial_list_name=DEFAULT_IOS_UI_E2E_INITIAL_LIST,
+    access_token="",
+    display_name="",
+) -> None:
+    artifact_path = ROOT / artifact_dir
+    artifact_path.mkdir(parents=True, exist_ok=True)
+    for existing_png in artifact_path.glob("*.png"):
+        existing_png.unlink()
+    result_bundle_path = artifact_path / DEFAULT_IOS_UI_E2E_RESULT_BUNDLE
+    shutil.rmtree(result_bundle_path, ignore_errors=True)
+
+    env = _ios_ui_test_env(
+        base_url=base_url,
+        bootstrap_base_url=bootstrap_base_url,
+        user_email=user_email,
+        artifact_dir=artifact_dir,
+        initial_list_name=initial_list_name,
+        access_token=access_token or None,
+        display_name=display_name or None,
+    )
+    command = " ".join(
+        [
+            "cd ios/ListerineIOS &&",
+            "xcodebuild",
+            "-project ListerineApp.xcodeproj",
+            "-scheme Listerine",
+            f"-destination {shlex.quote(f'platform=iOS Simulator,name={device_name}')}",
+            f"-resultBundlePath {shlex.quote(str(result_bundle_path.resolve()))}",
+            "-quiet",
+            "-only-testing:ListerineUITests",
+            "test",
+        ]
+    )
+    result = None
+    for attempt in range(2):
+        shutil.rmtree(result_bundle_path, ignore_errors=True)
+        result = c.run(
+            command,
+            env=env,
+            pty=False,
+            shell="/bin/bash",
+            warn=True,
+        )
+        if result.exited == 0:
+            break
+        if attempt == 0:
+            print("Retrying iOS UI e2e after an initial xcodebuild failure...")
+
+    _write_ios_ui_e2e_summary(artifact_dir)
+    assert result is not None
+    if result.exited != 0:
+        failure_summaries = _ios_ui_e2e_failure_summaries(result_bundle_path)
+        if failure_summaries:
+            print("iOS UI e2e failure summary:")
+            for summary in failure_summaries:
+                print(f"- {summary}")
+        raise Exit(f"Command failed with exit code {result.exited}: xcodebuild iOS UI e2e")
 
 
 @task(
@@ -947,11 +1150,74 @@ def check_ios_e2e(
         wait_for_app(c, url=f"http://{host}:{port}/health")
         run_ios_e2e(
             c,
-            base_url=f"http://localhost:{port}",
+            base_url=f"http://127.0.0.1:{port}",
             e2e_seed_path=e2e_seed_path,
             webauthn_rp_id=webauthn_rp_id,
             user_email=user_email,
             origin=origin,
+        )
+    finally:
+        stop_app(c, pid_path=pid_path)
+
+
+@task(
+    help={
+        "seed_path": "Fixture used to seed the local app database.",
+        "database_url": "Database URL for the temporary local app.",
+        "webauthn_rp_id": "WebAuthn relying party ID exposed to the native app.",
+        "user_email": "Seeded user email used for UI bootstrap login.",
+        "artifact_dir": "Directory used to store native iOS UI screenshots.",
+        "device_name": "Simulator device name used for XCUITest.",
+        "initial_list_name": "Seeded list name that should open first inside the app.",
+        "host": "Host to bind the local app server to.",
+        "port": "Port to bind the local app server to.",
+        "log_path": "File used for uvicorn logs.",
+        "pid_path": "File used to store the started server PID.",
+    }
+)
+def check_ios_ui_e2e(
+    c,
+    seed_path=DEFAULT_BROWSER_SEED_PATH,
+    database_url=DEFAULT_IOS_UI_E2E_DATABASE_URL,
+    webauthn_rp_id="localhost",
+    user_email=DEFAULT_IOS_E2E_USER_EMAIL,
+    artifact_dir=DEFAULT_IOS_UI_E2E_ARTIFACT_DIR,
+    device_name=DEFAULT_IOS_UI_E2E_DEVICE,
+    initial_list_name=DEFAULT_IOS_UI_E2E_INITIAL_LIST,
+    host=DEFAULT_HOST,
+    port=DEFAULT_IOS_UI_E2E_PORT,
+    log_path=DEFAULT_IOS_UI_E2E_LOG_PATH,
+    pid_path=DEFAULT_IOS_UI_E2E_PID_PATH,
+) -> None:
+    _reset_sqlite_database_file(database_url)
+    start_app(
+        c,
+        seed_path=seed_path,
+        database_url=database_url,
+        webauthn_rp_id=webauthn_rp_id,
+        host=host,
+        port=port,
+        log_path=log_path,
+        pid_path=pid_path,
+        ui_test_bootstrap_enabled=True,
+    )
+    try:
+        wait_for_app(c, url=f"http://{host}:{port}/health")
+        session = _bootstrap_ios_ui_test_session(
+            base_url=f"http://localhost:{port}",
+            user_email=user_email,
+        )
+        generate_ios_project.body(c)
+        run_ios_ui_e2e(
+            c,
+            base_url=f"http://localhost:{port}",
+            bootstrap_base_url=f"http://127.0.0.1:{port}",
+            user_email=user_email,
+            artifact_dir=artifact_dir,
+            device_name=device_name,
+            initial_list_name=initial_list_name,
+            access_token=session["access_token"],
+            display_name=session["display_name"],
         )
     finally:
         stop_app(c, pid_path=pid_path)
@@ -964,13 +1230,14 @@ def check_ios_e2e(
         check_ios_e2e,
         generate_ios_project,
         build_ios_simulator,
+        check_ios_ui_e2e,
     ]
 )
 def check_ios_ci(c) -> None:
     """Run the full native iOS CI flow.
 
-    This includes package checks, live backend e2e, project generation,
-    and simulator build.
+    This includes package checks, live backend e2e, simulator UI e2e,
+    project generation, and simulator build.
     """
 
 

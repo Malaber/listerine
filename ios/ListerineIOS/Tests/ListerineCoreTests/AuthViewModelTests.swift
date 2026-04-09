@@ -52,6 +52,24 @@ struct AuthViewModelTests {
         #expect(viewModel.errorMessage == "Enter a valid http or https backend URL.")
     }
 
+    @Test func saveBackendURLPreservesInputWhenStoreReturnsNilBackendURL() {
+        let viewModel = AuthViewModel(
+            urlStore: InMemoryBackendURLStore(
+                configuration: AppConfiguration(backendURL: nil),
+                saveResult: AppConfiguration(backendURL: nil)
+            ),
+            passkeyService: PasskeyAuthService(client: SpyPasskeyClient())
+        )
+        viewModel.backendURLInput = "https://staged.example.com"
+
+        viewModel.saveBackendURL()
+
+        #expect(viewModel.configuration.backendURL == nil)
+        #expect(viewModel.backendURLInput == "https://staged.example.com")
+        #expect(viewModel.latestStatusMessage == "Backend URL saved.")
+        #expect(viewModel.errorMessage == nil)
+    }
+
     @Test func resetBackendURLClearsState() {
         let store = InMemoryBackendURLStore(configuration: AppConfiguration(backendURL: URL(string: "https://api.example.com")))
         let viewModel = AuthViewModel(
@@ -112,9 +130,11 @@ struct AuthViewModelTests {
 
 private final class InMemoryBackendURLStore: BackendURLStoring, @unchecked Sendable {
     private var storedConfiguration: AppConfiguration
+    private let saveResult: AppConfiguration?
 
-    init(configuration: AppConfiguration) {
+    init(configuration: AppConfiguration, saveResult: AppConfiguration? = nil) {
         storedConfiguration = configuration
+        self.saveResult = saveResult
     }
 
     func load() -> AppConfiguration {
@@ -122,6 +142,10 @@ private final class InMemoryBackendURLStore: BackendURLStoring, @unchecked Senda
     }
 
     func save(backendURLString: String) throws -> AppConfiguration {
+        if let saveResult {
+            storedConfiguration = saveResult
+            return saveResult
+        }
         let url = try BackendURLStore(
             userDefaults: UserDefaults(suiteName: #function)!,
             backendURLKey: UUID().uuidString

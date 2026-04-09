@@ -38,6 +38,8 @@ from app.schemas.auth import (
     PasskeyRegisterStartRequest,
     PasswordAuthRequest,
     TokenOut,
+    UITestBootstrapOut,
+    UITestBootstrapRequest,
     UserOut,
 )
 
@@ -855,3 +857,21 @@ async def finish_delete_passkey(
 @router.get("/me", response_model=UserOut)
 async def me(user: User = Depends(get_current_user)) -> User:
     return user
+
+
+@router.post("/ui-test-bootstrap", response_model=UITestBootstrapOut)
+async def ui_test_bootstrap(
+    payload: UITestBootstrapRequest, db: AsyncSession = Depends(get_db)
+) -> UITestBootstrapOut:
+    if settings.ui_test_bootstrap_enabled is False:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+    user = await _load_user_with_passkeys_by_email(db, payload.email)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    return UITestBootstrapOut(
+        access_token=create_access_token(user.id),
+        display_name=user.display_name,
+        user_id=user.id,
+    )
