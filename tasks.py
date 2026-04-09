@@ -47,7 +47,7 @@ DEFAULT_IOS_E2E_LOG_PATH = "ios-e2e-server.log"
 DEFAULT_IOS_E2E_PID_PATH = "ios-e2e-server.pid"
 DEFAULT_IOS_E2E_USER_EMAIL = "listerine@schaedler.rocks"
 DEFAULT_IOS_UI_E2E_PORT = 8018
-DEFAULT_IOS_UI_E2E_BASE_URL = f"http://127.0.0.1:{DEFAULT_IOS_UI_E2E_PORT}"
+DEFAULT_IOS_UI_E2E_BASE_URL = f"http://localhost:{DEFAULT_IOS_UI_E2E_PORT}"
 DEFAULT_IOS_UI_E2E_DATABASE_URL = "sqlite+aiosqlite:///./tmp-ios-ui-e2e.db"
 DEFAULT_IOS_UI_E2E_LOG_PATH = "ios-ui-e2e-server.log"
 DEFAULT_IOS_UI_E2E_PID_PATH = "ios-ui-e2e-server.pid"
@@ -149,11 +149,15 @@ def _app_env(
     database_url: str,
     webauthn_rp_id: str,
     ui_test_bootstrap_enabled: bool = False,
+    app_base_url: str | None = None,
+    webcredentials_apps: str | None = None,
 ) -> dict[str, str]:
     return _python_env(
         SEED_DATA_PATH=seed_path,
         DATABASE_URL=database_url,
+        APP_BASE_URL=app_base_url,
         WEBAUTHN_RP_ID=webauthn_rp_id,
+        WEBCREDENTIALS_APPS=webcredentials_apps,
         UI_TEST_BOOTSTRAP_ENABLED="true" if ui_test_bootstrap_enabled else "false",
     )
 
@@ -626,6 +630,8 @@ def start_app(
         database_url=database_url,
         webauthn_rp_id=webauthn_rp_id,
         ui_test_bootstrap_enabled=str(ui_test_bootstrap_enabled).lower() in {"1", "true", "yes"},
+        app_base_url=f"http://localhost:{port}" if ui_test_bootstrap_enabled else None,
+        webcredentials_apps="[]" if ui_test_bootstrap_enabled else None,
     )
     with log_file.open("w", encoding="utf-8") as log_handle:
         process = subprocess.Popen(
@@ -829,6 +835,7 @@ def build_ios_simulator(
                 f"-scheme {shlex.quote(scheme)}",
                 f"-configuration {shlex.quote(configuration)}",
                 f"-destination {shlex.quote(destination)}",
+                "-quiet",
                 "CODE_SIGNING_ALLOWED=NO",
                 "build",
             ]
@@ -914,6 +921,7 @@ def run_ios_ui_e2e(
                 "-scheme Listerine",
                 f"-destination {shlex.quote(f'platform=iOS Simulator,name={device_name}')}",
                 f"-resultBundlePath {shlex.quote(str(result_bundle_path.resolve()))}",
+                "-quiet",
                 "-only-testing:ListerineUITests",
                 "test",
             ]
@@ -1110,7 +1118,7 @@ def check_ios_ui_e2e(
         generate_ios_project.body(c)
         run_ios_ui_e2e(
             c,
-            base_url=f"http://127.0.0.1:{port}",
+            base_url=f"http://localhost:{port}",
             user_email=user_email,
             artifact_dir=artifact_dir,
             device_name=device_name,

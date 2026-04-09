@@ -464,6 +464,7 @@ def test_build_ios_simulator_invokes_xcodebuild(monkeypatch) -> None:
             "-scheme Listerine "
             "-configuration Debug "
             "-destination 'generic/platform=iOS Simulator' "
+            "-quiet "
             "CODE_SIGNING_ALLOWED=NO build",
             {
                 "env": {"DEVELOPER_DIR": "/Applications/Xcode.app/Contents/Developer"},
@@ -544,11 +545,13 @@ def test_run_ios_ui_e2e_invokes_xcodebuild_with_expected_env(monkeypatch, tmp_pa
         },
     )
     summaries: list[str] = []
-    monkeypatch.setattr(tasks, "_write_ios_ui_e2e_summary", lambda artifact_dir: summaries.append(artifact_dir))
+    monkeypatch.setattr(
+        tasks, "_write_ios_ui_e2e_summary", lambda artifact_dir: summaries.append(artifact_dir)
+    )
 
     tasks.run_ios_ui_e2e.body(
         Context(),
-        base_url="http://127.0.0.1:8018",
+        base_url="http://localhost:8018",
         user_email="ios@example.com",
         artifact_dir="e2e-artifacts/ios-ui-e2e",
         device_name="iPhone 17",
@@ -557,11 +560,13 @@ def test_run_ios_ui_e2e_invokes_xcodebuild_with_expected_env(monkeypatch, tmp_pa
 
     assert calls == [
         (
-            "cd ios/ListerineIOS && xcodebuild -project ListerineApp.xcodeproj -scheme Listerine -destination 'platform=iOS Simulator,name=iPhone 17' -resultBundlePath "
-            f"{str(result_bundle_path.resolve())} -only-testing:ListerineUITests test",
+            "cd ios/ListerineIOS && xcodebuild -project ListerineApp.xcodeproj "
+            "-scheme Listerine -destination 'platform=iOS Simulator,name=iPhone 17' "
+            f"-resultBundlePath {str(result_bundle_path.resolve())} -quiet "
+            "-only-testing:ListerineUITests test",
             {
                 "env": {
-                    "LISTERINE_UI_TEST_BASE_URL": "http://127.0.0.1:8018",
+                    "LISTERINE_UI_TEST_BASE_URL": "http://localhost:8018",
                     "LISTERINE_UI_TEST_USER_EMAIL": "ios@example.com",
                     "LISTERINE_UI_TEST_ARTIFACT_DIR": "e2e-artifacts/ios-ui-e2e",
                     "LISTERINE_UI_TEST_INITIAL_LIST_NAME": "Browser Test Shop",
@@ -620,7 +625,7 @@ def test_check_ios_e2e_starts_waits_runs_and_stops(monkeypatch) -> None:
         (
             "run",
             {
-                    "base_url": "http://127.0.0.1:8017",
+                "base_url": "http://127.0.0.1:8017",
                 "e2e_seed_path": "app/fixtures/review_seed_e2e.json",
                 "webauthn_rp_id": "localhost",
                 "user_email": "ios@example.com",
@@ -641,7 +646,9 @@ def test_check_ios_ui_e2e_starts_waits_runs_and_stops(monkeypatch) -> None:
     )
     monkeypatch.setattr(tasks, "start_app", lambda c, **kwargs: calls.append(("start", kwargs)))
     monkeypatch.setattr(tasks, "wait_for_app", lambda c, **kwargs: calls.append(("wait", kwargs)))
-    monkeypatch.setattr(tasks.generate_ios_project, "body", lambda c: calls.append(("generate", {})))
+    monkeypatch.setattr(
+        tasks.generate_ios_project, "body", lambda c: calls.append(("generate", {}))
+    )
     monkeypatch.setattr(tasks, "run_ios_ui_e2e", lambda c, **kwargs: calls.append(("run", kwargs)))
     monkeypatch.setattr(tasks, "stop_app", lambda c, **kwargs: calls.append(("stop", kwargs)))
 
@@ -680,7 +687,7 @@ def test_check_ios_ui_e2e_starts_waits_runs_and_stops(monkeypatch) -> None:
         (
             "run",
             {
-                "base_url": "http://127.0.0.1:8018",
+                "base_url": "http://localhost:8018",
                 "user_email": "ios@example.com",
                 "artifact_dir": "e2e-artifacts/ios-ui-e2e",
                 "device_name": "iPhone 17",
