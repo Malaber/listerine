@@ -338,6 +338,43 @@ struct ListPresentationTests {
         #expect(sections.map(\.title) == ["Bakery", "Produce"])
     }
 
+    @Test func skipsItemsWhoseCategoriesAreMissingFromMetadata() {
+        let unknownCategoryOne = UUID()
+        let unknownCategoryTwo = UUID()
+        let listID = UUID()
+
+        let sections = GroceryItemSectionBuilder.build(
+            items: [
+                GroceryItemRecord(
+                    id: UUID(),
+                    listID: listID,
+                    name: "Mystery apples",
+                    quantityText: nil,
+                    note: nil,
+                    categoryID: unknownCategoryOne,
+                    checked: false,
+                    checkedAt: nil,
+                    sortOrder: 0
+                ),
+                GroceryItemRecord(
+                    id: UUID(),
+                    listID: listID,
+                    name: "Mystery bread",
+                    quantityText: nil,
+                    note: nil,
+                    categoryID: unknownCategoryTwo,
+                    checked: false,
+                    checkedAt: nil,
+                    sortOrder: 0
+                ),
+            ],
+            categories: [],
+            categoryOrder: []
+        )
+
+        #expect(sections.isEmpty)
+    }
+
     @Test func sortsUncheckedItemsByCategoryPrioritySortOrderAndName() {
         let produce = GroceryCategorySummary(id: UUID(), name: "Produce", colorHex: "#00ff00")
         let dairy = GroceryCategorySummary(id: UUID(), name: "Dairy", colorHex: "#ffffff")
