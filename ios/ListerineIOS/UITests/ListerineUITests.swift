@@ -9,6 +9,7 @@ final class ListerineUITests: XCTestCase {
     }
 
     func testListViewFlow() throws {
+        try assertLocalTestBackend()
         let session = try bootstrapSession(email: userEmail)
         let app = XCUIApplication()
         app.launchEnvironment["LISTERINE_UI_TEST_MODE"] = "1"
@@ -112,6 +113,21 @@ final class ListerineUITests: XCTestCase {
             return seededEmail
         }
         return configuredEmail
+    }
+
+    private func assertLocalTestBackend() throws {
+        guard let host = baseURL.host?.lowercased(),
+            ["localhost", "127.0.0.1", "::1"].contains(host)
+        else {
+            throw NSError(
+                domain: "ListerineUITests",
+                code: 2,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Refusing to run iOS UI tests against a non-local backend URL: \(baseURL.absoluteString)"
+                ]
+            )
+        }
     }
 
     private func bootstrapSession(email: String) throws -> UITestSession {
