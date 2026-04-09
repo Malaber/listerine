@@ -500,6 +500,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Listerine;
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = de.malaber.listerine;
+				INFOPLIST_KEY_WKWatchKitApp = YES;
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = de.malaber.listerine.watchkitapp;
 				PRODUCT_NAME = "Listerine Watch";
@@ -547,6 +548,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Listerine;
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = de.malaber.listerine;
+				INFOPLIST_KEY_WKWatchKitApp = YES;
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = de.malaber.listerine.watchkitapp;
 				PRODUCT_NAME = "Listerine Watch";
