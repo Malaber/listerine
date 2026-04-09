@@ -5,9 +5,11 @@ import re
 import shlex
 import shutil
 import signal
+import sqlite3
 import subprocess
 import sys
 import time
+from contextlib import closing
 from pathlib import Path
 from urllib.error import URLError
 from urllib.parse import urlparse
@@ -205,6 +207,33 @@ def _write_ios_ui_e2e_summary(artifact_dir: str) -> None:
             ]
         )
     (artifact_path / "summary.md").write_text("\n".join(summary_lines) + "\n", encoding="utf-8")
+
+
+def _ios_ui_e2e_failure_summaries(result_bundle_path: Path) -> list[str]:
+    database_path = result_bundle_path / "database.sqlite3"
+    if database_path.exists() is False:
+        return []
+
+    query = """
+        SELECT
+            t.name,
+            r.result,
+            COALESCE(i.compactDescription, ''),
+            COALESCE(i.detailedDescription, '')
+        FROM TestCaseRuns r
+        JOIN TestCases t ON t.rowid = r.testCase_fk
+        LEFT JOIN TestIssues i ON i.testCaseRun_fk = r.rowid
+        WHERE r.result != 'Success'
+        ORDER BY t.name, i.orderInOwner
+    """
+    with closing(sqlite3.connect(database_path)) as connection:
+        rows = connection.execute(query).fetchall()
+
+    summaries: list[str] = []
+    for test_name, result, compact_description, detailed_description in rows:
+        message = detailed_description or compact_description or "No failure details recorded."
+        summaries.append(f"{test_name} [{result}]: {message}")
+    return summaries
 
 
 def _wait_for_healthcheck(url: str, attempts: int, sleep_seconds: float) -> None:
@@ -917,7 +946,7 @@ def run_ios_ui_e2e(
         artifact_dir=artifact_dir,
         initial_list_name=initial_list_name,
     )
-    c.run(
+    result = c.run(
         " ".join(
             [
                 "cd ios/ListerineIOS &&",
@@ -934,8 +963,16 @@ def run_ios_ui_e2e(
         env=env,
         pty=False,
         shell="/bin/bash",
+        warn=True,
     )
     _write_ios_ui_e2e_summary(artifact_dir)
+    if result.exited != 0:
+        failure_summaries = _ios_ui_e2e_failure_summaries(result_bundle_path)
+        if failure_summaries:
+            print("iOS UI e2e failure summary:")
+            for summary in failure_summaries:
+                print(f"- {summary}")
+        raise Exit(f"Command failed with exit code {result.exited}: xcodebuild iOS UI e2e")
 
 
 @task(

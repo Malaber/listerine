@@ -1,4 +1,6 @@
 import importlib.util
+import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 TASKS_PATH = Path(__file__).resolve().parents[1] / "tasks.py"
@@ -69,6 +71,42 @@ def test_wait_for_pid_exit_reaps_child_process(monkeypatch) -> None:
     monkeypatch.setattr(tasks.os, "waitpid", lambda pid, flags: (pid, 0))
 
     tasks._wait_for_pid_exit(123)
+
+
+def test_ios_ui_e2e_failure_summaries_returns_empty_without_database(tmp_path: Path) -> None:
+    assert tasks._ios_ui_e2e_failure_summaries(tmp_path / "missing.xcresult") == []
+
+
+def test_ios_ui_e2e_failure_summaries_reads_failed_test_messages(tmp_path: Path) -> None:
+    bundle_path = tmp_path / "ListerineUITests.xcresult"
+    bundle_path.mkdir()
+    database_path = bundle_path / "database.sqlite3"
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE TestCases (name TEXT);
+            CREATE TABLE TestCaseRuns (testCase_fk INTEGER, result TEXT);
+            CREATE TABLE TestIssues (
+                testCaseRun_fk INTEGER,
+                compactDescription TEXT,
+                detailedDescription TEXT,
+                orderInOwner INTEGER
+            );
+            INSERT INTO TestCases(rowid, name) VALUES (1, 'testListViewFlow()');
+            INSERT INTO TestCaseRuns(rowid, testCase_fk, result) VALUES (1, 1, 'Failure');
+            INSERT INTO TestIssues(
+                testCaseRun_fk,
+                compactDescription,
+                detailedDescription,
+                orderInOwner
+            ) VALUES (1, 'Compact failure', 'Detailed failure', 0);
+            """
+        )
+
+    assert tasks._ios_ui_e2e_failure_summaries(bundle_path) == [
+        "testListViewFlow() [Failure]: Detailed failure"
+    ]
 
 
 def test_stop_app_waits_for_exit_before_removing_pid_file(tmp_path: Path, monkeypatch) -> None:
@@ -578,11 +616,40 @@ def test_run_ios_ui_e2e_invokes_xcodebuild_with_expected_env(monkeypatch, tmp_pa
                 },
                 "pty": False,
                 "shell": "/bin/bash",
+                "warn": True,
             },
         )
     ]
     assert summaries == ["e2e-artifacts/ios-ui-e2e"]
     assert not result_bundle_path.exists()
+
+
+def test_run_ios_ui_e2e_prints_failure_summary_before_exiting(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    class Context:
+        def run(self, command, **kwargs):
+            return RunResult(exited=65)
+
+    monkeypatch.setattr(tasks, "ROOT", tmp_path)
+    monkeypatch.setattr(tasks, "_ios_ui_test_env", lambda **kwargs: {})
+    monkeypatch.setattr(tasks, "_write_ios_ui_e2e_summary", lambda artifact_dir: None)
+    monkeypatch.setattr(
+        tasks,
+        "_ios_ui_e2e_failure_summaries",
+        lambda result_bundle_path: ["testListViewFlow() [Failure]: Timed out waiting for response"],
+    )
+
+    try:
+        tasks.run_ios_ui_e2e.body(Context(), artifact_dir="e2e-artifacts/ios-ui-e2e")
+    except tasks.Exit as exc:
+        assert "exit code 65" in str(exc)
+    else:
+        raise AssertionError("expected run_ios_ui_e2e to fail")
+
+    captured = capsys.readouterr()
+    assert "iOS UI e2e failure summary:" in captured.out
+    assert "testListViewFlow() [Failure]: Timed out waiting for response" in captured.out
 
 
 def test_check_ios_e2e_starts_waits_runs_and_stops(monkeypatch) -> None:

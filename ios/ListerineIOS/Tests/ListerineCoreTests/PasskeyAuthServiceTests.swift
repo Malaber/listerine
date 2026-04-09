@@ -53,7 +53,7 @@ struct PasskeyAuthServiceTests {
             #expect(published.wrappedValue == "https://api.example.com")
 
             let viewModel = AuthViewModel(
-                urlStore: InMemoryBackendURLStore(configuration: AppConfiguration(backendURL: nil)),
+                urlStore: StaticBackendURLStore(configuration: AppConfiguration(backendURL: nil)),
                 passkeyService: PasskeyAuthService(client: SpyPasskeyClient())
             )
 
@@ -96,4 +96,18 @@ actor PasskeyClientRecorder: PasskeyClient {
     func prepareRequest(_ request: PasskeyRequest) async throws {
         capturedRequests.append(request)
     }
+}
+
+private struct StaticBackendURLStore: BackendURLStoring {
+    let configuration: AppConfiguration
+
+    func load() -> AppConfiguration {
+        configuration
+    }
+
+    func save(backendURLString: String) throws -> AppConfiguration {
+        configuration
+    }
+
+    func clear() {}
 }
