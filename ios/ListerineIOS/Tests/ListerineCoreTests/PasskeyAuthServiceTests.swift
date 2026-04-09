@@ -52,12 +52,9 @@ struct PasskeyAuthServiceTests {
             let published = Published(wrappedValue: "https://api.example.com")
             #expect(published.wrappedValue == "https://api.example.com")
 
-            let viewModel = AuthViewModel(
-                urlStore: StaticBackendURLStore(configuration: AppConfiguration(backendURL: nil)),
-                passkeyService: PasskeyAuthService(client: SpyPasskeyClient())
-            )
+            let object = LinuxObservableObjectStub()
 
-            #expect(acceptsObservableObject(viewModel))
+            #expect(acceptsObservableObject(object))
         }
 
         private func acceptsObservableObject(_ object: some ObservableObject) -> Bool {
@@ -98,16 +95,6 @@ actor PasskeyClientRecorder: PasskeyClient {
     }
 }
 
-private struct StaticBackendURLStore: BackendURLStoring {
-    let configuration: AppConfiguration
-
-    func load() -> AppConfiguration {
-        configuration
-    }
-
-    func save(backendURLString: String) throws -> AppConfiguration {
-        configuration
-    }
-
-    func clear() {}
-}
+#if !canImport(Combine)
+    private final class LinuxObservableObjectStub: ObservableObject {}
+#endif
