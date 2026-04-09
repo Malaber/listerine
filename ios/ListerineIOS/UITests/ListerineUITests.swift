@@ -10,7 +10,16 @@ final class ListerineUITests: XCTestCase {
 
     func testListViewFlow() throws {
         try assertLocalTestBackend()
-        let session = try bootstrapSession(email: userEmail)
+        let session = if
+            let accessToken = ProcessInfo.processInfo.environment["LISTERINE_UI_TEST_ACCESS_TOKEN"],
+            let displayName = ProcessInfo.processInfo.environment["LISTERINE_UI_TEST_DISPLAY_NAME"],
+            accessToken.isEmpty == false,
+            displayName.isEmpty == false
+        {
+            UITestSession(accessToken: accessToken, displayName: displayName)
+        } else {
+            try bootstrapSession(email: userEmail)
+        }
         let app = XCUIApplication()
         app.launchEnvironment["LISTERINE_UI_TEST_MODE"] = "1"
         app.launchEnvironment["LISTERINE_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString

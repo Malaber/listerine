@@ -9,11 +9,12 @@ import sqlite3
 import subprocess
 import sys
 import time
+import json
 from contextlib import closing
 from pathlib import Path
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 try:
     from invoke import task
@@ -171,6 +172,8 @@ def _ios_ui_test_env(
     user_email: str,
     artifact_dir: str,
     initial_list_name: str,
+    access_token: str | None = None,
+    display_name: str | None = None,
 ) -> dict[str, str]:
     env = _ios_toolchain_env()
     env.update(
@@ -182,6 +185,10 @@ def _ios_ui_test_env(
             "LISTERINE_UI_TEST_INITIAL_LIST_NAME": initial_list_name,
         }
     )
+    if access_token:
+        env["LISTERINE_UI_TEST_ACCESS_TOKEN"] = access_token
+    if display_name:
+        env["LISTERINE_UI_TEST_DISPLAY_NAME"] = display_name
     return env
 
 
@@ -234,6 +241,31 @@ def _ios_ui_e2e_failure_summaries(result_bundle_path: Path) -> list[str]:
         message = detailed_description or compact_description or "No failure details recorded."
         summaries.append(f"{test_name} [{result}]: {message}")
     return summaries
+
+
+def _bootstrap_ios_ui_test_session(*, base_url: str, user_email: str) -> dict[str, str]:
+    request = Request(
+        url=f"{base_url.rstrip('/')}/api/v1/auth/ui-test-bootstrap",
+        data=json.dumps({"email": user_email}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=10) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise Exit(
+            f"iOS UI bootstrap failed with HTTP {exc.code} from {request.full_url}: {detail}"
+        ) from exc
+    except URLError as exc:
+        raise Exit(f"iOS UI bootstrap failed for {request.full_url}: {exc}") from exc
+
+    access_token = payload.get("access_token")
+    display_name = payload.get("display_name")
+    if not access_token or not display_name:
+        raise Exit(f"iOS UI bootstrap returned an incomplete payload from {request.full_url}")
+    return {"access_token": access_token, "display_name": display_name}
 
 
 def _wait_for_healthcheck(url: str, attempts: int, sleep_seconds: float) -> None:
@@ -931,6 +963,8 @@ def run_ios_ui_e2e(
     artifact_dir=DEFAULT_IOS_UI_E2E_ARTIFACT_DIR,
     device_name=DEFAULT_IOS_UI_E2E_DEVICE,
     initial_list_name=DEFAULT_IOS_UI_E2E_INITIAL_LIST,
+    access_token="",
+    display_name="",
 ) -> None:
     artifact_path = ROOT / artifact_dir
     artifact_path.mkdir(parents=True, exist_ok=True)
@@ -945,6 +979,8 @@ def run_ios_ui_e2e(
         user_email=user_email,
         artifact_dir=artifact_dir,
         initial_list_name=initial_list_name,
+        access_token=access_token or None,
+        display_name=display_name or None,
     )
     command = " ".join(
         [
@@ -1167,6 +1203,10 @@ def check_ios_ui_e2e(
     )
     try:
         wait_for_app(c, url=f"http://{host}:{port}/health")
+        session = _bootstrap_ios_ui_test_session(
+            base_url=f"http://localhost:{port}",
+            user_email=user_email,
+        )
         generate_ios_project.body(c)
         run_ios_ui_e2e(
             c,
@@ -1176,6 +1216,8 @@ def check_ios_ui_e2e(
             artifact_dir=artifact_dir,
             device_name=device_name,
             initial_list_name=initial_list_name,
+            access_token=session["access_token"],
+            display_name=session["display_name"],
         )
     finally:
         stop_app(c, pid_path=pid_path)
