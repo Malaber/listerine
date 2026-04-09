@@ -29,6 +29,15 @@ jobs:
         run: python -m invoke bootstrap-ci
       - name: Run native iOS CI flow
         run: python -m invoke check-ios-ci
+      - name: Upload native iOS UI artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-native-ui-e2e
+          retention-days: 2
+          path: |
+            e2e-artifacts/ios-ui-e2e
+            ios-ui-e2e-server.log
 
   upload_testflight:
     needs: build_ios_app

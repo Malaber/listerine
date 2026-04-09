@@ -249,6 +249,29 @@ def test_ios_toolchain_env_uses_workspace_cache(tmp_path: Path, monkeypatch) -> 
     )
 
 
+def test_ios_ui_test_env_uses_absolute_artifact_path(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(tasks, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        tasks,
+        "_ios_toolchain_env",
+        lambda: {"DEVELOPER_DIR": "/Applications/Xcode.app/Contents/Developer"},
+    )
+
+    env = tasks._ios_ui_test_env(
+        base_url="http://127.0.0.1:8018",
+        user_email="ios@example.com",
+        artifact_dir="e2e-artifacts/ios-ui-e2e",
+        initial_list_name="Browser Test Shop",
+    )
+
+    assert env["LISTERINE_UI_TEST_BASE_URL"] == "http://127.0.0.1:8018"
+    assert env["LISTERINE_UI_TEST_USER_EMAIL"] == "ios@example.com"
+    assert env["LISTERINE_UI_TEST_INITIAL_LIST_NAME"] == "Browser Test Shop"
+    assert env["LISTERINE_UI_TEST_ARTIFACT_DIR"] == str(
+        (tmp_path / "e2e-artifacts" / "ios-ui-e2e").resolve()
+    )
+
+
 def test_validated_ios_backend_host_rejects_invalid_urls() -> None:
     try:
         tasks._validated_ios_backend_host("notaurl")
@@ -498,6 +521,60 @@ def test_run_ios_e2e_invokes_swift_test_with_expected_env(monkeypatch) -> None:
     ]
 
 
+def test_run_ios_ui_e2e_invokes_xcodebuild_with_expected_env(monkeypatch, tmp_path: Path) -> None:
+    calls: list[tuple[str, dict]] = []
+
+    class Context:
+        def run(self, command, **kwargs):
+            calls.append((command, kwargs))
+            return RunResult(exited=0)
+
+    monkeypatch.setattr(tasks, "ROOT", tmp_path)
+    artifact_path = tmp_path / "e2e-artifacts" / "ios-ui-e2e"
+    result_bundle_path = artifact_path / tasks.DEFAULT_IOS_UI_E2E_RESULT_BUNDLE
+    result_bundle_path.mkdir(parents=True)
+    monkeypatch.setattr(
+        tasks,
+        "_ios_ui_test_env",
+        lambda **kwargs: {
+            "LISTERINE_UI_TEST_BASE_URL": kwargs["base_url"],
+            "LISTERINE_UI_TEST_USER_EMAIL": kwargs["user_email"],
+            "LISTERINE_UI_TEST_ARTIFACT_DIR": kwargs["artifact_dir"],
+            "LISTERINE_UI_TEST_INITIAL_LIST_NAME": kwargs["initial_list_name"],
+        },
+    )
+    summaries: list[str] = []
+    monkeypatch.setattr(tasks, "_write_ios_ui_e2e_summary", lambda artifact_dir: summaries.append(artifact_dir))
+
+    tasks.run_ios_ui_e2e.body(
+        Context(),
+        base_url="http://127.0.0.1:8018",
+        user_email="ios@example.com",
+        artifact_dir="e2e-artifacts/ios-ui-e2e",
+        device_name="iPhone 17",
+        initial_list_name="Browser Test Shop",
+    )
+
+    assert calls == [
+        (
+            "cd ios/ListerineIOS && xcodebuild -project ListerineApp.xcodeproj -scheme Listerine -destination 'platform=iOS Simulator,name=iPhone 17' -resultBundlePath "
+            f"{str(result_bundle_path.resolve())} -only-testing:ListerineUITests test",
+            {
+                "env": {
+                    "LISTERINE_UI_TEST_BASE_URL": "http://127.0.0.1:8018",
+                    "LISTERINE_UI_TEST_USER_EMAIL": "ios@example.com",
+                    "LISTERINE_UI_TEST_ARTIFACT_DIR": "e2e-artifacts/ios-ui-e2e",
+                    "LISTERINE_UI_TEST_INITIAL_LIST_NAME": "Browser Test Shop",
+                },
+                "pty": False,
+                "shell": "/bin/bash",
+            },
+        )
+    ]
+    assert summaries == ["e2e-artifacts/ios-ui-e2e"]
+    assert not result_bundle_path.exists()
+
+
 def test_check_ios_e2e_starts_waits_runs_and_stops(monkeypatch) -> None:
     calls: list[tuple[str, dict]] = []
 
@@ -543,7 +620,7 @@ def test_check_ios_e2e_starts_waits_runs_and_stops(monkeypatch) -> None:
         (
             "run",
             {
-                "base_url": "http://localhost:8017",
+                    "base_url": "http://127.0.0.1:8017",
                 "e2e_seed_path": "app/fixtures/review_seed_e2e.json",
                 "webauthn_rp_id": "localhost",
                 "user_email": "ios@example.com",
@@ -551,6 +628,66 @@ def test_check_ios_e2e_starts_waits_runs_and_stops(monkeypatch) -> None:
             },
         ),
         ("stop", {"pid_path": "ios-e2e-server.pid"}),
+    ]
+
+
+def test_check_ios_ui_e2e_starts_waits_runs_and_stops(monkeypatch) -> None:
+    calls: list[tuple[str, dict]] = []
+
+    monkeypatch.setattr(
+        tasks,
+        "_reset_sqlite_database_file",
+        lambda database_url: calls.append(("reset", {"database_url": database_url})),
+    )
+    monkeypatch.setattr(tasks, "start_app", lambda c, **kwargs: calls.append(("start", kwargs)))
+    monkeypatch.setattr(tasks, "wait_for_app", lambda c, **kwargs: calls.append(("wait", kwargs)))
+    monkeypatch.setattr(tasks.generate_ios_project, "body", lambda c: calls.append(("generate", {})))
+    monkeypatch.setattr(tasks, "run_ios_ui_e2e", lambda c, **kwargs: calls.append(("run", kwargs)))
+    monkeypatch.setattr(tasks, "stop_app", lambda c, **kwargs: calls.append(("stop", kwargs)))
+
+    tasks.check_ios_ui_e2e.body(
+        None,
+        seed_path="app/fixtures/review_seed_e2e.json",
+        database_url="sqlite+aiosqlite:///./tmp-ios-ui-e2e.db",
+        webauthn_rp_id="localhost",
+        user_email="ios@example.com",
+        artifact_dir="e2e-artifacts/ios-ui-e2e",
+        device_name="iPhone 17",
+        initial_list_name="Browser Test Shop",
+        host="127.0.0.1",
+        port=8018,
+        log_path="ios-ui-e2e-server.log",
+        pid_path="ios-ui-e2e-server.pid",
+    )
+
+    assert calls == [
+        ("reset", {"database_url": "sqlite+aiosqlite:///./tmp-ios-ui-e2e.db"}),
+        (
+            "start",
+            {
+                "seed_path": "app/fixtures/review_seed_e2e.json",
+                "database_url": "sqlite+aiosqlite:///./tmp-ios-ui-e2e.db",
+                "webauthn_rp_id": "localhost",
+                "host": "127.0.0.1",
+                "port": 8018,
+                "log_path": "ios-ui-e2e-server.log",
+                "pid_path": "ios-ui-e2e-server.pid",
+                "ui_test_bootstrap_enabled": True,
+            },
+        ),
+        ("wait", {"url": "http://127.0.0.1:8018/health"}),
+        ("generate", {}),
+        (
+            "run",
+            {
+                "base_url": "http://127.0.0.1:8018",
+                "user_email": "ios@example.com",
+                "artifact_dir": "e2e-artifacts/ios-ui-e2e",
+                "device_name": "iPhone 17",
+                "initial_list_name": "Browser Test Shop",
+            },
+        ),
+        ("stop", {"pid_path": "ios-ui-e2e-server.pid"}),
     ]
 
 

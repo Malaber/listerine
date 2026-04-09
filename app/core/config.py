@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     webcredentials_apps: list[str] = []
     seed_data_path: str | None = None
     bootstrap_admin_email: EmailStr | None = None
+    ui_test_bootstrap_enabled: bool = False
 
     @field_validator("app_base_url", mode="before")
     @classmethod

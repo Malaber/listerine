@@ -14,18 +14,31 @@
 		3967759140BC8B5C2218FAD6 /* ApplePasskeyClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 551B3360068D6020C456D4B0 /* ApplePasskeyClient.swift */; };
 		67B81BCC4656D3B209B370C8 /* ListerineCore in Frameworks */ = {isa = PBXBuildFile; productRef = FEE9CD5DEA44E9C8BE44845E /* ListerineCore */; };
 		844561BFFF84892FB58B564F /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E59F81D2ECEBDEED61800D9 /* RootView.swift */; };
+		BFC14EEB3ED0EF1B44F41EFF /* ListerineUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69DDCE77716148CC4D98C922 /* ListerineUITests.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		EB700CD7E16F3E39934DC67D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6A78E51AD6C9D216B021B153 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4E911D4D424651A104F1C399;
+			remoteInfo = Listerine;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		235BABE9DE69DE7A433B762A /* Listerine.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Listerine.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4E59F81D2ECEBDEED61800D9 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		551B3360068D6020C456D4B0 /* ApplePasskeyClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplePasskeyClient.swift; sourceTree = "<group>"; };
 		5EC61542B67179C9B0637940 /* MobileAppViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileAppViewModel.swift; sourceTree = "<group>"; };
+		69DDCE77716148CC4D98C922 /* ListerineUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListerineUITests.swift; sourceTree = "<group>"; };
 		6FD39624D7CA829381C145D7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Assets.xcassets; sourceTree = SOURCE_ROOT; };
 		8491C1AEF2BC348977951F06 /* ListerineApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListerineApp.swift; sourceTree = "<group>"; };
 		AF9BDC88BED8495FB5471C16 /* Listerine.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Listerine.entitlements; sourceTree = "<group>"; };
 		B2E20E622D1483C4892ECDE4 /* BuildConfiguration.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildConfiguration.generated.swift; sourceTree = "<group>"; };
 		C2EC8AC13D3FBD3F3FA08CF7 /* ListerineIOS */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ListerineIOS; path = .; sourceTree = SOURCE_ROOT; };
+		F26DAB49AF5373AD31059430 /* ListerineUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ListerineUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -44,8 +57,17 @@
 			isa = PBXGroup;
 			children = (
 				235BABE9DE69DE7A433B762A /* Listerine.app */,
+				F26DAB49AF5373AD31059430 /* ListerineUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		6526DED7438BFC1CFC4FED11 /* UITests */ = {
+			isa = PBXGroup;
+			children = (
+				69DDCE77716148CC4D98C922 /* ListerineUITests.swift */,
+			);
+			path = UITests;
 			sourceTree = "<group>";
 		};
 		9016EAE4FB57386C9C3F20C5 /* App */ = {
@@ -67,6 +89,7 @@
 				6FD39624D7CA829381C145D7 /* Assets.xcassets */,
 				9016EAE4FB57386C9C3F20C5 /* App */,
 				D1D3F812E56DEAEE612D5246 /* Packages */,
+				6526DED7438BFC1CFC4FED11 /* UITests */,
 				6009D4F07D9C82C7EF4563DD /* Products */,
 			);
 			sourceTree = "<group>";
@@ -82,6 +105,24 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		469CB328A278D84136A808DA /* ListerineUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3BF9F8D05F1D55A44BF0F01B /* Build configuration list for PBXNativeTarget "ListerineUITests" */;
+			buildPhases = (
+				286B3DBE4E130007A5F54AC1 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				21A9A4A2200A720C78E064DE /* PBXTargetDependency */,
+			);
+			name = ListerineUITests;
+			packageProductDependencies = (
+			);
+			productName = ListerineUITests;
+			productReference = F26DAB49AF5373AD31059430 /* ListerineUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		4E911D4D424651A104F1C399 /* Listerine */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = B3C72804072D54337B6CA36F /* Build configuration list for PBXNativeTarget "Listerine" */;
@@ -111,6 +152,10 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					469CB328A278D84136A808DA = {
+						DevelopmentTeam = VWKG94374J;
+						TestTargetID = 4E911D4D424651A104F1C399;
+					};
 					4E911D4D424651A104F1C399 = {
 						DevelopmentTeam = VWKG94374J;
 					};
@@ -134,6 +179,7 @@
 			projectRoot = "";
 			targets = (
 				4E911D4D424651A104F1C399 /* Listerine */,
+				469CB328A278D84136A808DA /* ListerineUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -150,6 +196,14 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		286B3DBE4E130007A5F54AC1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BFC14EEB3ED0EF1B44F41EFF /* ListerineUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		E9AC6557DBDFA48C35ADE583 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -163,6 +217,14 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		21A9A4A2200A720C78E064DE /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4E911D4D424651A104F1C399 /* Listerine */;
+			targetProxy = EB700CD7E16F3E39934DC67D /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		20C266BC38B2C4AF2AF3C32F /* Release */ = {
@@ -340,9 +402,60 @@
 			};
 			name = Debug;
 		};
+		E076005B5B0F52642B53753F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				DEVELOPMENT_TEAM = VWKG94374J;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "de.malaber.listerine.ui-tests";
+				PRODUCT_NAME = ListerineUITests;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.1;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Listerine;
+			};
+			name = Debug;
+		};
+		E7355B8D5E4044DBE9E0D07D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				DEVELOPMENT_TEAM = VWKG94374J;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "de.malaber.listerine.ui-tests";
+				PRODUCT_NAME = ListerineUITests;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.1;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Listerine;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		3BF9F8D05F1D55A44BF0F01B /* Build configuration list for PBXNativeTarget "ListerineUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E076005B5B0F52642B53753F /* Debug */,
+				E7355B8D5E4044DBE9E0D07D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		93B4E8A38794984F6996627A /* Build configuration list for PBXProject "ListerineApp" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

@@ -6,8 +6,12 @@ private let netLog = Logger(subsystem: "com.example.ListerineIOS", category: "ne
 
 private enum AppBuildConfiguration {
     private static let backendURLKey = "ListerineBackendBaseURL"
+    private static let backendURLOverrideKey = "LISTERINE_BACKEND_BASE_URL_OVERRIDE"
 
     static var backendURL: URL? {
+        if let overriddenURL = validatedURL(from: ProcessInfo.processInfo.environment[backendURLOverrideKey]) {
+            return overriddenURL
+        }
         if let generatedURL = validatedURL(from: GeneratedBuildConfiguration.backendURL) {
             return generatedURL
         }
@@ -48,15 +52,23 @@ final class MobileAppViewModel: ObservableObject {
 
     private let passkeyClient: ApplePasskeyClient
     private let userDefaults: UserDefaults
+    private let processInfo: ProcessInfo
+    private var didAttemptLaunchBootstrap = false
 
     init(
         passkeyClient: ApplePasskeyClient = ApplePasskeyClient(),
-        userDefaults: UserDefaults = .standard
+        userDefaults: UserDefaults = .standard,
+        processInfo: ProcessInfo = .processInfo
     ) {
         self.passkeyClient = passkeyClient
         self.userDefaults = userDefaults
+        self.processInfo = processInfo
         backendURL = AppBuildConfiguration.backendURL
-        favoriteListID = userDefaults.string(forKey: Self.favoriteListKey).flatMap(UUID.init(uuidString:))
+        if processInfo.environment["LISTERINE_UI_TEST_MODE"] == "1" {
+            favoriteListID = nil
+        } else {
+            favoriteListID = userDefaults.string(forKey: Self.favoriteListKey).flatMap(UUID.init(uuidString:))
+        }
     }
 
     var backendDisplayName: String {
@@ -81,6 +93,10 @@ final class MobileAppViewModel: ObservableObject {
             categories: categories,
             categoryOrder: categoryOrder
         )
+    }
+
+    var isRunningUITests: Bool {
+        processInfo.environment["LISTERINE_UI_TEST_MODE"] == "1"
     }
 
     func loginWithPasskey() async {
@@ -135,6 +151,54 @@ final class MobileAppViewModel: ObservableObject {
             let nsErr = error as NSError
             netLog.error("Passkey login failed. Type=\(String(describing: type(of: error)), privacy: .public) Domain=\(nsErr.domain, privacy: .public) Code=\(nsErr.code) Desc=\(nsErr.localizedDescription, privacy: .public)")
             errorMessage = nsErr.localizedDescription
+        }
+    }
+
+    func bootstrapLaunchSessionIfNeeded() async {
+        guard didAttemptLaunchBootstrap == false else { return }
+        didAttemptLaunchBootstrap = true
+
+        let environment = processInfo.environment
+        guard
+            environment["LISTERINE_UI_TEST_MODE"] == "1",
+            let accessToken = environment["LISTERINE_UI_TEST_ACCESS_TOKEN"],
+            accessToken.isEmpty == false
+        else {
+            return
+        }
+
+        authToken = accessToken
+
+        do {
+            if let backendURL {
+                let me = try await requestJSON(
+                    backendURL: backendURL,
+                    path: "/api/v1/auth/me",
+                    method: "GET",
+                    body: nil,
+                    token: accessToken
+                )
+                displayName = me["display_name"] as? String
+            } else if let displayName = environment["LISTERINE_UI_TEST_DISPLAY_NAME"], displayName.isEmpty == false {
+                self.displayName = displayName
+            }
+
+            try await reloadAllData()
+
+            if
+                let preferredListName = environment["LISTERINE_UI_TEST_INITIAL_LIST_NAME"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+                preferredListName.isEmpty == false,
+                let matchingList = lists.first(where: { $0.name == preferredListName })
+            {
+                selectedListID = matchingList.id
+                setFavoriteList(id: matchingList.id)
+                try await reloadItems()
+            }
+
+            errorMessage = nil
+        } catch {
+            authToken = nil
+            errorMessage = error.localizedDescription
         }
     }
 

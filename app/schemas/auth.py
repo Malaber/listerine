@@ -47,3 +47,13 @@ class UserOut(ORMModel):
 class TokenOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class UITestBootstrapRequest(BaseModel):
+    email: EmailStr
+
+
+class UITestBootstrapOut(BaseModel):
+    access_token: str
+    display_name: str
+    user_id: UUID

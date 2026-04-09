@@ -40,6 +40,9 @@ struct RootView: View {
             guard selectedTab == .favorite else { return }
             await viewModel.showFavoriteList()
         }
+        .task {
+            await viewModel.bootstrapLaunchSessionIfNeeded()
+        }
     }
 
     private var loginPane: some View {
@@ -59,6 +62,7 @@ struct RootView: View {
                     }
                 }
                 .disabled(viewModel.isAuthenticating)
+                .accessibilityIdentifier("login-passkey-button")
             }
         }
     }
@@ -72,6 +76,7 @@ struct RootView: View {
                 Label("Favorite", systemImage: viewModel.favoriteListID == nil ? "star" : "star.fill")
             }
             .tag(AppTab.favorite)
+            .accessibilityIdentifier("tab-favorite")
 
             NavigationStack {
                 ListsTab(selectedTab: $selectedTab)
@@ -80,6 +85,7 @@ struct RootView: View {
                 Label("Lists", systemImage: "rectangle.grid.1x2")
             }
             .tag(AppTab.lists)
+            .accessibilityIdentifier("tab-lists")
 
             NavigationStack {
                 SettingsTab()
@@ -88,7 +94,9 @@ struct RootView: View {
                 Label("Settings", systemImage: "gearshape")
             }
             .tag(AppTab.settings)
+            .accessibilityIdentifier("tab-settings")
         }
+        .accessibilityIdentifier("main-tab-view")
     }
 }
 
@@ -149,6 +157,7 @@ private struct ListsTab: View {
                                 }
                             }
                         }
+                        .accessibilityIdentifier("list-row-\(list.name)")
                         .simultaneousGesture(TapGesture().onEnded {
                             Task { await viewModel.selectList(id: list.id) }
                         })
@@ -183,6 +192,7 @@ private struct SettingsTab: View {
                 Button("Sign out", role: .destructive) {
                     viewModel.signOut()
                 }
+                .accessibilityIdentifier("settings-sign-out-button")
             }
 
             Section("App") {
@@ -192,6 +202,7 @@ private struct SettingsTab: View {
             }
         }
         .navigationTitle("Settings")
+        .accessibilityIdentifier("settings-screen")
     }
 }
 
@@ -217,6 +228,7 @@ private struct ListDetailScreen: View {
                             .foregroundStyle(.secondary)
                         Text(list.name)
                             .font(.title2.weight(.semibold))
+                            .accessibilityIdentifier("list-detail-title")
                         Text("\(viewModel.sections.reduce(0) { $0 + $1.itemCount }) items across \(viewModel.sections.count) sections")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
@@ -257,6 +269,7 @@ private struct ListDetailScreen: View {
                 } label: {
                     Label("Add item", systemImage: "plus")
                 }
+                .accessibilityIdentifier("add-item-button")
             }
 
             if showsFavoriteButton, let currentList, currentList.id != viewModel.favoriteListID {
@@ -266,6 +279,7 @@ private struct ListDetailScreen: View {
                     } label: {
                         Label("Favorite", systemImage: "star")
                     }
+                    .accessibilityIdentifier("favorite-list-button")
                 }
             }
         }
@@ -279,6 +293,7 @@ private struct ListDetailScreen: View {
             AddItemSheet()
         }
         .animation(.easeInOut(duration: 0.22), value: viewModel.sections.map(\.id))
+        .accessibilityIdentifier("list-detail-screen")
     }
 }
 
@@ -296,6 +311,7 @@ private struct SectionHeader: View {
                 .foregroundStyle(.secondary)
         }
         .textCase(nil)
+        .accessibilityIdentifier("section-\(section.id)")
     }
 }
 
@@ -319,6 +335,8 @@ private struct ItemRow: View {
                     .foregroundStyle(item.checked ? .green : .secondary)
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("toggle-item-\(item.id.uuidString)")
+            .accessibilityLabel(item.checked ? "Uncheck \(item.name)" : "Check \(item.name)")
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.name)
@@ -342,6 +360,8 @@ private struct ItemRow: View {
         }
         .contentShape(Rectangle())
         .onTapGesture(perform: onEdit)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("item-row-\(item.id.uuidString)")
         .swipeActions {
             Button(role: .destructive) {
                 Task {
@@ -378,7 +398,9 @@ private struct AddItemSheet: View {
             Form {
                 Section("Item") {
                     TextField("Name", text: $name)
+                        .accessibilityIdentifier("add-item-name-field")
                     TextField("Quantity", text: $quantity)
+                        .accessibilityIdentifier("add-item-quantity-field")
                 }
 
                 Section("Category") {
@@ -388,10 +410,12 @@ private struct AddItemSheet: View {
                             Text(category.name).tag(Optional(category.id))
                         }
                     }
+                    .accessibilityIdentifier("add-item-category-picker")
                 }
 
                 Section("Notes") {
                     TextField("Note", text: $note, axis: .vertical)
+                        .accessibilityIdentifier("add-item-note-field")
                 }
             }
             .navigationTitle("Add item")
@@ -416,9 +440,11 @@ private struct AddItemSheet: View {
                         }
                     }
                     .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityIdentifier("add-item-save-button")
                 }
             }
         }
+        .accessibilityIdentifier("add-item-sheet")
     }
 }
 
@@ -445,7 +471,9 @@ private struct EditItemSheet: View {
             Form {
                 Section("Item") {
                     TextField("Name", text: $name)
+                        .accessibilityIdentifier("edit-item-name-field")
                     TextField("Quantity", text: $quantity)
+                        .accessibilityIdentifier("edit-item-quantity-field")
                 }
 
                 Section("Category") {
@@ -455,10 +483,12 @@ private struct EditItemSheet: View {
                             Text(category.name).tag(Optional(category.id))
                         }
                     }
+                    .accessibilityIdentifier("edit-item-category-picker")
                 }
 
                 Section("Notes") {
                     TextField("Note", text: $note, axis: .vertical)
+                        .accessibilityIdentifier("edit-item-note-field")
                 }
             }
             .navigationTitle("Edit item")
@@ -483,9 +513,11 @@ private struct EditItemSheet: View {
                             }
                         }
                     }
+                    .accessibilityIdentifier("edit-item-save-button")
                 }
             }
         }
+        .accessibilityIdentifier("edit-item-sheet")
     }
 }
 

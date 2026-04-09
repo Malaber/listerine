@@ -166,6 +166,44 @@ def test_capabilities_page_is_public_and_contains_interactive_demo(client) -> No
     )
 
 
+def test_ui_test_bootstrap_requires_explicit_enable_flag(client, monkeypatch) -> None:
+    monkeypatch.setattr("app.api.v1.routes.auth.settings.ui_test_bootstrap_enabled", False)
+
+    response = client.post(
+        "/api/v1/auth/ui-test-bootstrap",
+        json={"email": "missing@example.com"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_ui_test_bootstrap_returns_access_token_for_seeded_user(client, monkeypatch) -> None:
+    monkeypatch.setattr("app.api.v1.routes.auth.settings.ui_test_bootstrap_enabled", True)
+    asyncio.run(_create_user("ui-test@example.com", with_passkey=False))
+
+    response = client.post(
+        "/api/v1/auth/ui-test-bootstrap",
+        json={"email": "ui-test@example.com"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["access_token"]
+    assert payload["display_name"] == "User"
+    assert UUID(payload["user_id"])
+
+
+def test_ui_test_bootstrap_returns_not_found_for_unknown_user(client, monkeypatch) -> None:
+    monkeypatch.setattr("app.api.v1.routes.auth.settings.ui_test_bootstrap_enabled", True)
+
+    response = client.post(
+        "/api/v1/auth/ui-test-bootstrap",
+        json={"email": "missing@example.com"},
+    )
+
+    assert response.status_code == 404
+
+
 def test_full_flow(client) -> None:
     assert client.get("/health").status_code == 200
     assert client.get("/api").status_code == 200
