@@ -520,6 +520,7 @@
 				DEVELOPMENT_TEAM = VWKG94374J;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Listerine;
+				INFOPLIST_KEY_NSExtension_NSExtensionAttributes_WKAppBundleIdentifier = de.malaber.listerine.watchkitapp;
 				INFOPLIST_KEY_NSExtension_NSExtensionPointIdentifier = com.apple.watchkit;
 				INFOPLIST_KEY_WKApplication = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -735,6 +736,7 @@
 				DEVELOPMENT_TEAM = VWKG94374J;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Listerine;
+				INFOPLIST_KEY_NSExtension_NSExtensionAttributes_WKAppBundleIdentifier = de.malaber.listerine.watchkitapp;
 				INFOPLIST_KEY_NSExtension_NSExtensionPointIdentifier = com.apple.watchkit;
 				INFOPLIST_KEY_WKApplication = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
