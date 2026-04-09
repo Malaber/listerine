@@ -3,6 +3,25 @@ import Testing
 @testable import ListerineCore
 
 struct ListPresentationTests {
+    @Test func groceryListSummaryStoresInitializerArguments() {
+        let listID = UUID()
+        let householdID = UUID()
+
+        let summary = GroceryListSummary(
+            id: listID,
+            householdID: householdID,
+            householdName: "Home",
+            name: "Weekly shop",
+            archived: true
+        )
+
+        #expect(summary.id == listID)
+        #expect(summary.householdID == householdID)
+        #expect(summary.householdName == "Home")
+        #expect(summary.name == "Weekly shop")
+        #expect(summary.archived == true)
+    }
+
     @Test func groceryCategorySummaryParsesJSON() {
         let categoryID = UUID()
 
@@ -102,6 +121,21 @@ struct ListPresentationTests {
         #expect(item?.checked == false)
         #expect(item?.sortOrder == 0)
         #expect(item?.checkedAt != nil)
+    }
+
+    @Test func groceryItemRecordLeavesCheckedAtNilWhenMissing() {
+        let itemID = UUID()
+        let listID = UUID()
+
+        let item = GroceryItemRecord(
+            json: [
+                "id": itemID.uuidString,
+                "list_id": listID.uuidString,
+                "name": "Pasta",
+            ]
+        )
+
+        #expect(item?.checkedAt == nil)
     }
 
     @Test func groceryItemRecordRejectsInvalidJSONAndInvalidCategory() {
@@ -267,6 +301,43 @@ struct ListPresentationTests {
         #expect(sections.map(\.title) == ["Produce"])
     }
 
+    @Test func sortsUnorderedCategoriesAlphabeticallyWhenNoExplicitOrderExists() {
+        let bakery = GroceryCategorySummary(id: UUID(), name: "Bakery", colorHex: "#cccccc")
+        let produce = GroceryCategorySummary(id: UUID(), name: "Produce", colorHex: "#00ff00")
+        let listID = UUID()
+
+        let sections = GroceryItemSectionBuilder.build(
+            items: [
+                GroceryItemRecord(
+                    id: UUID(),
+                    listID: listID,
+                    name: "Apples",
+                    quantityText: nil,
+                    note: nil,
+                    categoryID: produce.id,
+                    checked: false,
+                    checkedAt: nil,
+                    sortOrder: 0
+                ),
+                GroceryItemRecord(
+                    id: UUID(),
+                    listID: listID,
+                    name: "Bread",
+                    quantityText: nil,
+                    note: nil,
+                    categoryID: bakery.id,
+                    checked: false,
+                    checkedAt: nil,
+                    sortOrder: 0
+                ),
+            ],
+            categories: [produce, bakery],
+            categoryOrder: []
+        )
+
+        #expect(sections.map(\.title) == ["Bakery", "Produce"])
+    }
+
     @Test func sortsUncheckedItemsByCategoryPrioritySortOrderAndName() {
         let produce = GroceryCategorySummary(id: UUID(), name: "Produce", colorHex: "#00ff00")
         let dairy = GroceryCategorySummary(id: UUID(), name: "Dairy", colorHex: "#ffffff")
@@ -340,6 +411,55 @@ struct ListPresentationTests {
         #expect(sections[1].items.map(\.name) == ["Milk"])
         #expect(sections[2].items.map(\.name) == ["Bagel"])
         #expect(sections[3].items.map(\.name) == ["Apples", "Zucchini"])
+    }
+
+    @Test func sortsItemsByCategoryNameThenSortOrderThenItemName() {
+        let bakery = GroceryCategorySummary(id: UUID(), name: "Bakery", colorHex: "#cccccc")
+        let produce = GroceryCategorySummary(id: UUID(), name: "Produce", colorHex: "#00ff00")
+        let listID = UUID()
+
+        let sections = GroceryItemSectionBuilder.build(
+            items: [
+                GroceryItemRecord(
+                    id: UUID(),
+                    listID: listID,
+                    name: "Bananas",
+                    quantityText: nil,
+                    note: nil,
+                    categoryID: produce.id,
+                    checked: false,
+                    checkedAt: nil,
+                    sortOrder: 1
+                ),
+                GroceryItemRecord(
+                    id: UUID(),
+                    listID: listID,
+                    name: "Apples",
+                    quantityText: nil,
+                    note: nil,
+                    categoryID: produce.id,
+                    checked: false,
+                    checkedAt: nil,
+                    sortOrder: 1
+                ),
+                GroceryItemRecord(
+                    id: UUID(),
+                    listID: listID,
+                    name: "Sourdough",
+                    quantityText: nil,
+                    note: nil,
+                    categoryID: bakery.id,
+                    checked: false,
+                    checkedAt: nil,
+                    sortOrder: 5
+                ),
+            ],
+            categories: [produce, bakery],
+            categoryOrder: []
+        )
+
+        #expect(sections.map(\.title) == ["Bakery", "Produce"])
+        #expect(sections[1].items.map(\.name) == ["Apples", "Bananas"])
     }
 
     @Test func sortsCheckedItemsByNewestFirst() {

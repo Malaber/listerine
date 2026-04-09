@@ -946,26 +946,36 @@ def run_ios_ui_e2e(
         artifact_dir=artifact_dir,
         initial_list_name=initial_list_name,
     )
-    result = c.run(
-        " ".join(
-            [
-                "cd ios/ListerineIOS &&",
-                "xcodebuild",
-                "-project ListerineApp.xcodeproj",
-                "-scheme Listerine",
-                f"-destination {shlex.quote(f'platform=iOS Simulator,name={device_name}')}",
-                f"-resultBundlePath {shlex.quote(str(result_bundle_path.resolve()))}",
-                "-quiet",
-                "-only-testing:ListerineUITests",
-                "test",
-            ]
-        ),
-        env=env,
-        pty=False,
-        shell="/bin/bash",
-        warn=True,
+    command = " ".join(
+        [
+            "cd ios/ListerineIOS &&",
+            "xcodebuild",
+            "-project ListerineApp.xcodeproj",
+            "-scheme Listerine",
+            f"-destination {shlex.quote(f'platform=iOS Simulator,name={device_name}')}",
+            f"-resultBundlePath {shlex.quote(str(result_bundle_path.resolve()))}",
+            "-quiet",
+            "-only-testing:ListerineUITests",
+            "test",
+        ]
     )
+    result = None
+    for attempt in range(2):
+        shutil.rmtree(result_bundle_path, ignore_errors=True)
+        result = c.run(
+            command,
+            env=env,
+            pty=False,
+            shell="/bin/bash",
+            warn=True,
+        )
+        if result.exited == 0:
+            break
+        if attempt == 0:
+            print("Retrying iOS UI e2e after an initial xcodebuild failure...")
+
     _write_ios_ui_e2e_summary(artifact_dir)
+    assert result is not None
     if result.exited != 0:
         failure_summaries = _ios_ui_e2e_failure_summaries(result_bundle_path)
         if failure_summaries:
