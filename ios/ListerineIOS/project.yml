@@ -44,6 +44,7 @@ targets:
       - path: WatchApp
         excludes:
           - "*.swift"
+          - "*.plist"
     dependencies:
       - target: ListerineWatchExtension
         embed: true
@@ -57,10 +58,8 @@ targets:
         MARKETING_VERSION: 0.1.0
         CURRENT_PROJECT_VERSION: 1
         SWIFT_VERSION: 5.10
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: Listerine
-        INFOPLIST_KEY_WKCompanionAppBundleIdentifier: de.malaber.listerine
-        INFOPLIST_KEY_WKWatchKitApp: YES
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: WatchApp/Info.plist
   ListerineWatchExtension:
     type: com.apple.product-type.watchkit2-extension
     platform: watchOS
@@ -69,6 +68,7 @@ targets:
       - path: WatchApp
         excludes:
           - "*.entitlements"
+          - "*.plist"
       - path: WatchShared
     dependencies:
       - package: ListerineCore
@@ -81,11 +81,8 @@ targets:
         MARKETING_VERSION: 0.1.0
         CURRENT_PROJECT_VERSION: 1
         SWIFT_VERSION: 5.10
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: Listerine
-        INFOPLIST_KEY_NSExtension_NSExtensionPointIdentifier: com.apple.watchkit
-        INFOPLIST_KEY_NSExtension_NSExtensionAttributes_WKAppBundleIdentifier: de.malaber.listerine.watchkitapp
-        INFOPLIST_KEY_WKApplication: YES
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: WatchApp/ExtensionInfo.plist
         CODE_SIGN_ENTITLEMENTS: WatchApp/ListerineWatch.entitlements
   ListerineWatchWidgetExtension:
     type: app-extension
@@ -95,6 +92,7 @@ targets:
       - path: WatchWidget
         excludes:
           - "*.entitlements"
+          - "*.plist"
       - path: WatchShared
     dependencies:
       - package: ListerineCore
@@ -107,9 +105,8 @@ targets:
         MARKETING_VERSION: 0.1.0
         CURRENT_PROJECT_VERSION: 1
         SWIFT_VERSION: 5.10
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: Listerine Quick Add
-        INFOPLIST_KEY_NSExtension_NSExtensionPointIdentifier: com.apple.widgetkit-extension
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: WatchWidget/Info.plist
         CODE_SIGN_ENTITLEMENTS: WatchWidget/ListerineWatchWidget.entitlements
   ListerineUITests:
     type: bundle.ui-testing
