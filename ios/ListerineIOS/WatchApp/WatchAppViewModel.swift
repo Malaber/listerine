@@ -66,7 +66,7 @@ final class WatchAppViewModel: ObservableObject {
     }
 
     var needsPhoneSetup: Bool {
-        state.hasAuthenticatedSession == false || state.favoriteListID == nil
+        state.hasAuthenticatedSession == false
     }
 
     var setupButtonTitle: String {
