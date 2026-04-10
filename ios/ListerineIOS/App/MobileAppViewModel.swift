@@ -58,6 +58,7 @@ final class MobileAppViewModel: ObservableObject {
     private let userDefaults: UserDefaults
     private let processInfo: ProcessInfo
     private let watchSyncCoordinator: WatchSyncCoordinator
+    private let isSimulatorBuild: Bool
     private var didAttemptLaunchBootstrap = false
 
     init(
@@ -70,6 +71,11 @@ final class MobileAppViewModel: ObservableObject {
         self.userDefaults = userDefaults
         self.processInfo = processInfo
         self.watchSyncCoordinator = watchSyncCoordinator
+        #if targetEnvironment(simulator)
+            isSimulatorBuild = true
+        #else
+            isSimulatorBuild = false
+        #endif
         backendURL = AppBuildConfiguration.backendURL
         if processInfo.environment["LISTERINE_UI_TEST_MODE"] == "1" {
             favoriteListID = nil
@@ -179,50 +185,98 @@ final class MobileAppViewModel: ObservableObject {
         didAttemptLaunchBootstrap = true
 
         let environment = processInfo.environment
-        guard
-            environment["LISTERINE_UI_TEST_MODE"] == "1",
-            let accessToken = environment["LISTERINE_UI_TEST_ACCESS_TOKEN"],
-            accessToken.isEmpty == false
-        else {
-            return
+        do {
+            if
+                environment["LISTERINE_UI_TEST_MODE"] == "1",
+                let accessToken = environment["LISTERINE_UI_TEST_ACCESS_TOKEN"],
+                accessToken.isEmpty == false
+            {
+                try await applyBootstrappedSession(
+                    accessToken: accessToken,
+                    displayNameOverride: environment["LISTERINE_UI_TEST_DISPLAY_NAME"],
+                    preferredListName: environment["LISTERINE_UI_TEST_INITIAL_LIST_NAME"]
+                )
+                return
+            }
+
+            if
+                isSimulatorBuild,
+                let bootstrapEmail = environment["LISTERINE_SIMULATOR_BOOTSTRAP_EMAIL"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+                bootstrapEmail.isEmpty == false
+            {
+                try await bootstrapSimulatorSession(
+                    email: bootstrapEmail,
+                    preferredListName: environment["LISTERINE_SIMULATOR_INITIAL_LIST_NAME"]
+                )
+            }
+        } catch {
+            authToken = nil
+            userDefaults.removeObject(forKey: Self.authTokenKey)
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func bootstrapSimulatorSession(email: String, preferredListName: String?) async throws {
+        guard let backendURL else {
+            throw AppError.invalidResponse
         }
 
+        let payload = try await requestJSON(
+            backendURL: backendURL,
+            path: "/api/v1/auth/ui-test-bootstrap",
+            method: "POST",
+            body: ["email": email],
+            token: nil
+        )
+
+        guard let accessToken = payload["access_token"] as? String else {
+            throw AppError.invalidResponse
+        }
+
+        try await applyBootstrappedSession(
+            accessToken: accessToken,
+            displayNameOverride: payload["display_name"] as? String,
+            preferredListName: preferredListName
+        )
+    }
+
+    private func applyBootstrappedSession(
+        accessToken: String,
+        displayNameOverride: String?,
+        preferredListName: String?
+    ) async throws {
         authToken = accessToken
         userDefaults.set(accessToken, forKey: Self.authTokenKey)
 
-        do {
-            if let backendURL {
-                let me = try await requestJSON(
-                    backendURL: backendURL,
-                    path: "/api/v1/auth/me",
-                    method: "GET",
-                    body: nil,
-                    token: accessToken
-                )
-                displayName = me["display_name"] as? String
-                userDefaults.set(displayName, forKey: Self.displayNameKey)
-            } else if let displayName = environment["LISTERINE_UI_TEST_DISPLAY_NAME"], displayName.isEmpty == false {
-                self.displayName = displayName
-            }
-
-            try await reloadAllData()
-
-            if
-                let preferredListName = environment["LISTERINE_UI_TEST_INITIAL_LIST_NAME"]?.trimmingCharacters(in: .whitespacesAndNewlines),
-                preferredListName.isEmpty == false,
-                let matchingList = lists.first(where: { $0.name == preferredListName })
-            {
-                selectedListID = matchingList.id
-                setFavoriteList(id: matchingList.id)
-                try await reloadItems()
-            }
-
-            errorMessage = nil
-            watchSyncCoordinator.publishCurrentState()
-        } catch {
-            authToken = nil
-            errorMessage = error.localizedDescription
+        if let backendURL {
+            let me = try await requestJSON(
+                backendURL: backendURL,
+                path: "/api/v1/auth/me",
+                method: "GET",
+                body: nil,
+                token: accessToken
+            )
+            displayName = me["display_name"] as? String
+        } else if let displayNameOverride, displayNameOverride.isEmpty == false {
+            displayName = displayNameOverride
         }
+
+        userDefaults.set(displayName, forKey: Self.displayNameKey)
+
+        try await reloadAllData()
+
+        if
+            let preferredListName = preferredListName?.trimmingCharacters(in: .whitespacesAndNewlines),
+            preferredListName.isEmpty == false,
+            let matchingList = lists.first(where: { $0.name == preferredListName })
+        {
+            selectedListID = matchingList.id
+            setFavoriteList(id: matchingList.id)
+            try await reloadItems()
+        }
+
+        errorMessage = nil
+        watchSyncCoordinator.publishCurrentState()
     }
 
     func signOut() {
