@@ -1,9 +1,10 @@
 import Foundation
 import ListerineCore
 
-enum WatchBackendClientError: LocalizedError {
+enum WatchBackendClientError: LocalizedError, Equatable {
     case missingSession
     case missingFavoriteList
+    case unauthorized
     case invalidResponse
     case serverMessage(String)
 
@@ -13,6 +14,8 @@ enum WatchBackendClientError: LocalizedError {
             return "Open the iPhone app to sync your account to the watch."
         case .missingFavoriteList:
             return "Pick a favorite list on iPhone before using the watch app."
+        case .unauthorized:
+            return "Your watch session expired. Open the iPhone app to refresh watch login."
         case .invalidResponse:
             return "The watch received an unexpected response from the backend."
         case let .serverMessage(message):
@@ -147,6 +150,9 @@ struct WatchBackendClient {
 
         guard let http = response as? HTTPURLResponse else {
             throw WatchBackendClientError.invalidResponse
+        }
+        if http.statusCode == 401 {
+            throw WatchBackendClientError.unauthorized
         }
         guard (200 ... 299).contains(http.statusCode) else {
             if

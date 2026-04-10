@@ -22,20 +22,54 @@ final class WatchConnectivityBridge: NSObject {
     }
 
     func requestLatestState() {
-        guard let session, session.isReachable else { return }
-        session.sendMessage(["command": "syncState"], replyHandler: { [weak self] payload in
-            self?.handle(payload)
-        })
+        Task {
+            _ = await requestLatestStateAsync()
+        }
     }
 
-    private func handle(_ payload: [String: Any]) {
+    func requestLatestStateAsync() async -> SharedAppState? {
+        if
+            let session,
+            let state = decodedState(from: session.receivedApplicationContext)
+        {
+            apply(state)
+            return state
+        }
+
+        guard let session, session.isReachable else { return nil }
+        return await withCheckedContinuation { continuation in
+            session.sendMessage(
+                ["command": "syncState"],
+                replyHandler: { [weak self] payload in
+                    let state = self?.handle(payload)
+                    continuation.resume(returning: state)
+                },
+                errorHandler: { _ in
+                    continuation.resume(returning: nil)
+                }
+            )
+        }
+    }
+
+    @discardableResult
+    private func handle(_ payload: [String: Any]) -> SharedAppState? {
+        guard let state = decodedState(from: payload) else { return nil }
+        apply(state)
+        return state
+    }
+
+    private func decodedState(from payload: [String: Any]) -> SharedAppState? {
         guard
             let data = payload[ListerineSharedConstants.watchContextPayloadKey] as? Data,
             let state = try? decoder.decode(SharedAppState.self, from: data)
         else {
-            return
+            return nil
         }
 
+        return state
+    }
+
+    private func apply(_ state: SharedAppState) {
         store.save(state)
         DispatchQueue.main.async { [weak self] in
             self?.onStateUpdate?(state)

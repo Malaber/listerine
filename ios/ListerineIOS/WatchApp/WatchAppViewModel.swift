@@ -44,7 +44,7 @@ final class WatchAppViewModel: ObservableObject {
     }
 
     func refresh() async {
-        connectivityBridge.requestLatestState()
+        await syncLatestState()
         guard needsPhoneSetup == false else { return }
         await runAction { [self] in
             try await self.backendClient.refreshFavoriteItems(using: self.state)
@@ -77,11 +77,29 @@ final class WatchAppViewModel: ObservableObject {
         defer { isWorking = false }
 
         do {
+            await syncLatestState()
             let updatedState = try await operation()
             state = updatedState
             store.save(updatedState)
         } catch {
+            if let backendError = error as? WatchBackendClientError, backendError == .unauthorized {
+                clearAuthenticatedSession()
+            }
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func syncLatestState() async {
+        guard let updatedState = await connectivityBridge.requestLatestStateAsync() else { return }
+        state = updatedState
+        store.save(updatedState)
+    }
+
+    private func clearAuthenticatedSession() {
+        var updatedState = state
+        updatedState.authToken = nil
+        updatedState.items = []
+        state = updatedState
+        store.save(updatedState)
     }
 }
