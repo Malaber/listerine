@@ -7,16 +7,6 @@
       <h1>{{ t("dashboard.title") }}</h1>
       <p class="dashboard-intro">{{ t("dashboard.intro") }}</p>
     </div>
-    <aside class="dashboard-card dashboard-card-accent">
-      <h2>{{ t("dashboard.organized_title") }}</h2>
-      <ol class="dashboard-steps">
-        <li>{{ t("dashboard.organized_step_user") }}</li>
-        <li>{{ t("dashboard.organized_step_household") }}</li>
-        <li>{{ t("dashboard.organized_step_list") }}</li>
-        <li>{{ t("dashboard.organized_step_items") }}</li>
-      </ol>
-      <p class="dashboard-note">{{ t("dashboard.organized_note") }}</p>
-    </aside>
   </div>
 
   <div class="dashboard-banner dashboard-banner-error" data-dashboard-error hidden></div>
@@ -32,9 +22,24 @@
     <div class="dashboard-empty" data-dashboard-empty hidden>
       <h3>{{ t("dashboard.no_households_title") }}</h3>
       <p>{{ t("dashboard.no_households_body") }}</p>
+      <button type="button" class="dashboard-action-card" data-dashboard-add-option="household">
+        <strong>{{ t("dashboard.add_household") }}</strong>
+        <small>{{ t("dashboard.add_household_body") }}</small>
+      </button>
     </div>
     <div class="dashboard-household-list" data-household-list></div>
   </section>
+
+  <aside class="dashboard-card dashboard-card-accent" data-dashboard-organized>
+    <h2>{{ t("dashboard.organized_title") }}</h2>
+    <ol class="dashboard-steps">
+      <li>{{ t("dashboard.organized_step_user") }}</li>
+      <li>{{ t("dashboard.organized_step_household") }}</li>
+      <li>{{ t("dashboard.organized_step_list") }}</li>
+      <li>{{ t("dashboard.organized_step_items") }}</li>
+    </ol>
+    <p class="dashboard-note">{{ t("dashboard.organized_note") }}</p>
+  </aside>
 
   <button
     class="floating-add-button floating-add-button-icon-only"
