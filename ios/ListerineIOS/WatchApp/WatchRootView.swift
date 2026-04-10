@@ -32,8 +32,7 @@ struct WatchRootView: View {
             }
         }
         .task {
-            viewModel.onAppear()
-            await viewModel.refresh()
+            await viewModel.performInitialLoad()
         }
         .onChange(of: viewModel.errorMessage) { _, newValue in
             if let newValue, newValue.isEmpty == false {

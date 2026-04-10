@@ -87,6 +87,13 @@ final class WatchAppViewModel: ObservableObject {
         isPhoneReachable ? "Sync from iPhone" : "Open and unlock iPhone app"
     }
 
+    func performInitialLoad() async {
+        await Task.yield()
+        connectivityBridge.requestLatestState()
+        refreshConnectivityStatus()
+        await refresh()
+    }
+
     func onAppear() {
         connectivityBridge.requestLatestState()
         refreshConnectivityStatus()
