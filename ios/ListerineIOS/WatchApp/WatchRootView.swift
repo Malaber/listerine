@@ -159,6 +159,8 @@ private struct WatchListDetailView: View {
                                 .strikethrough(item.checked)
                             Spacer()
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .disabled(viewModel.isWorking)
