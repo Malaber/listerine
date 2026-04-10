@@ -61,7 +61,10 @@ DEFAULT_IOS_UI_E2E_INITIAL_LIST = "Browser Test Shop"
 DEFAULT_IOS_SIMULATOR_DESTINATION = "generic/platform=iOS Simulator"
 DEFAULT_IOS_APP_BACKEND_URL = "https://listerine.malaber.de"
 DEFAULT_IOS_APP_BUNDLE_IDENTIFIER = "de.malaber.listerine"
+DEFAULT_IOS_WATCH_APP_BUNDLE_IDENTIFIER = "de.malaber.listerine.watchkitapp"
 DEFAULT_IOS_APP_DEVELOPMENT_TEAM = "VWKG94374J"
+DEFAULT_IOS_SIMULATOR_PHONE_DEVICE = "iPhone 17"
+DEFAULT_IOS_SIMULATOR_WATCH_DEVICE = "Apple Watch Ultra 2 (49mm)"
 IOS_PROJECT_YML_PATH = ROOT / "ios" / "ListerineIOS" / "project.yml"
 IOS_ENTITLEMENTS_PATH = ROOT / "ios" / "ListerineIOS" / "App" / "Listerine.entitlements"
 IOS_GENERATED_CONFIG_PATH = (
@@ -428,6 +431,121 @@ def _validated_ios_backend_host(backend_url: str) -> str:
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise Exit("configure-ios-app requires a valid http or https backend_url.")
     return parsed.hostname
+
+
+def _simctl_json(env: dict[str, str], *args: str) -> dict[str, object]:
+    result = subprocess.run(
+        ["xcrun", "simctl", *args],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    return json.loads(result.stdout)
+
+
+def _run_command(command: list[str], *, env: dict[str, str]) -> None:
+    result = subprocess.run(command, env=env, capture_output=True, text=True)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()
+        raise Exit(
+            f"Command failed with exit code {result.returncode}: {' '.join(command)}\n{detail}"
+        )
+
+
+def _list_available_simulators(env: dict[str, str]) -> dict[str, dict[str, object]]:
+    payload = _simctl_json(env, "list", "devices", "available", "-j")
+    devices: dict[str, dict[str, object]] = {}
+    for runtime_devices in payload.get("devices", {}).values():
+        if not isinstance(runtime_devices, list):
+            continue
+        for device in runtime_devices:
+            if not isinstance(device, dict):
+                continue
+            udid = device.get("udid")
+            if isinstance(udid, str):
+                devices[udid] = device
+    return devices
+
+
+def _find_simulator_udid(env: dict[str, str], name: str) -> str:
+    devices = _list_available_simulators(env)
+    exact_matches = [
+        udid
+        for udid, device in devices.items()
+        if device.get("name") == name and device.get("isAvailable", True)
+    ]
+    if exact_matches:
+        booted = [udid for udid in exact_matches if devices[udid].get("state") == "Booted"]
+        return booted[0] if booted else exact_matches[0]
+    raise Exit(f"Could not find an available simulator named {name!r}.")
+
+
+def _find_paired_watch_udid(env: dict[str, str], phone_udid: str, fallback_watch_name: str) -> str:
+    payload = _simctl_json(env, "list", "pairs", "-j")
+    devices = _list_available_simulators(env)
+    for pair in payload.get("pairs", {}).values():
+        if not isinstance(pair, dict):
+            continue
+        phone = pair.get("phone")
+        watch = pair.get("watch")
+        if not isinstance(phone, dict) or not isinstance(watch, dict):
+            continue
+        if phone.get("udid") != phone_udid:
+            continue
+        watch_udid = watch.get("udid")
+        if isinstance(watch_udid, str) and watch_udid in devices:
+            return watch_udid
+    return _find_simulator_udid(env, fallback_watch_name)
+
+
+def _boot_simulator(env: dict[str, str], udid: str) -> None:
+    subprocess.run(
+        ["xcrun", "simctl", "boot", udid],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    _run_command(["xcrun", "simctl", "bootstatus", udid, "-b"], env=env)
+
+
+def _terminate_if_running(env: dict[str, str], udid: str, bundle_id: str) -> None:
+    subprocess.run(
+        ["xcrun", "simctl", "terminate", udid, bundle_id],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def _uninstall_if_present(env: dict[str, str], udid: str, bundle_id: str) -> None:
+    subprocess.run(
+        ["xcrun", "simctl", "uninstall", udid, bundle_id],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def _build_ios_product_paths(derived_data_path: Path, configuration: str) -> tuple[Path, Path]:
+    ios_app_path = (
+        derived_data_path
+        / "Build"
+        / "Products"
+        / f"{configuration}-iphonesimulator"
+        / "Listerine.app"
+    )
+    watch_app_path = (
+        derived_data_path
+        / "Build"
+        / "Products"
+        / f"{configuration}-watchsimulator"
+        / "Listerine Watch.app"
+    )
+    return ios_app_path, watch_app_path
 
 
 def _replace_project_setting(contents: str, key: str, value: str) -> str:
@@ -907,6 +1025,103 @@ def build_ios_simulator(
         pty=False,
         shell="/bin/bash",
     )
+
+
+@task(
+    help={
+        "project_dir": "Directory that contains the generated iOS Xcode project.",
+        "scheme": "Xcode scheme to build and launch.",
+        "configuration": "Xcode build configuration to use.",
+        "phone_device": "Paired iPhone simulator name to boot, install, and launch on.",
+        "watch_device": "Paired Apple Watch simulator name to boot, install, and launch on.",
+        "derived_data_path": "Derived data folder used for the clean rebuild.",
+        "backend_url_override": "Runtime backend URL override passed to the iPhone app at launch.",
+        "bootstrap_email": "Seeded email used for simulator bootstrap login at launch.",
+        "initial_list_name": "Optional seeded list name the simulator app should open first.",
+    }
+)
+def run_ios_simulators_fresh(
+    c,
+    project_dir="ios/ListerineIOS",
+    scheme="Listerine",
+    configuration="Debug",
+    phone_device=DEFAULT_IOS_SIMULATOR_PHONE_DEVICE,
+    watch_device=DEFAULT_IOS_SIMULATOR_WATCH_DEVICE,
+    derived_data_path="ios/ListerineIOS/.derived-run-fresh",
+    backend_url_override="http://localhost:8000",
+    bootstrap_email=DEFAULT_IOS_E2E_USER_EMAIL,
+    initial_list_name=DEFAULT_IOS_UI_E2E_INITIAL_LIST,
+) -> None:
+    env = _ios_toolchain_env()
+    phone_udid = _find_simulator_udid(env, phone_device)
+    watch_udid = _find_paired_watch_udid(env, phone_udid, watch_device)
+
+    _boot_simulator(env, phone_udid)
+    _boot_simulator(env, watch_udid)
+
+    subprocess.run(
+        ["open", "-a", "Simulator"],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    phone_bundle_id = DEFAULT_IOS_APP_BUNDLE_IDENTIFIER
+    watch_bundle_id = DEFAULT_IOS_WATCH_APP_BUNDLE_IDENTIFIER
+
+    _terminate_if_running(env, phone_udid, phone_bundle_id)
+    _terminate_if_running(env, watch_udid, watch_bundle_id)
+    _uninstall_if_present(env, phone_udid, phone_bundle_id)
+    _uninstall_if_present(env, watch_udid, watch_bundle_id)
+
+    derived_data = ROOT / derived_data_path
+    shutil.rmtree(derived_data, ignore_errors=True)
+
+    command = " ".join(
+        [
+            f"cd {shlex.quote(project_dir)} &&",
+            "xcodebuild",
+            "-project ListerineApp.xcodeproj",
+            f"-scheme {shlex.quote(scheme)}",
+            f"-configuration {shlex.quote(configuration)}",
+            f"-derivedDataPath {shlex.quote(str(derived_data.resolve()))}",
+            f"-destination {shlex.quote(DEFAULT_IOS_SIMULATOR_DESTINATION)}",
+            "-quiet",
+            "CODE_SIGNING_ALLOWED=NO",
+            "clean",
+            "build",
+        ]
+    )
+    c.run(
+        command,
+        env=env,
+        pty=False,
+        shell="/bin/bash",
+    )
+
+    ios_app_path, watch_app_path = _build_ios_product_paths(derived_data, configuration)
+    if ios_app_path.exists() is False:
+        raise Exit(f"Built iPhone app not found at {ios_app_path}")
+    if watch_app_path.exists() is False:
+        raise Exit(f"Built watch app not found at {watch_app_path}")
+
+    _run_command(["xcrun", "simctl", "install", phone_udid, str(ios_app_path)], env=env)
+    _run_command(["xcrun", "simctl", "install", watch_udid, str(watch_app_path)], env=env)
+
+    launch_env = env.copy()
+    if backend_url_override.strip():
+        launch_env["SIMCTL_CHILD_LISTERINE_BACKEND_BASE_URL_OVERRIDE"] = (
+            backend_url_override.strip()
+        )
+    if bootstrap_email.strip():
+        launch_env["SIMCTL_CHILD_LISTERINE_SIMULATOR_BOOTSTRAP_EMAIL"] = bootstrap_email.strip()
+    if initial_list_name.strip():
+        launch_env["SIMCTL_CHILD_LISTERINE_SIMULATOR_INITIAL_LIST_NAME"] = initial_list_name.strip()
+
+    _run_command(["xcrun", "simctl", "launch", phone_udid, phone_bundle_id], env=launch_env)
+    time.sleep(2)
+    _run_command(["xcrun", "simctl", "launch", watch_udid, watch_bundle_id], env=env)
 
 
 @task(

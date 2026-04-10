@@ -25,6 +25,7 @@ Useful native iOS Invoke targets:
 - `.venv/bin/inv check-ios-e2e`
 - `.venv/bin/inv generate-ios-project`
 - `.venv/bin/inv build-ios-simulator`
+- `.venv/bin/inv run-ios-simulators-fresh`
 - `.venv/bin/inv check-ios-ci`
 
 ### Common configure commands
@@ -90,7 +91,19 @@ Apple passkeys still validate against the shared review host.
    ```bash
    .venv/bin/inv build-ios-simulator
    ```
-5. Launch from Xcode and verify:
+5. **Reinstall and launch both paired simulators from scratch (macOS):**
+   ```bash
+   .venv/bin/inv run-ios-simulators-fresh
+   ```
+   This target:
+   - boots the configured iPhone and Apple Watch simulators
+   - uninstalls old app copies from both simulators
+   - deletes a dedicated derived-data folder
+   - rebuilds the app from scratch
+   - installs the iPhone app and watch app
+   - launches the iPhone app with the local backend/bootstrap env vars
+   - launches the watch app after the iPhone app starts
+6. Launch from Xcode and verify:
    - the configured backend matches the build settings you generated the app with
    - passkey login succeeds for the selected backend
    - list switching works
