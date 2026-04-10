@@ -9,6 +9,8 @@ final class WatchAppViewModel: ObservableObject {
     @Published var draftItemName = ""
     @Published var errorMessage: String?
     @Published private(set) var isWorking = false
+    @Published private(set) var isCompanionAppInstalled = false
+    @Published private(set) var isPhoneReachable = false
 
     private let store: SharedAppStateStore
     private let backendClient: WatchBackendClient
@@ -27,6 +29,10 @@ final class WatchAppViewModel: ObservableObject {
         self.connectivityBridge.onStateUpdate = { [weak self] updatedState in
             self?.applySyncedState(updatedState)
         }
+        self.connectivityBridge.onReachabilityChange = { [weak self] in
+            self?.refreshConnectivityStatus()
+        }
+        refreshConnectivityStatus()
     }
 
     var displayedLists: [GroceryListSummary] {
@@ -63,8 +69,13 @@ final class WatchAppViewModel: ObservableObject {
         state.hasAuthenticatedSession == false || state.favoriteListID == nil
     }
 
+    var setupButtonTitle: String {
+        isPhoneReachable ? "Sync from iPhone" : "Open and unlock iPhone app"
+    }
+
     func onAppear() {
         connectivityBridge.requestLatestState()
+        refreshConnectivityStatus()
     }
 
     func refresh() async {
@@ -115,8 +126,10 @@ final class WatchAppViewModel: ObservableObject {
     }
 
     private func syncLatestState() async {
+        refreshConnectivityStatus()
         guard let updatedState = await connectivityBridge.requestLatestStateAsync() else { return }
         applySyncedState(updatedState)
+        refreshConnectivityStatus()
     }
 
     private func clearAuthenticatedSession() {
@@ -146,5 +159,10 @@ final class WatchAppViewModel: ObservableObject {
             selectedListID = updatedState.favoriteListID ?? updatedState.lists.first?.id
         }
         store.save(updatedState)
+    }
+
+    private func refreshConnectivityStatus() {
+        isCompanionAppInstalled = connectivityBridge.isCompanionAppInstalled
+        isPhoneReachable = connectivityBridge.isReachable
     }
 }

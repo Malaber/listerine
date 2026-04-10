@@ -5,6 +5,7 @@ import WatchConnectivity
 
 final class WatchConnectivityBridge: NSObject {
     var onStateUpdate: ((SharedAppState) -> Void)?
+    var onReachabilityChange: (() -> Void)?
 
     private let session: WCSession?
     private let store: SharedAppStateStore
@@ -19,6 +20,14 @@ final class WatchConnectivityBridge: NSObject {
         super.init()
         self.session?.delegate = self
         self.session?.activate()
+    }
+
+    var isCompanionAppInstalled: Bool {
+        session?.isCompanionAppInstalled ?? false
+    }
+
+    var isReachable: Bool {
+        session?.isReachable ?? false
     }
 
     func requestLatestState() {
@@ -88,7 +97,11 @@ extension WatchConnectivityBridge: WCSessionDelegate {
         }
     }
 
-    func sessionReachabilityDidChange(_ session: WCSession) {}
+    func sessionReachabilityDidChange(_ session: WCSession) {
+        DispatchQueue.main.async { [weak self] in
+            self?.onReachabilityChange?()
+        }
+    }
 
     func session(
         _ session: WCSession,
@@ -100,7 +113,14 @@ extension WatchConnectivityBridge: WCSessionDelegate {
 #else
 final class WatchConnectivityBridge {
     var onStateUpdate: ((SharedAppState) -> Void)?
+    var onReachabilityChange: (() -> Void)?
 
     func requestLatestState() {}
+
+    func requestLatestStateAsync() async -> SharedAppState? { nil }
+
+    var isCompanionAppInstalled: Bool { false }
+
+    var isReachable: Bool { false }
 }
 #endif

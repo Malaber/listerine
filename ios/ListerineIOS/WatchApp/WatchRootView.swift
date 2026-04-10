@@ -44,9 +44,17 @@ struct WatchRootView: View {
 
     private var setupSection: some View {
         Section {
-            Text("Open the iPhone app, sign in, and choose a favorite list to sync your watch.")
+            Text("The watch needs the iPhone app to be open, unlocked, and signed in before it can sync.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+
+            LabeledContent("iPhone app installed", value: viewModel.isCompanionAppInstalled ? "Yes" : "No")
+            LabeledContent("iPhone reachable", value: viewModel.isPhoneReachable ? "Yes" : "No")
+
+            Button(viewModel.setupButtonTitle) {
+                Task { await viewModel.refresh() }
+            }
+            .disabled(viewModel.isWorking)
         } header: {
             Text("Watch setup")
         }
