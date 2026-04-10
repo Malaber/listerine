@@ -58,6 +58,7 @@ final class MobileAppViewModel: ObservableObject {
     private let userDefaults: UserDefaults
     private let processInfo: ProcessInfo
     private let watchSyncCoordinator: WatchSyncCoordinator
+    private let sharedStateStore: SharedAppStateStore
     private let isSimulatorBuild: Bool
     private var didAttemptLaunchBootstrap = false
 
@@ -71,6 +72,9 @@ final class MobileAppViewModel: ObservableObject {
         self.userDefaults = userDefaults
         self.processInfo = processInfo
         self.watchSyncCoordinator = watchSyncCoordinator
+        self.sharedStateStore = SharedAppStateStore(
+            userDefaults: UserDefaults(suiteName: ListerineSharedConstants.watchAppGroupID) ?? .standard
+        )
         #if targetEnvironment(simulator)
             isSimulatorBuild = true
         #else
@@ -89,8 +93,11 @@ final class MobileAppViewModel: ObservableObject {
             quickAddItemName = userDefaults.string(forKey: Self.quickAddItemKey) ?? SharedAppState.defaultQuickAddItemName
         }
         watchSyncCoordinator.setStateProvider { [weak self] in
-            self?.makeSharedAppState() ?? SharedAppState()
+            let state = self?.makeSharedAppState() ?? SharedAppState()
+            self?.sharedStateStore.save(state)
+            return state
         }
+        sharedStateStore.save(makeSharedAppState())
         watchSyncCoordinator.publishCurrentState()
     }
 
