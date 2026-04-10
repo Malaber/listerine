@@ -482,6 +482,14 @@ def _find_simulator_udid(env: dict[str, str], name: str) -> str:
     raise Exit(f"Could not find an available simulator named {name!r}.")
 
 
+def _phone_name_matches_pair(phone_name: str, requested_name: str) -> bool:
+    normalized_phone_name = phone_name.strip()
+    normalized_requested_name = requested_name.strip()
+    return normalized_phone_name == normalized_requested_name or normalized_phone_name == (
+        f"{normalized_requested_name} & Watch"
+    )
+
+
 def _find_simulator_pair(
     env: dict[str, str],
     phone_name: str,
@@ -505,7 +513,11 @@ def _find_simulator_pair(
         watch_device = devices.get(watch_udid)
         if not isinstance(phone_device, dict) or not isinstance(watch_device, dict):
             continue
-        if phone_device.get("name") != phone_name or watch_device.get("name") != watch_name:
+        resolved_phone_name = str(phone_device.get("name", ""))
+        resolved_watch_name = str(watch_device.get("name", ""))
+        if not _phone_name_matches_pair(resolved_phone_name, phone_name):
+            continue
+        if resolved_watch_name != watch_name:
             continue
         either_booted = (
             phone_device.get("state") == "Booted" or watch_device.get("state") == "Booted"
@@ -1079,6 +1091,8 @@ def build_ios_simulator(
         "configuration": "Xcode build configuration to use.",
         "phone_device": "Paired iPhone simulator name to boot, install, and launch on.",
         "watch_device": "Paired Apple Watch simulator name to boot, install, and launch on.",
+        "phone_udid": "Exact iPhone simulator UDID to use instead of name-based resolution.",
+        "watch_udid": "Exact Apple Watch simulator UDID to use instead of name-based resolution.",
         "derived_data_path": "Derived data folder used for the clean rebuild.",
         "backend_url_override": "Runtime backend URL override passed to the iPhone app at launch.",
         "bootstrap_email": "Seeded email used for simulator bootstrap login at launch.",
@@ -1092,6 +1106,8 @@ def run_ios_simulators_fresh(
     configuration="Debug",
     phone_device=DEFAULT_IOS_SIMULATOR_PHONE_DEVICE,
     watch_device=DEFAULT_IOS_SIMULATOR_WATCH_DEVICE,
+    phone_udid="",
+    watch_udid="",
     derived_data_path="ios/ListerineIOS/.derived-run-fresh",
     backend_url_override="http://localhost:8000",
     bootstrap_email=DEFAULT_IOS_E2E_USER_EMAIL,
@@ -1099,12 +1115,16 @@ def run_ios_simulators_fresh(
 ) -> None:
     env = _ios_toolchain_env()
     print(f"[run-ios-simulators-fresh] Resolving simulators: {phone_device} + {watch_device}")
-    paired_devices = _find_simulator_pair(env, phone_device, watch_device)
-    if paired_devices is not None:
-        phone_udid, watch_udid = paired_devices
+    if phone_udid.strip() and watch_udid.strip():
+        phone_udid = phone_udid.strip()
+        watch_udid = watch_udid.strip()
     else:
-        phone_udid = _find_simulator_udid(env, phone_device)
-        watch_udid = _find_paired_watch_udid(env, phone_udid, watch_device)
+        paired_devices = _find_simulator_pair(env, phone_device, watch_device)
+        if paired_devices is not None:
+            phone_udid, watch_udid = paired_devices
+        else:
+            phone_udid = _find_simulator_udid(env, phone_device)
+            watch_udid = _find_paired_watch_udid(env, phone_udid, watch_device)
     print(f"[run-ios-simulators-fresh] Using iPhone simulator {phone_udid}")
     print(f"[run-ios-simulators-fresh] Using Watch simulator {watch_udid}")
 
@@ -1192,20 +1212,28 @@ def run_ios_simulators_fresh(
     help={
         "phone_device": "iPhone simulator name used to resolve the paired watch.",
         "watch_device": "Apple Watch simulator name used to resolve the watch device.",
+        "phone_udid": "Exact iPhone simulator UDID to use instead of name-based resolution.",
+        "watch_udid": "Exact Apple Watch simulator UDID to use instead of name-based resolution.",
     }
 )
 def stream_ios_simulator_logs(
     c,
     phone_device=DEFAULT_IOS_SIMULATOR_PHONE_DEVICE,
     watch_device=DEFAULT_IOS_SIMULATOR_WATCH_DEVICE,
+    phone_udid="",
+    watch_udid="",
 ) -> None:
     env = _ios_toolchain_env()
-    paired_devices = _find_simulator_pair(env, phone_device, watch_device)
-    if paired_devices is not None:
-        phone_udid, watch_udid = paired_devices
+    if phone_udid.strip() and watch_udid.strip():
+        phone_udid = phone_udid.strip()
+        watch_udid = watch_udid.strip()
     else:
-        phone_udid = _find_simulator_udid(env, phone_device)
-        watch_udid = _find_paired_watch_udid(env, phone_udid, watch_device)
+        paired_devices = _find_simulator_pair(env, phone_device, watch_device)
+        if paired_devices is not None:
+            phone_udid, watch_udid = paired_devices
+        else:
+            phone_udid = _find_simulator_udid(env, phone_device)
+            watch_udid = _find_paired_watch_udid(env, phone_udid, watch_device)
     print(f"[stream-ios-simulator-logs] iPhone simulator: {phone_udid}")
     print(f"[stream-ios-simulator-logs] Watch simulator: {watch_udid}")
     print(
