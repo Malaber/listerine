@@ -1053,9 +1053,13 @@ def run_ios_simulators_fresh(
     initial_list_name=DEFAULT_IOS_UI_E2E_INITIAL_LIST,
 ) -> None:
     env = _ios_toolchain_env()
+    print(f"[run-ios-simulators-fresh] Resolving simulators: {phone_device} + {watch_device}")
     phone_udid = _find_simulator_udid(env, phone_device)
     watch_udid = _find_paired_watch_udid(env, phone_udid, watch_device)
+    print(f"[run-ios-simulators-fresh] Using iPhone simulator {phone_udid}")
+    print(f"[run-ios-simulators-fresh] Using Watch simulator {watch_udid}")
 
+    print("[run-ios-simulators-fresh] Booting simulators...")
     _boot_simulator(env, phone_udid)
     _boot_simulator(env, watch_udid)
 
@@ -1070,14 +1074,17 @@ def run_ios_simulators_fresh(
     phone_bundle_id = DEFAULT_IOS_APP_BUNDLE_IDENTIFIER
     watch_bundle_id = DEFAULT_IOS_WATCH_APP_BUNDLE_IDENTIFIER
 
+    print("[run-ios-simulators-fresh] Removing previously installed app copies...")
     _terminate_if_running(env, phone_udid, phone_bundle_id)
     _terminate_if_running(env, watch_udid, watch_bundle_id)
     _uninstall_if_present(env, phone_udid, phone_bundle_id)
     _uninstall_if_present(env, watch_udid, watch_bundle_id)
 
     derived_data = ROOT / derived_data_path
+    print(f"[run-ios-simulators-fresh] Clearing derived data at {derived_data}")
     shutil.rmtree(derived_data, ignore_errors=True)
 
+    print("[run-ios-simulators-fresh] Building iPhone and Watch apps from scratch...")
     command = " ".join(
         [
             f"cd {shlex.quote(project_dir)} &&",
@@ -1106,7 +1113,9 @@ def run_ios_simulators_fresh(
     if watch_app_path.exists() is False:
         raise Exit(f"Built watch app not found at {watch_app_path}")
 
+    print(f"[run-ios-simulators-fresh] Installing iPhone app from {ios_app_path}")
     _run_command(["xcrun", "simctl", "install", phone_udid, str(ios_app_path)], env=env)
+    print(f"[run-ios-simulators-fresh] Installing Watch app from {watch_app_path}")
     _run_command(["xcrun", "simctl", "install", watch_udid, str(watch_app_path)], env=env)
 
     launch_env = env.copy()
@@ -1119,9 +1128,15 @@ def run_ios_simulators_fresh(
     if initial_list_name.strip():
         launch_env["SIMCTL_CHILD_LISTERINE_SIMULATOR_INITIAL_LIST_NAME"] = initial_list_name.strip()
 
+    print(
+        "[run-ios-simulators-fresh] Launching iPhone app with backend override "
+        f"{backend_url_override}"
+    )
     _run_command(["xcrun", "simctl", "launch", phone_udid, phone_bundle_id], env=launch_env)
     time.sleep(2)
+    print("[run-ios-simulators-fresh] Launching Watch app")
     _run_command(["xcrun", "simctl", "launch", watch_udid, watch_bundle_id], env=env)
+    print("[run-ios-simulators-fresh] Done.")
 
 
 @task(

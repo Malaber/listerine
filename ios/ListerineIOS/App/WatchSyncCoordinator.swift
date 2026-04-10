@@ -1,7 +1,13 @@
 import Foundation
 import ListerineCore
+import os.log
 #if canImport(WatchConnectivity)
 import WatchConnectivity
+
+private let watchSyncLog = Logger(
+    subsystem: "de.malaber.listerine.ios",
+    category: "watch-sync"
+)
 
 final class WatchSyncCoordinator: NSObject {
     static let shared = WatchSyncCoordinator()
@@ -27,9 +33,15 @@ final class WatchSyncCoordinator: NSObject {
             let stateProvider,
             let data = try? encoder.encode(stateProvider())
         else {
+            watchSyncLog.error("Skipping watch state publish because session/provider/encoding was unavailable.")
             return
         }
 
+        if let state = try? JSONDecoder().decode(SharedAppState.self, from: data) {
+            watchSyncLog.debug(
+                "Publishing state to watch. lists=\(state.lists.count) auth=\(state.authToken?.isEmpty == false) favorite=\(state.favoriteListID?.uuidString ?? "nil", privacy: .public)"
+            )
+        }
         try? session.updateApplicationContext([ListerineSharedConstants.watchContextPayloadKey: data])
     }
 }
@@ -40,6 +52,9 @@ extension WatchSyncCoordinator: WCSessionDelegate {
         activationDidCompleteWith activationState: WCSessionActivationState,
         error: (any Error)?
     ) {
+        watchSyncLog.debug(
+            "WCSession activation completed on phone. state=\(activationState.rawValue) error=\(error?.localizedDescription ?? "none", privacy: .public)"
+        )
         if activationState == .activated {
             publishCurrentState()
         }
@@ -63,10 +78,16 @@ extension WatchSyncCoordinator: WCSessionDelegate {
             let stateProvider,
             let data = try? encoder.encode(stateProvider())
         else {
+            watchSyncLog.error("Received unsupported watch message or failed to encode state.")
             replyHandler([:])
             return
         }
 
+        if let state = try? JSONDecoder().decode(SharedAppState.self, from: data) {
+            watchSyncLog.debug(
+                "Replying to syncState request. lists=\(state.lists.count) auth=\(state.authToken?.isEmpty == false) favorite=\(state.favoriteListID?.uuidString ?? "nil", privacy: .public)"
+            )
+        }
         replyHandler([ListerineSharedConstants.watchContextPayloadKey: data])
     }
 }

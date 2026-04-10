@@ -1,7 +1,13 @@
 import Foundation
 import ListerineCore
+import os.log
 #if canImport(WatchConnectivity)
 import WatchConnectivity
+
+private let watchConnectivityLog = Logger(
+    subsystem: "de.malaber.listerine.watch",
+    category: "connectivity"
+)
 
 final class WatchConnectivityBridge: NSObject {
     var onStateUpdate: ((SharedAppState) -> Void)?
@@ -41,19 +47,36 @@ final class WatchConnectivityBridge: NSObject {
             let session,
             let state = decodedState(from: session.receivedApplicationContext)
         {
+            watchConnectivityLog.debug(
+                "Using cached application context. lists=\(state.lists.count) auth=\(state.authToken?.isEmpty == false) favorite=\(state.favoriteListID?.uuidString ?? "nil", privacy: .public)"
+            )
             apply(state)
             return state
         }
 
-        guard let session, session.isReachable else { return nil }
+        guard let session else {
+            watchConnectivityLog.error("WCSession unavailable on watch.")
+            return nil
+        }
+        guard session.isReachable else {
+            watchConnectivityLog.error(
+                "WCSession not reachable. companionInstalled=\(session.isCompanionAppInstalled)"
+            )
+            return nil
+        }
+        watchConnectivityLog.debug("Requesting latest state from iPhone via sendMessage.")
         return await withCheckedContinuation { continuation in
             session.sendMessage(
                 ["command": "syncState"],
                 replyHandler: { [weak self] payload in
+                    watchConnectivityLog.debug("Received syncState reply from iPhone.")
                     let state = self?.handle(payload)
                     continuation.resume(returning: state)
                 },
-                errorHandler: { _ in
+                errorHandler: { error in
+                    watchConnectivityLog.error(
+                        "syncState request failed: \(error.localizedDescription, privacy: .public)"
+                    )
                     continuation.resume(returning: nil)
                 }
             )
@@ -72,6 +95,9 @@ final class WatchConnectivityBridge: NSObject {
             let data = payload[ListerineSharedConstants.watchContextPayloadKey] as? Data,
             let state = try? decoder.decode(SharedAppState.self, from: data)
         else {
+            watchConnectivityLog.error(
+                "Failed to decode shared state. payloadKeys=\(payload.keys.sorted().joined(separator: ","), privacy: .public)"
+            )
             return nil
         }
 
@@ -79,6 +105,9 @@ final class WatchConnectivityBridge: NSObject {
     }
 
     private func apply(_ state: SharedAppState) {
+        watchConnectivityLog.debug(
+            "Applying shared state. lists=\(state.lists.count) auth=\(state.authToken?.isEmpty == false) favorite=\(state.favoriteListID?.uuidString ?? "nil", privacy: .public)"
+        )
         store.save(state)
         DispatchQueue.main.async { [weak self] in
             self?.onStateUpdate?(state)
@@ -92,12 +121,16 @@ extension WatchConnectivityBridge: WCSessionDelegate {
         activationDidCompleteWith activationState: WCSessionActivationState,
         error: (any Error)?
     ) {
+        watchConnectivityLog.debug(
+            "WCSession activation completed. state=\(activationState.rawValue) error=\(error?.localizedDescription ?? "none", privacy: .public)"
+        )
         if activationState == .activated {
             requestLatestState()
         }
     }
 
     func sessionReachabilityDidChange(_ session: WCSession) {
+        watchConnectivityLog.debug("WCSession reachability changed. reachable=\(session.isReachable)")
         DispatchQueue.main.async { [weak self] in
             self?.onReachabilityChange?()
         }
@@ -107,6 +140,7 @@ extension WatchConnectivityBridge: WCSessionDelegate {
         _ session: WCSession,
         didReceiveApplicationContext applicationContext: [String: Any]
     ) {
+        watchConnectivityLog.debug("Received application context from iPhone.")
         handle(applicationContext)
     }
 }

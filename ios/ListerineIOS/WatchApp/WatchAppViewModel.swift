@@ -1,6 +1,12 @@
 import Foundation
 import ListerineCore
+import os.log
 import SwiftUI
+
+private let watchAppLog = Logger(
+    subsystem: "de.malaber.listerine.watch",
+    category: "view-model"
+)
 
 @MainActor
 final class WatchAppViewModel: ObservableObject {
@@ -79,6 +85,7 @@ final class WatchAppViewModel: ObservableObject {
     }
 
     func refresh() async {
+        watchAppLog.debug("Manual watch refresh started.")
         await syncLatestState()
         await refreshSelectedList()
     }
@@ -117,17 +124,27 @@ final class WatchAppViewModel: ObservableObject {
             let updatedState = try await operation()
             state = updatedState
             store.save(updatedState)
+            watchAppLog.debug("Watch action completed successfully.")
         } catch {
             if let backendError = error as? WatchBackendClientError, backendError == .unauthorized {
                 clearAuthenticatedSession()
             }
+            watchAppLog.error("Watch action failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
         }
     }
 
     private func syncLatestState() async {
         refreshConnectivityStatus()
-        guard let updatedState = await connectivityBridge.requestLatestStateAsync() else { return }
+        guard let updatedState = await connectivityBridge.requestLatestStateAsync() else {
+            watchAppLog.error(
+                "No shared state returned from iPhone. companionInstalled=\(self.isCompanionAppInstalled) reachable=\(self.isPhoneReachable)"
+            )
+            return
+        }
+        watchAppLog.debug(
+            "Synced shared state from iPhone. lists=\(updatedState.lists.count) auth=\(updatedState.authToken?.isEmpty == false) favorite=\(updatedState.favoriteListID?.uuidString ?? "nil", privacy: .public)"
+        )
         applySyncedState(updatedState)
         refreshConnectivityStatus()
     }

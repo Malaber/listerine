@@ -1,8 +1,14 @@
 import ListerineCore
 import SwiftUI
 
+private struct WatchErrorAlert: Identifiable {
+    let id = UUID()
+    let message: String
+}
+
 struct WatchRootView: View {
     @StateObject private var viewModel = WatchAppViewModel()
+    @State private var presentedError: WatchErrorAlert?
 
     var body: some View {
         NavigationStack {
@@ -29,16 +35,19 @@ struct WatchRootView: View {
             viewModel.onAppear()
             await viewModel.refresh()
         }
-        .alert(
-            "Error",
-            isPresented: Binding(
-                get: { viewModel.errorMessage != nil },
-                set: { if !$0 { viewModel.errorMessage = nil } }
+        .onChange(of: viewModel.errorMessage) { _, newValue in
+            if let newValue, newValue.isEmpty == false {
+                presentedError = WatchErrorAlert(message: newValue)
+            }
+        }
+        .alert(item: $presentedError) { error in
+            Alert(
+                title: Text("Error"),
+                message: Text(error.message),
+                dismissButton: .cancel(Text("OK")) {
+                    viewModel.errorMessage = nil
+                }
             )
-        ) {
-            Button("OK", role: .cancel) { viewModel.errorMessage = nil }
-        } message: {
-            Text(viewModel.errorMessage ?? "Unknown error")
         }
     }
 
