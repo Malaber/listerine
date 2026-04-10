@@ -131,14 +131,6 @@ private struct WatchListDetailView: View {
                 .onSubmit {
                     Task { await viewModel.addDraftItem(to: list) }
                 }
-
-            Button("Add") {
-                Task { await viewModel.addDraftItem(to: list) }
-            }
-            .disabled(
-                viewModel.draftItemName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    || viewModel.isWorking
-            )
         } header: {
             Text("Add item")
         }
