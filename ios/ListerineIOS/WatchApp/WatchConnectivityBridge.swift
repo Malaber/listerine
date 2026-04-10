@@ -54,6 +54,14 @@ final class WatchConnectivityBridge: NSObject {
             return state
         }
 
+        if let fallbackState = storedStateFallback() {
+            watchConnectivityLog.debug(
+                "Using stored shared state fallback. lists=\(fallbackState.lists.count) auth=\(fallbackState.authToken?.isEmpty == false) favorite=\(fallbackState.favoriteListID?.uuidString ?? "nil", privacy: .public)"
+            )
+            apply(fallbackState)
+            return fallbackState
+        }
+
         guard let session else {
             watchConnectivityLog.error("WCSession unavailable on watch.")
             return nil
@@ -71,13 +79,13 @@ final class WatchConnectivityBridge: NSObject {
                 replyHandler: { [weak self] payload in
                     watchConnectivityLog.debug("Received syncState reply from iPhone.")
                     let state = self?.handle(payload)
-                    continuation.resume(returning: state)
+                    continuation.resume(returning: state ?? self?.storedStateFallback())
                 },
                 errorHandler: { error in
                     watchConnectivityLog.error(
                         "syncState request failed: \(error.localizedDescription, privacy: .public)"
                     )
-                    continuation.resume(returning: nil)
+                    continuation.resume(returning: self.storedStateFallback())
                 }
             )
         }
@@ -112,6 +120,14 @@ final class WatchConnectivityBridge: NSObject {
         DispatchQueue.main.async { [weak self] in
             self?.onStateUpdate?(state)
         }
+    }
+
+    private func storedStateFallback() -> SharedAppState? {
+        let state = store.load()
+        guard state.hasAuthenticatedSession || state.lists.isEmpty == false else {
+            return nil
+        }
+        return state
     }
 }
 
