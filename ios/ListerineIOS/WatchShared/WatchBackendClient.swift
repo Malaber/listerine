@@ -101,6 +101,29 @@ struct WatchBackendClient {
         return try await refreshItems(for: listID, using: state)
     }
 
+    func saveEdit(
+        item: GroceryItemRecord,
+        note: String,
+        categoryID: UUID?,
+        in listID: UUID,
+        using state: SharedAppState
+    ) async throws -> WatchListSnapshot {
+        let session = try requireSession(from: state)
+
+        _ = try await requestJSON(
+            backendURL: session.backendURL,
+            path: "/api/v1/items/\(item.id.uuidString)",
+            method: "PATCH",
+            body: [
+                "note": note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? NSNull() : note,
+                "category_id": categoryID?.uuidString ?? NSNull(),
+            ],
+            token: session.authToken
+        )
+
+        return try await refreshList(for: listID, using: state)
+    }
+
     private func requireSession(from state: SharedAppState) throws -> (
         backendURL: URL,
         authToken: String,

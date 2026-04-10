@@ -85,6 +85,10 @@ final class WatchAppViewModel: ObservableObject {
         return categories.first(where: { $0.id == categoryID })?.colorHex
     }
 
+    var availableCategories: [GroceryCategorySummary] {
+        categories.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
     var needsPhoneSetup: Bool {
         state.hasAuthenticatedSession == false
     }
@@ -141,6 +145,38 @@ final class WatchAppViewModel: ObservableObject {
     func toggle(_ item: GroceryItemRecord, in list: GroceryListSummary) async {
         await runAction { [self] in
             try await self.backendClient.toggle(item, in: list.id, using: self.state)
+        }
+    }
+
+    func saveEdit(
+        item: GroceryItemRecord,
+        note: String,
+        categoryID: UUID?,
+        in list: GroceryListSummary
+    ) async -> Bool {
+        errorMessage = nil
+        isWorking = true
+        defer { isWorking = false }
+
+        do {
+            await syncLatestState()
+            let snapshot = try await backendClient.saveEdit(
+                item: item,
+                note: note,
+                categoryID: categoryID,
+                in: list.id,
+                using: state
+            )
+            applySnapshot(snapshot)
+            watchAppLog.debug("Watch item edit completed successfully.")
+            return true
+        } catch {
+            if let backendError = error as? WatchBackendClientError, backendError == .unauthorized {
+                clearAuthenticatedSession()
+            }
+            watchAppLog.error("Watch item edit failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = error.localizedDescription
+            return false
         }
     }
 

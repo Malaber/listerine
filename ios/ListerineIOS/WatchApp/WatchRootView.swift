@@ -96,6 +96,7 @@ struct WatchRootView: View {
 private struct WatchListDetailView: View {
     @EnvironmentObject private var viewModel: WatchAppViewModel
     let list: GroceryListSummary
+    @State private var editingItem: GroceryItemRecord?
 
     var body: some View {
         List {
@@ -109,6 +110,10 @@ private struct WatchListDetailView: View {
         }
         .onDisappear {
             viewModel.stopLiveUpdates(for: list)
+        }
+        .sheet(item: $editingItem) { item in
+            WatchEditItemSheet(list: list, item: item)
+                .environmentObject(viewModel)
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -163,6 +168,74 @@ private struct WatchListDetailView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .disabled(viewModel.isWorking)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button {
+                            editingItem = item
+                        } label: {
+                            Label("Edit", systemImage: "pencil")
+                        }
+                        .tint(.blue)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct WatchEditItemSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var viewModel: WatchAppViewModel
+
+    let list: GroceryListSummary
+    let item: GroceryItemRecord
+
+    @State private var note: String
+    @State private var categoryID: UUID?
+
+    init(list: GroceryListSummary, item: GroceryItemRecord) {
+        self.list = list
+        self.item = item
+        _note = State(initialValue: item.note ?? "")
+        _categoryID = State(initialValue: item.categoryID)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Category") {
+                    Picker("Category", selection: $categoryID) {
+                        Text("Uncategorized").tag(Optional<UUID>.none)
+                        ForEach(viewModel.availableCategories) { category in
+                            Text(category.name).tag(Optional(category.id))
+                        }
+                    }
+                }
+
+                Section("Notes") {
+                    TextField("Note", text: $note, axis: .vertical)
+                }
+            }
+            .navigationTitle("Edit item")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        Task {
+                            let saved = await viewModel.saveEdit(
+                                item: item,
+                                note: note,
+                                categoryID: categoryID,
+                                in: list
+                            )
+                            if saved {
+                                dismiss()
+                            }
+                        }
+                    }
                     .disabled(viewModel.isWorking)
                 }
             }
