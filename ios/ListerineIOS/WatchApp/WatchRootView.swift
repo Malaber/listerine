@@ -106,6 +106,10 @@ private struct WatchListDetailView: View {
         .navigationTitle(list.name)
         .task(id: list.id) {
             await viewModel.showList(list)
+            viewModel.startLiveUpdates(for: list)
+        }
+        .onDisappear {
+            viewModel.stopLiveUpdates(for: list)
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
