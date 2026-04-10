@@ -482,6 +482,44 @@ def _find_simulator_udid(env: dict[str, str], name: str) -> str:
     raise Exit(f"Could not find an available simulator named {name!r}.")
 
 
+def _find_simulator_pair(
+    env: dict[str, str],
+    phone_name: str,
+    watch_name: str,
+) -> tuple[str, str] | None:
+    payload = _simctl_json(env, "list", "pairs", "-j")
+    devices = _list_available_simulators(env)
+    matching_pairs: list[tuple[str, str, bool]] = []
+    for pair in payload.get("pairs", {}).values():
+        if not isinstance(pair, dict):
+            continue
+        phone = pair.get("phone")
+        watch = pair.get("watch")
+        if not isinstance(phone, dict) or not isinstance(watch, dict):
+            continue
+        phone_udid = phone.get("udid")
+        watch_udid = watch.get("udid")
+        if not isinstance(phone_udid, str) or not isinstance(watch_udid, str):
+            continue
+        phone_device = devices.get(phone_udid)
+        watch_device = devices.get(watch_udid)
+        if not isinstance(phone_device, dict) or not isinstance(watch_device, dict):
+            continue
+        if phone_device.get("name") != phone_name or watch_device.get("name") != watch_name:
+            continue
+        either_booted = (
+            phone_device.get("state") == "Booted" or watch_device.get("state") == "Booted"
+        )
+        matching_pairs.append((phone_udid, watch_udid, either_booted))
+
+    if not matching_pairs:
+        return None
+
+    booted_pairs = [pair for pair in matching_pairs if pair[2]]
+    selected_pair = booted_pairs[0] if booted_pairs else matching_pairs[0]
+    return (selected_pair[0], selected_pair[1])
+
+
 def _find_paired_watch_udid(env: dict[str, str], phone_udid: str, fallback_watch_name: str) -> str:
     payload = _simctl_json(env, "list", "pairs", "-j")
     devices = _list_available_simulators(env)
@@ -1061,8 +1099,12 @@ def run_ios_simulators_fresh(
 ) -> None:
     env = _ios_toolchain_env()
     print(f"[run-ios-simulators-fresh] Resolving simulators: {phone_device} + {watch_device}")
-    phone_udid = _find_simulator_udid(env, phone_device)
-    watch_udid = _find_paired_watch_udid(env, phone_udid, watch_device)
+    paired_devices = _find_simulator_pair(env, phone_device, watch_device)
+    if paired_devices is not None:
+        phone_udid, watch_udid = paired_devices
+    else:
+        phone_udid = _find_simulator_udid(env, phone_device)
+        watch_udid = _find_paired_watch_udid(env, phone_udid, watch_device)
     print(f"[run-ios-simulators-fresh] Using iPhone simulator {phone_udid}")
     print(f"[run-ios-simulators-fresh] Using Watch simulator {watch_udid}")
 
@@ -1158,8 +1200,12 @@ def stream_ios_simulator_logs(
     watch_device=DEFAULT_IOS_SIMULATOR_WATCH_DEVICE,
 ) -> None:
     env = _ios_toolchain_env()
-    phone_udid = _find_simulator_udid(env, phone_device)
-    watch_udid = _find_paired_watch_udid(env, phone_udid, watch_device)
+    paired_devices = _find_simulator_pair(env, phone_device, watch_device)
+    if paired_devices is not None:
+        phone_udid, watch_udid = paired_devices
+    else:
+        phone_udid = _find_simulator_udid(env, phone_device)
+        watch_udid = _find_paired_watch_udid(env, phone_udid, watch_device)
     print(f"[stream-ios-simulator-logs] iPhone simulator: {phone_udid}")
     print(f"[stream-ios-simulator-logs] Watch simulator: {watch_udid}")
     print(
