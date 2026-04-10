@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 import json
+import threading
 from contextlib import closing
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -546,6 +547,12 @@ def _build_ios_product_paths(derived_data_path: Path, configuration: str) -> tup
         / "Listerine Watch.app"
     )
     return ios_app_path, watch_app_path
+
+
+def _stream_process_output(process: subprocess.Popen[str], prefix: str) -> None:
+    assert process.stdout is not None
+    for line in process.stdout:
+        print(f"[{prefix}] {line}", end="")
 
 
 def _replace_project_setting(contents: str, key: str, value: str) -> str:
@@ -1166,25 +1173,63 @@ def stream_ios_simulator_logs(
         'process == "Listerine Watch" OR '
         'process == "Listerine Watch Extension"'
     )
-    c.run(
-        " ".join(
-            [
-                "xcrun",
-                "simctl",
-                "spawn",
-                shlex.quote(watch_udid),
-                "log",
-                "stream",
-                "--style",
-                "compact",
-                "--predicate",
-                shlex.quote(predicate),
-            ]
-        ),
+    phone_process = subprocess.Popen(
+        [
+            "xcrun",
+            "simctl",
+            "spawn",
+            phone_udid,
+            "log",
+            "stream",
+            "--style",
+            "compact",
+            "--predicate",
+            predicate,
+        ],
         env=env,
-        pty=False,
-        shell="/bin/bash",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
     )
+    watch_process = subprocess.Popen(
+        [
+            "xcrun",
+            "simctl",
+            "spawn",
+            watch_udid,
+            "log",
+            "stream",
+            "--style",
+            "compact",
+            "--predicate",
+            predicate,
+        ],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+
+    phone_thread = threading.Thread(
+        target=_stream_process_output,
+        args=(phone_process, "iphone"),
+        daemon=True,
+    )
+    watch_thread = threading.Thread(
+        target=_stream_process_output,
+        args=(watch_process, "watch"),
+        daemon=True,
+    )
+    phone_thread.start()
+    watch_thread.start()
+
+    try:
+        phone_process.wait()
+        watch_process.wait()
+    except KeyboardInterrupt:
+        phone_process.terminate()
+        watch_process.terminate()
+        raise
 
 
 @task(
