@@ -59,6 +59,7 @@ final class MobileAppViewModel: ObservableObject {
     private let processInfo: ProcessInfo
     private let watchSyncCoordinator: WatchSyncCoordinator
     private let sharedStateStore: SharedAppStateStore
+    private let liveUpdates: MobileListLiveUpdateClient
     private let isSimulatorBuild: Bool
     private var didAttemptLaunchBootstrap = false
 
@@ -66,12 +67,14 @@ final class MobileAppViewModel: ObservableObject {
         passkeyClient: ApplePasskeyClient = ApplePasskeyClient(),
         userDefaults: UserDefaults = .standard,
         processInfo: ProcessInfo = .processInfo,
-        watchSyncCoordinator: WatchSyncCoordinator = .shared
+        watchSyncCoordinator: WatchSyncCoordinator = .shared,
+        liveUpdates: MobileListLiveUpdateClient = MobileListLiveUpdateClient()
     ) {
         self.passkeyClient = passkeyClient
         self.userDefaults = userDefaults
         self.processInfo = processInfo
         self.watchSyncCoordinator = watchSyncCoordinator
+        self.liveUpdates = liveUpdates
         self.sharedStateStore = SharedAppStateStore(
             userDefaults: UserDefaults(suiteName: ListerineSharedConstants.watchAppGroupID) ?? .standard
         )
@@ -96,6 +99,11 @@ final class MobileAppViewModel: ObservableObject {
             let state = self?.makeSharedAppState() ?? SharedAppState()
             self?.sharedStateStore.save(state)
             return state
+        }
+        self.liveUpdates.onListChanged = { [weak self] listID in
+            Task { @MainActor in
+                await self?.handleLiveListChanged(listID)
+            }
         }
         sharedStateStore.save(makeSharedAppState())
         watchSyncCoordinator.publishCurrentState()
@@ -287,6 +295,7 @@ final class MobileAppViewModel: ObservableObject {
     }
 
     func signOut() {
+        liveUpdates.disconnect()
         authToken = nil
         displayName = nil
         lists = []
@@ -390,6 +399,7 @@ final class MobileAppViewModel: ObservableObject {
         }
 
         try await reloadItems()
+        updateLiveUpdatesConnection()
         watchSyncCoordinator.publishCurrentState()
     }
 
@@ -397,6 +407,7 @@ final class MobileAppViewModel: ObservableObject {
         guard selectedListID != id else { return }
         selectedListID = id
         try? await reloadItems()
+        updateLiveUpdatesConnection()
     }
 
     func reloadItems() async throws {
@@ -426,6 +437,7 @@ final class MobileAppViewModel: ObservableObject {
         items = try await itemPayload.compactMap(GroceryItemRecord.init)
         categories = try await categoryPayload.compactMap(GroceryCategorySummary.init)
         categoryOrder = try await categoryOrderPayload.compactMap(ListCategoryOrderEntry.init)
+        updateLiveUpdatesConnection()
         watchSyncCoordinator.publishCurrentState()
     }
 
@@ -547,6 +559,38 @@ final class MobileAppViewModel: ObservableObject {
         )
     }
 
+    private func updateLiveUpdatesConnection() {
+        guard
+            let backendURL,
+            let authToken,
+            authToken.isEmpty == false,
+            let selectedListID
+        else {
+            liveUpdates.disconnect()
+            return
+        }
+
+        liveUpdates.connect(
+            listID: selectedListID,
+            backendURL: backendURL,
+            authToken: authToken
+        )
+    }
+
+    private func handleLiveListChanged(_ listID: UUID) async {
+        guard selectedListID == listID else { return }
+        netLog.debug(
+            "Received live list update for selected iPhone list \(listID.uuidString, privacy: .public)."
+        )
+        do {
+            try await reloadItems()
+        } catch {
+            netLog.error(
+                "Failed to reload items after live update: \(error.localizedDescription, privacy: .public)"
+            )
+        }
+    }
+
     private func rpID(from optionsPayload: [String: Any]) -> String? {
         let publicKey = (optionsPayload["publicKey"] as? [String: Any]) ?? optionsPayload
         return publicKey["rpId"] as? String
@@ -659,6 +703,147 @@ final class MobileAppViewModel: ObservableObject {
             )
         }
         return nil
+    }
+}
+
+final class MobileListLiveUpdateClient {
+    var onListChanged: ((UUID) -> Void)?
+
+    private var webSocketTask: URLSessionWebSocketTask?
+    private var reconnectTask: Task<Void, Never>?
+    private var currentListID: UUID?
+    private var backendURL: URL?
+    private var authToken: String?
+
+    func connect(listID: UUID, backendURL: URL, authToken: String) {
+        if
+            currentListID == listID,
+            self.backendURL == backendURL,
+            self.authToken == authToken,
+            webSocketTask != nil
+        {
+            return
+        }
+
+        disconnect()
+        currentListID = listID
+        self.backendURL = backendURL
+        self.authToken = authToken
+        openSocket()
+    }
+
+    func disconnect() {
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        webSocketTask?.cancel(with: .goingAway, reason: nil)
+        webSocketTask = nil
+        currentListID = nil
+        backendURL = nil
+        authToken = nil
+    }
+
+    private func openSocket() {
+        guard
+            let currentListID,
+            let backendURL,
+            let authToken,
+            let url = makeWebSocketURL(
+                backendURL: backendURL,
+                listID: currentListID,
+                authToken: authToken
+            )
+        else {
+            return
+        }
+
+        netLog.debug(
+            "Connecting live updates socket for iPhone list \(currentListID.uuidString, privacy: .public)."
+        )
+        let task = URLSession.shared.webSocketTask(with: url)
+        webSocketTask = task
+        task.resume()
+        receiveNextMessage(from: task, listID: currentListID)
+    }
+
+    private func receiveNextMessage(from task: URLSessionWebSocketTask, listID: UUID) {
+        task.receive { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case let .success(message):
+                self.handle(message, for: listID)
+                if self.webSocketTask === task {
+                    self.receiveNextMessage(from: task, listID: listID)
+                }
+            case let .failure(error):
+                netLog.error(
+                    "iPhone live updates socket failed: \(error.localizedDescription, privacy: .public)"
+                )
+                self.scheduleReconnect()
+            }
+        }
+    }
+
+    private func handle(_ message: URLSessionWebSocketTask.Message, for listID: UUID) {
+        let data: Data?
+        switch message {
+        case let .data(payload):
+            data = payload
+        case let .string(text):
+            data = text.data(using: .utf8)
+        @unknown default:
+            data = nil
+        }
+
+        guard
+            let data,
+            let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let type = payload["type"] as? String
+        else {
+            return
+        }
+
+        let liveUpdateTypes: Set<String> = [
+            "list_snapshot",
+            "item_created",
+            "item_updated",
+            "item_checked",
+            "item_unchecked",
+            "item_deleted",
+            "category_order_updated",
+        ]
+        guard liveUpdateTypes.contains(type) else { return }
+
+        netLog.debug(
+            "Received iPhone live updates event \(type, privacy: .public) for list \(listID.uuidString, privacy: .public)."
+        )
+        onListChanged?(listID)
+    }
+
+    private func scheduleReconnect() {
+        guard currentListID != nil, backendURL != nil, authToken != nil else { return }
+        reconnectTask?.cancel()
+        reconnectTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            guard Task.isCancelled == false else { return }
+            self?.openSocket()
+        }
+    }
+
+    private func makeWebSocketURL(
+        backendURL: URL,
+        listID: UUID,
+        authToken: String
+    ) -> URL? {
+        guard var components = URLComponents(url: backendURL, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+        components.scheme = backendURL.scheme == "https" ? "wss" : "ws"
+        let basePath = components.path == "/" ? "" : components.path
+        components.path = "\(basePath)/api/v1/ws/lists/\(listID.uuidString)"
+        components.queryItems = (components.queryItems ?? []) + [
+            URLQueryItem(name: "token", value: authToken)
+        ]
+        return components.url
     }
 }
 
