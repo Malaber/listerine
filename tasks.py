@@ -1141,6 +1141,54 @@ def run_ios_simulators_fresh(
 
 @task(
     help={
+        "phone_device": "iPhone simulator name used to resolve the paired watch.",
+        "watch_device": "Apple Watch simulator name used to resolve the watch device.",
+    }
+)
+def stream_ios_simulator_logs(
+    c,
+    phone_device=DEFAULT_IOS_SIMULATOR_PHONE_DEVICE,
+    watch_device=DEFAULT_IOS_SIMULATOR_WATCH_DEVICE,
+) -> None:
+    env = _ios_toolchain_env()
+    phone_udid = _find_simulator_udid(env, phone_device)
+    watch_udid = _find_paired_watch_udid(env, phone_udid, watch_device)
+    print(f"[stream-ios-simulator-logs] iPhone simulator: {phone_udid}")
+    print(f"[stream-ios-simulator-logs] Watch simulator: {watch_udid}")
+    print(
+        "[stream-ios-simulator-logs] Streaming Listerine app and watch logs. Press Ctrl+C to stop."
+    )
+
+    predicate = (
+        'subsystem == "de.malaber.listerine.watch" OR '
+        'subsystem == "de.malaber.listerine.ios" OR '
+        'process == "Listerine" OR '
+        'process == "Listerine Watch" OR '
+        'process == "Listerine Watch Extension"'
+    )
+    c.run(
+        " ".join(
+            [
+                "xcrun",
+                "simctl",
+                "spawn",
+                shlex.quote(watch_udid),
+                "log",
+                "stream",
+                "--style",
+                "compact",
+                "--predicate",
+                shlex.quote(predicate),
+            ]
+        ),
+        env=env,
+        pty=False,
+        shell="/bin/bash",
+    )
+
+
+@task(
+    help={
         "base_url": "Base URL used by the native iOS backend e2e flow.",
         "e2e_seed_path": "Fixture that contains passkey data for the native iOS flow.",
         "webauthn_rp_id": "WebAuthn relying party ID exposed to the native iOS flow.",
