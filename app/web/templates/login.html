@@ -30,13 +30,6 @@
         {{ t("auth.login.create_account_tab") }}
       </button>
     </div>
-
-    {% if localhost_hint %}
-    <p class="auth-banner auth-banner-info">
-      {{ t("auth.login.localhost_hint_prefix") }} <strong>localhost</strong>
-      {{ t("auth.login.localhost_hint_middle") }} <strong>127.0.0.1</strong>.
-    </p>
-    {% endif %}
     <p class="auth-banner auth-banner-error" data-auth-error hidden></p>
     <p class="auth-banner auth-banner-success" data-auth-success hidden></p>
 

@@ -63,6 +63,10 @@ def _configured_origin() -> str | None:
     return settings.app_base_url
 
 
+def _is_loopback_host(hostname: str | None) -> bool:
+    return hostname in {"localhost", "127.0.0.1", "::1"}
+
+
 def _configured_public_host() -> str | None:
     configured_origin = _configured_origin()
     if configured_origin is None:
@@ -861,9 +865,9 @@ async def me(user: User = Depends(get_current_user)) -> User:
 
 @router.post("/ui-test-bootstrap", response_model=UITestBootstrapOut)
 async def ui_test_bootstrap(
-    payload: UITestBootstrapRequest, db: AsyncSession = Depends(get_db)
+    payload: UITestBootstrapRequest, request: Request, db: AsyncSession = Depends(get_db)
 ) -> UITestBootstrapOut:
-    if settings.ui_test_bootstrap_enabled is False:
+    if settings.ui_test_bootstrap_enabled is False or not _is_loopback_host(request.url.hostname):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
 
     user = await _load_user_with_passkeys_by_email(db, payload.email)

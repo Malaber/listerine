@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="auth-shell">
+  <div class="auth-copy">
+    <h1>{{ t("auth.login.local_title") }}</h1>
+    <p>{{ t("auth.login.local_intro") }}</p>
+    <p class="auth-banner auth-banner-info">
+      {{ t("auth.login.localhost_hint_prefix") }} <strong>localhost</strong>
+      {{ t("auth.login.localhost_hint_middle") }} <strong>127.0.0.1</strong>.
+    </p>
+  </div>
+
+  <section class="auth-card auth-card-primary">
+    {% if error_message %}
+    <p class="auth-banner auth-banner-error">{{ error_message }}</p>
+    {% endif %}
+    <h2>{{ t("auth.login.local_sign_in_title") }}</h2>
+    <p>{{ t("auth.login.local_sign_in_body") }}</p>
+    <form class="auth-form" method="post" action="/login-local">
+      <input type="hidden" name="next_path" value="{{ next_url }}" />
+      <label class="auth-field">
+        <span>{{ t("auth.login.email") }}</span>
+        <input
+          type="email"
+          name="email"
+          autocomplete="username"
+          required
+          value="{{ email or '' }}"
+        />
+      </label>
+      <button type="submit">{{ t("auth.login.local_sign_in_button") }}</button>
+    </form>
+  </section>
+</section>
+{% endblock %}

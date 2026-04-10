@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -21,8 +21,9 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.i18n import encode_catalog, translator_for
 from app.models import User
-from app.services.auth_sessions import get_session_user, revoke_auth_session
+from app.services.auth_sessions import create_auth_session, get_session_user, revoke_auth_session
 from app.services.passkey_reset import get_user_for_passkey_reset_token
+from app.api.v1.routes.auth import _load_user_with_passkeys_by_email
 
 router = APIRouter(tags=["web"])
 templates = Jinja2Templates(directory="app/web/templates")
@@ -152,6 +153,14 @@ def _safe_next_path(request: Request) -> str:
     if not next_path.startswith("/") or next_path.startswith("//"):
         return "/"
     return next_path
+
+
+def _is_loopback_host(hostname: str | None) -> bool:
+    return hostname in {"localhost", "127.0.0.1", "::1"}
+
+
+def _local_bootstrap_enabled_for_request(request: Request) -> bool:
+    return settings.ui_test_bootstrap_enabled and _is_loopback_host(request.url.hostname)
 
 
 async def _get_session_user(request: Request, db: AsyncSession) -> User | None:
@@ -318,10 +327,71 @@ async def login_page(request: Request, db: AsyncSession = Depends(get_db)) -> Re
         _template_context(
             request,
             None,
-            localhost_hint=request.url.hostname == "127.0.0.1",
             next_url=next_path,
         ),
     )
+
+
+@router.get("/login-local", response_class=HTMLResponse)
+async def local_login_page(request: Request, db: AsyncSession = Depends(get_db)) -> Response:
+    if not _local_bootstrap_enabled_for_request(request):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+    user = await _get_session_user(request, db)
+    next_path = _safe_next_path(request)
+    if user is not None:
+        return RedirectResponse(url=next_path, status_code=303)
+
+    return templates.TemplateResponse(
+        request,
+        "login_local.html",
+        _template_context(
+            request,
+            None,
+            next_url=next_path,
+        ),
+    )
+
+
+@router.post("/login-local")
+async def local_login_submit(
+    request: Request,
+    email: str = Form(...),
+    next_path: str = Form("/"),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    if not _local_bootstrap_enabled_for_request(request):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+    normalized_next_path = (
+        next_path if next_path.startswith("/") and not next_path.startswith("//") else "/"
+    )
+    normalized_email = email.strip().casefold()
+    if not normalized_email:
+        return RedirectResponse(
+            url=f"/login-local?next={normalized_next_path}",
+            status_code=303,
+        )
+
+    user = await _load_user_with_passkeys_by_email(db, normalized_email)
+    if user is None:
+        return templates.TemplateResponse(
+            request,
+            "login_local.html",
+            _template_context(
+                request,
+                None,
+                next_url=normalized_next_path,
+                error_message=translator_for(getattr(request.state, "locale", "en"))(
+                    "auth.login.local_user_not_found"
+                ),
+                email=normalized_email,
+            ),
+            status_code=404,
+        )
+
+    await create_auth_session(request, db, user)
+    return RedirectResponse(url=normalized_next_path, status_code=303)
 
 
 @router.post("/logout")
