@@ -11,6 +11,7 @@ private let watchAppLog = Logger(
 @MainActor
 final class WatchAppViewModel: ObservableObject {
     @Published private(set) var state: SharedAppState
+    @Published private(set) var categories: [GroceryCategorySummary] = []
     @Published private(set) var selectedListID: UUID?
     @Published var draftItemName = ""
     @Published var errorMessage: String?
@@ -79,6 +80,11 @@ final class WatchAppViewModel: ObservableObject {
         }
     }
 
+    func categoryColorHex(for item: GroceryItemRecord) -> String? {
+        guard let categoryID = item.categoryID else { return nil }
+        return categories.first(where: { $0.id == categoryID })?.colorHex
+    }
+
     var needsPhoneSetup: Bool {
         state.hasAuthenticatedSession == false
     }
@@ -111,6 +117,7 @@ final class WatchAppViewModel: ObservableObject {
             if state.items.first?.listID != list.id {
                 state.items = []
             }
+            categories = []
         }
         await refreshSelectedList()
     }
@@ -177,6 +184,7 @@ final class WatchAppViewModel: ObservableObject {
         updatedState.authToken = nil
         updatedState.items = []
         state = updatedState
+        categories = []
         store.save(updatedState)
         liveUpdates.disconnect()
     }
@@ -189,8 +197,21 @@ final class WatchAppViewModel: ObservableObject {
             return
         }
 
-        await runAction { [self] in
-            try await self.backendClient.refreshItems(for: selectedListID, using: self.state)
+        errorMessage = nil
+        isWorking = true
+        defer { isWorking = false }
+
+        do {
+            await syncLatestState()
+            let snapshot = try await backendClient.refreshList(for: selectedListID, using: state)
+            applySnapshot(snapshot)
+            watchAppLog.debug("Watch list refresh completed successfully.")
+        } catch {
+            if let backendError = error as? WatchBackendClientError, backendError == .unauthorized {
+                clearAuthenticatedSession()
+            }
+            watchAppLog.error("Watch list refresh failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = error.localizedDescription
         }
     }
 
@@ -220,9 +241,10 @@ final class WatchAppViewModel: ObservableObject {
 
     private func refreshListItemsSilently(for listID: UUID) async {
         do {
-            let updatedState = try await backendClient.refreshItems(for: listID, using: state)
-            state = updatedState
-            store.save(updatedState)
+            let snapshot = try await backendClient.refreshList(for: listID, using: state)
+            state = snapshot.state
+            categories = snapshot.categories
+            store.save(snapshot.state)
         } catch {
             if let backendError = error as? WatchBackendClientError, backendError == .unauthorized {
                 clearAuthenticatedSession()
@@ -231,6 +253,12 @@ final class WatchAppViewModel: ObservableObject {
                 "Silent live refresh failed: \(error.localizedDescription, privacy: .public)"
             )
         }
+    }
+
+    private func applySnapshot(_ snapshot: WatchListSnapshot) {
+        state = snapshot.state
+        categories = snapshot.categories
+        store.save(snapshot.state)
     }
 }
 

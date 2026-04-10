@@ -1,6 +1,11 @@
 import Foundation
 import ListerineCore
 
+struct WatchListSnapshot {
+    let state: SharedAppState
+    let categories: [GroceryCategorySummary]
+}
+
 enum WatchBackendClientError: LocalizedError, Equatable {
     case missingSession
     case missingFavoriteList
@@ -25,22 +30,34 @@ enum WatchBackendClientError: LocalizedError, Equatable {
 }
 
 struct WatchBackendClient {
-    func refreshFavoriteItems(using state: SharedAppState) async throws -> SharedAppState {
+    func refreshFavoriteItems(using state: SharedAppState) async throws -> WatchListSnapshot {
         let session = try requireSession(from: state)
-        return try await refreshItems(for: session.favoriteListID, using: state)
+        return try await refreshList(for: session.favoriteListID, using: state)
     }
 
-    func refreshItems(for listID: UUID, using state: SharedAppState) async throws -> SharedAppState {
+    func refreshList(for listID: UUID, using state: SharedAppState) async throws -> WatchListSnapshot {
         let session = try requireSession(from: state)
-        let items = try await requestArray(
+        async let itemsPayload = requestArray(
             backendURL: session.backendURL,
             path: "/api/v1/lists/\(listID.uuidString)/items",
             token: session.authToken
-        ).compactMap(GroceryItemRecord.init)
+        )
+        async let categoriesPayload = requestArray(
+            backendURL: session.backendURL,
+            path: "/api/v1/lists/\(listID.uuidString)/categories",
+            token: session.authToken
+        )
+
+        let items = try await itemsPayload.compactMap(GroceryItemRecord.init)
+        let categories = try await categoriesPayload.compactMap(GroceryCategorySummary.init)
 
         var updatedState = state
         updatedState.items = items
-        return updatedState
+        return WatchListSnapshot(state: updatedState, categories: categories)
+    }
+
+    func refreshItems(for listID: UUID, using state: SharedAppState) async throws -> SharedAppState {
+        try await refreshList(for: listID, using: state).state
     }
 
     func addItem(named name: String, using state: SharedAppState) async throws -> SharedAppState {
