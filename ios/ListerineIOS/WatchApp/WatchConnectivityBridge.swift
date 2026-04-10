@@ -16,6 +16,8 @@ final class WatchConnectivityBridge: NSObject {
     private let session: WCSession?
     private let store: SharedAppStateStore
     private let decoder = JSONDecoder()
+    private var activationState: WCSessionActivationState
+    private var activationWaiters: [CheckedContinuation<Void, Never>] = []
 
     init(
         session: WCSession? = WCSession.isSupported() ? WCSession.default : nil,
@@ -23,6 +25,7 @@ final class WatchConnectivityBridge: NSObject {
     ) {
         self.session = session
         self.store = store
+        self.activationState = session?.activationState ?? .notActivated
         super.init()
         self.session?.delegate = self
         self.session?.activate()
@@ -43,6 +46,8 @@ final class WatchConnectivityBridge: NSObject {
     }
 
     func requestLatestStateAsync() async -> SharedAppState? {
+        await waitForActivationIfNeeded()
+
         if
             let session,
             let state = decodedState(from: session.receivedApplicationContext)
@@ -129,6 +134,37 @@ final class WatchConnectivityBridge: NSObject {
         }
         return state
     }
+
+    private func waitForActivationIfNeeded() async {
+        guard let session else { return }
+        activationState = session.activationState
+        guard activationState != .activated else { return }
+
+        watchConnectivityLog.debug(
+            "Waiting for WCSession activation. state=\(self.activationState.rawValue)"
+        )
+
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { [weak self] in
+                await withCheckedContinuation { continuation in
+                    self?.activationWaiters.append(continuation)
+                }
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+            }
+            await group.next()
+            group.cancelAll()
+        }
+    }
+
+    private func finishActivationWaiters() {
+        let waiters = activationWaiters
+        activationWaiters.removeAll()
+        for waiter in waiters {
+            waiter.resume()
+        }
+    }
 }
 
 extension WatchConnectivityBridge: WCSessionDelegate {
@@ -137,9 +173,14 @@ extension WatchConnectivityBridge: WCSessionDelegate {
         activationDidCompleteWith activationState: WCSessionActivationState,
         error: (any Error)?
     ) {
+        self.activationState = activationState
         watchConnectivityLog.debug(
             "WCSession activation completed. state=\(activationState.rawValue) error=\(error?.localizedDescription ?? "none", privacy: .public)"
         )
+        finishActivationWaiters()
+        DispatchQueue.main.async { [weak self] in
+            self?.onReachabilityChange?()
+        }
         if activationState == .activated {
             requestLatestState()
         }

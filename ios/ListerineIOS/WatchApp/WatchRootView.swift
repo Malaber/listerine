@@ -35,7 +35,7 @@ struct WatchRootView: View {
             viewModel.onAppear()
             await viewModel.refresh()
         }
-        .onChange(of: viewModel.errorMessage) { newValue in
+        .onChange(of: viewModel.errorMessage) { _, newValue in
             if let newValue, newValue.isEmpty == false {
                 presentedError = WatchErrorAlert(message: newValue)
             }
