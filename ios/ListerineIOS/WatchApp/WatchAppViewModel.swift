@@ -5,6 +5,7 @@ import SwiftUI
 @MainActor
 final class WatchAppViewModel: ObservableObject {
     @Published private(set) var state: SharedAppState
+    @Published private(set) var selectedListID: UUID?
     @Published var draftItemName = ""
     @Published var errorMessage: String?
     @Published private(set) var isWorking = false
@@ -22,17 +23,40 @@ final class WatchAppViewModel: ObservableObject {
         self.backendClient = backendClient
         self.connectivityBridge = connectivityBridge
         state = store.load()
+        selectedListID = store.load().favoriteListID
         self.connectivityBridge.onStateUpdate = { [weak self] updatedState in
-            self?.state = updatedState
+            self?.applySyncedState(updatedState)
         }
     }
 
-    var favoriteListName: String {
-        state.favoriteListName ?? "Favorite list"
+    var displayedLists: [GroceryListSummary] {
+        let favoriteID = state.favoriteListID
+        return state.lists.sorted { left, right in
+            if left.id == favoriteID, right.id != favoriteID {
+                return true
+            }
+            if left.id != favoriteID, right.id == favoriteID {
+                return false
+            }
+            if left.householdName != right.householdName {
+                return left.householdName.localizedCaseInsensitiveCompare(right.householdName) == .orderedAscending
+            }
+            return left.name.localizedCaseInsensitiveCompare(right.name) == .orderedAscending
+        }
     }
 
-    var quickAddLabel: String {
-        state.quickAddItemName
+    func isFavorite(_ list: GroceryListSummary) -> Bool {
+        list.id == state.favoriteListID
+    }
+
+    func items(for list: GroceryListSummary) -> [GroceryItemRecord] {
+        guard selectedListID == list.id else { return [] }
+        return state.items.sorted { left, right in
+            if left.checked != right.checked {
+                return left.checked == false
+            }
+            return left.sortOrder < right.sortOrder
+        }
     }
 
     var needsPhoneSetup: Bool {
@@ -45,29 +69,30 @@ final class WatchAppViewModel: ObservableObject {
 
     func refresh() async {
         await syncLatestState()
-        guard needsPhoneSetup == false else { return }
-        await runAction { [self] in
-            try await self.backendClient.refreshFavoriteItems(using: self.state)
-        }
+        await refreshSelectedList()
     }
 
-    func addDraftItem() async {
+    func showList(_ list: GroceryListSummary) async {
+        if selectedListID != list.id {
+            selectedListID = list.id
+            if state.items.first?.listID != list.id {
+                state.items = []
+            }
+        }
+        await refreshSelectedList()
+    }
+
+    func addDraftItem(to list: GroceryListSummary) async {
         let name = draftItemName
         draftItemName = ""
         await runAction { [self] in
-            try await self.backendClient.addItem(named: name, using: self.state)
+            try await self.backendClient.addItem(named: name, to: list.id, using: self.state)
         }
     }
 
-    func quickAdd() async {
+    func toggle(_ item: GroceryItemRecord, in list: GroceryListSummary) async {
         await runAction { [self] in
-            try await self.backendClient.addItem(named: self.state.quickAddItemName, using: self.state)
-        }
-    }
-
-    func toggle(_ item: GroceryItemRecord) async {
-        await runAction { [self] in
-            try await self.backendClient.toggle(item, using: self.state)
+            try await self.backendClient.toggle(item, in: list.id, using: self.state)
         }
     }
 
@@ -91,8 +116,7 @@ final class WatchAppViewModel: ObservableObject {
 
     private func syncLatestState() async {
         guard let updatedState = await connectivityBridge.requestLatestStateAsync() else { return }
-        state = updatedState
-        store.save(updatedState)
+        applySyncedState(updatedState)
     }
 
     private func clearAuthenticatedSession() {
@@ -100,6 +124,27 @@ final class WatchAppViewModel: ObservableObject {
         updatedState.authToken = nil
         updatedState.items = []
         state = updatedState
+        store.save(updatedState)
+    }
+
+    private func refreshSelectedList() async {
+        guard
+            needsPhoneSetup == false,
+            let selectedListID
+        else {
+            return
+        }
+
+        await runAction { [self] in
+            try await self.backendClient.refreshItems(for: selectedListID, using: self.state)
+        }
+    }
+
+    private func applySyncedState(_ updatedState: SharedAppState) {
+        state = updatedState
+        if selectedListID == nil || displayedLists.contains(where: { $0.id == selectedListID }) == false {
+            selectedListID = updatedState.favoriteListID ?? updatedState.lists.first?.id
+        }
         store.save(updatedState)
     }
 }

@@ -27,9 +27,14 @@ enum WatchBackendClientError: LocalizedError, Equatable {
 struct WatchBackendClient {
     func refreshFavoriteItems(using state: SharedAppState) async throws -> SharedAppState {
         let session = try requireSession(from: state)
+        return try await refreshItems(for: session.favoriteListID, using: state)
+    }
+
+    func refreshItems(for listID: UUID, using state: SharedAppState) async throws -> SharedAppState {
+        let session = try requireSession(from: state)
         let items = try await requestArray(
             backendURL: session.backendURL,
-            path: "/api/v1/lists/\(session.favoriteListID.uuidString)/items",
+            path: "/api/v1/lists/\(listID.uuidString)/items",
             token: session.authToken
         ).compactMap(GroceryItemRecord.init)
 
@@ -40,12 +45,17 @@ struct WatchBackendClient {
 
     func addItem(named name: String, using state: SharedAppState) async throws -> SharedAppState {
         let session = try requireSession(from: state)
+        return try await addItem(named: name, to: session.favoriteListID, using: state)
+    }
+
+    func addItem(named name: String, to listID: UUID, using state: SharedAppState) async throws -> SharedAppState {
+        let session = try requireSession(from: state)
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmedName.isEmpty == false else { return state }
 
         _ = try await requestJSON(
             backendURL: session.backendURL,
-            path: "/api/v1/lists/\(session.favoriteListID.uuidString)/items",
+            path: "/api/v1/lists/\(listID.uuidString)/items",
             method: "POST",
             body: [
                 "name": trimmedName,
@@ -56,10 +66,10 @@ struct WatchBackendClient {
             token: session.authToken
         )
 
-        return try await refreshFavoriteItems(using: state)
+        return try await refreshItems(for: listID, using: state)
     }
 
-    func toggle(_ item: GroceryItemRecord, using state: SharedAppState) async throws -> SharedAppState {
+    func toggle(_ item: GroceryItemRecord, in listID: UUID, using state: SharedAppState) async throws -> SharedAppState {
         let session = try requireSession(from: state)
         let suffix = item.checked ? "uncheck" : "check"
 
@@ -71,7 +81,7 @@ struct WatchBackendClient {
             token: session.authToken
         )
 
-        return try await refreshFavoriteItems(using: state)
+        return try await refreshItems(for: listID, using: state)
     }
 
     private func requireSession(from state: SharedAppState) throws -> (

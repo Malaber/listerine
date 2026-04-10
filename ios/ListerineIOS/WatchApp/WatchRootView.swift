@@ -10,12 +10,10 @@ struct WatchRootView: View {
                 if viewModel.needsPhoneSetup {
                     setupSection
                 } else {
-                    quickAddSection
-                    addItemSection
-                    itemsSection
+                    listsSection
                 }
             }
-            .navigationTitle(viewModel.favoriteListName)
+            .navigationTitle("Lists")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -54,42 +52,86 @@ struct WatchRootView: View {
         }
     }
 
-    private var quickAddSection: some View {
+    private var listsSection: some View {
         Section {
-            Button {
-                Task { await viewModel.quickAdd() }
-            } label: {
-                Label("Add \(viewModel.quickAddLabel)", systemImage: "plus.circle.fill")
+            ForEach(viewModel.displayedLists) { list in
+                NavigationLink {
+                    WatchListDetailView(list: list)
+                        .environmentObject(viewModel)
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            Text(list.name)
+                            if viewModel.isFavorite(list) {
+                                Image(systemName: "star.fill")
+                                    .foregroundStyle(.yellow)
+                            }
+                        }
+                        Text(list.householdName)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
-            .disabled(viewModel.isWorking)
+        }
+    }
+}
+
+private struct WatchListDetailView: View {
+    @EnvironmentObject private var viewModel: WatchAppViewModel
+    let list: GroceryListSummary
+
+    var body: some View {
+        List {
+            addItemSection
+            itemsSection
+        }
+        .navigationTitle(list.name)
+        .task(id: list.id) {
+            await viewModel.showList(list)
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    Task { await viewModel.showList(list) }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .disabled(viewModel.isWorking)
+            }
         }
     }
 
     private var addItemSection: some View {
-        Section("Add something else") {
-            TextField("Item name", text: $viewModel.draftItemName)
+        Section {
+            TextField("What?", text: $viewModel.draftItemName)
                 .textInputAutocapitalization(.words)
                 .submitLabel(.done)
                 .onSubmit {
-                    Task { await viewModel.addDraftItem() }
+                    Task { await viewModel.addDraftItem(to: list) }
                 }
 
-            Button("Add item") {
-                Task { await viewModel.addDraftItem() }
+            Button("Add") {
+                Task { await viewModel.addDraftItem(to: list) }
             }
-            .disabled(viewModel.draftItemName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isWorking)
+            .disabled(
+                viewModel.draftItemName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || viewModel.isWorking
+            )
+        } header: {
+            Text("Add item")
         }
     }
 
     private var itemsSection: some View {
         Section("Items") {
-            if viewModel.state.items.isEmpty {
+            if viewModel.items(for: list).isEmpty {
                 Text("Nothing on this list right now.")
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(viewModel.state.items) { item in
+                ForEach(viewModel.items(for: list)) { item in
                     Button {
-                        Task { await viewModel.toggle(item) }
+                        Task { await viewModel.toggle(item, in: list) }
                     } label: {
                         HStack(spacing: 8) {
                             Image(systemName: item.checked ? "checkmark.circle.fill" : "circle")
