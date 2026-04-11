@@ -49,27 +49,27 @@ DEFAULT_IOS_E2E_BASE_URL = f"http://localhost:{DEFAULT_IOS_E2E_PORT}"
 DEFAULT_IOS_E2E_DATABASE_URL = "sqlite+aiosqlite:///./tmp-ios-e2e.db"
 DEFAULT_IOS_E2E_LOG_PATH = "ios-e2e-server.log"
 DEFAULT_IOS_E2E_PID_PATH = "ios-e2e-server.pid"
-DEFAULT_IOS_E2E_USER_EMAIL = "listerine@schaedler.rocks"
+DEFAULT_IOS_E2E_USER_EMAIL = "planini@schaedler.rocks"
 DEFAULT_IOS_UI_E2E_PORT = 8018
 DEFAULT_IOS_UI_E2E_BASE_URL = f"http://localhost:{DEFAULT_IOS_UI_E2E_PORT}"
 DEFAULT_IOS_UI_E2E_DATABASE_URL = "sqlite+aiosqlite:///./tmp-ios-ui-e2e.db"
 DEFAULT_IOS_UI_E2E_LOG_PATH = "ios-ui-e2e-server.log"
 DEFAULT_IOS_UI_E2E_PID_PATH = "ios-ui-e2e-server.pid"
 DEFAULT_IOS_UI_E2E_ARTIFACT_DIR = "e2e-artifacts/ios-ui-e2e"
-DEFAULT_IOS_UI_E2E_RESULT_BUNDLE = "ListerineUITests.xcresult"
+DEFAULT_IOS_UI_E2E_RESULT_BUNDLE = "PlaniniUITests.xcresult"
 DEFAULT_IOS_UI_E2E_DEVICE = "iPhone 17 Pro"
 DEFAULT_IOS_UI_E2E_INITIAL_LIST = "Browser Test Shop"
 DEFAULT_IOS_SIMULATOR_DESTINATION = "generic/platform=iOS Simulator"
-DEFAULT_IOS_APP_BACKEND_URL = "https://listerine.malaber.de"
-DEFAULT_IOS_APP_BUNDLE_IDENTIFIER = "de.malaber.listerine"
-DEFAULT_IOS_WATCH_APP_BUNDLE_IDENTIFIER = "de.malaber.listerine.watchkitapp"
+DEFAULT_IOS_APP_BACKEND_URL = "https://planini.malaber.de"
+DEFAULT_IOS_APP_BUNDLE_IDENTIFIER = "de.malaber.planini"
+DEFAULT_IOS_WATCH_APP_BUNDLE_IDENTIFIER = "de.malaber.planini.watchkitapp"
 DEFAULT_IOS_APP_DEVELOPMENT_TEAM = "VWKG94374J"
 DEFAULT_IOS_SIMULATOR_PHONE_DEVICE = "iPhone 17 Pro"
 DEFAULT_IOS_SIMULATOR_WATCH_DEVICE = "Apple Watch Ultra 2 (49mm)"
-IOS_PROJECT_YML_PATH = ROOT / "ios" / "ListerineIOS" / "project.yml"
-IOS_ENTITLEMENTS_PATH = ROOT / "ios" / "ListerineIOS" / "App" / "Listerine.entitlements"
+IOS_PROJECT_YML_PATH = ROOT / "ios" / "PlaniniIOS" / "project.yml"
+IOS_ENTITLEMENTS_PATH = ROOT / "ios" / "PlaniniIOS" / "App" / "Planini.entitlements"
 IOS_GENERATED_CONFIG_PATH = (
-    ROOT / "ios" / "ListerineIOS" / "App" / "BuildConfiguration.generated.swift"
+    ROOT / "ios" / "PlaniniIOS" / "App" / "BuildConfiguration.generated.swift"
 )
 STABLE_TAG_PATTERN = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 
@@ -182,17 +182,17 @@ def _ios_ui_test_env(
     env = _ios_toolchain_env()
     env.update(
         {
-            "LISTERINE_UI_TEST_BASE_URL": base_url,
-            "LISTERINE_UI_TEST_BOOTSTRAP_BASE_URL": bootstrap_base_url,
-            "LISTERINE_UI_TEST_USER_EMAIL": user_email,
-            "LISTERINE_UI_TEST_ARTIFACT_DIR": str((ROOT / artifact_dir).resolve()),
-            "LISTERINE_UI_TEST_INITIAL_LIST_NAME": initial_list_name,
+            "PLANINI_UI_TEST_BASE_URL": base_url,
+            "PLANINI_UI_TEST_BOOTSTRAP_BASE_URL": bootstrap_base_url,
+            "PLANINI_UI_TEST_USER_EMAIL": user_email,
+            "PLANINI_UI_TEST_ARTIFACT_DIR": str((ROOT / artifact_dir).resolve()),
+            "PLANINI_UI_TEST_INITIAL_LIST_NAME": initial_list_name,
         }
     )
     if access_token:
-        env["LISTERINE_UI_TEST_ACCESS_TOKEN"] = access_token
+        env["PLANINI_UI_TEST_ACCESS_TOKEN"] = access_token
     if display_name:
-        env["LISTERINE_UI_TEST_DISPLAY_NAME"] = display_name
+        env["PLANINI_UI_TEST_DISPLAY_NAME"] = display_name
     return env
 
 
@@ -385,22 +385,22 @@ def _ios_e2e_env(
     user_email: str,
     origin: str = "",
 ) -> dict[str, str]:
-    package_dir = ROOT / "ios" / "ListerineIOS"
+    package_dir = ROOT / "ios" / "PlaniniIOS"
     clang_module_cache = package_dir / ".clang-module-cache"
     clang_module_cache.mkdir(parents=True, exist_ok=True)
 
     env = os.environ.copy()
     env.update(
         {
-            "LISTERINE_E2E_BASE_URL": base_url,
-            "LISTERINE_E2E_SEED_PATH": (
+            "PLANINI_E2E_BASE_URL": base_url,
+            "PLANINI_E2E_SEED_PATH": (
                 str((ROOT / e2e_seed_path).resolve())
                 if not os.path.isabs(e2e_seed_path)
                 else e2e_seed_path
             ),
-            "LISTERINE_E2E_USER_EMAIL": user_email,
-            "LISTERINE_E2E_RP_ID": webauthn_rp_id,
-            "LISTERINE_E2E_ORIGIN": origin.strip(),
+            "PLANINI_E2E_USER_EMAIL": user_email,
+            "PLANINI_E2E_RP_ID": webauthn_rp_id,
+            "PLANINI_E2E_ORIGIN": origin.strip(),
             "DEVELOPER_DIR": env.get("DEVELOPER_DIR", "/Applications/Xcode.app/Contents/Developer"),
             "CLANG_MODULE_CACHE_PATH": env.get(
                 "CLANG_MODULE_CACHE_PATH", str(clang_module_cache.resolve())
@@ -411,7 +411,7 @@ def _ios_e2e_env(
 
 
 def _ios_toolchain_env() -> dict[str, str]:
-    package_dir = ROOT / "ios" / "ListerineIOS"
+    package_dir = ROOT / "ios" / "PlaniniIOS"
     clang_module_cache = package_dir / ".clang-module-cache"
     clang_module_cache.mkdir(parents=True, exist_ok=True)
 
@@ -587,14 +587,14 @@ def _build_ios_product_paths(derived_data_path: Path, configuration: str) -> tup
         / "Build"
         / "Products"
         / f"{configuration}-iphonesimulator"
-        / "Listerine.app"
+        / "Planini.app"
     )
     watch_app_path = (
         derived_data_path
         / "Build"
         / "Products"
         / f"{configuration}-watchsimulator"
-        / "Listerine Watch.app"
+        / "Planini Watch.app"
     )
     return ios_app_path, watch_app_path
 
@@ -958,7 +958,7 @@ def run_browser_e2e(
         "package_path": "Swift package path for the reusable iOS core.",
     }
 )
-def check_ios_package(c, package_path="ios/ListerineIOS") -> None:
+def check_ios_package(c, package_path="ios/PlaniniIOS") -> None:
     env = _ios_toolchain_env()
     c.run(
         f"xcrun swift test --package-path {shlex.quote(package_path)} --enable-code-coverage",
@@ -986,7 +986,7 @@ def install_xcodegen(c) -> None:
         "passkey_domain": (
             "Optional Associated Domains host for native passkeys. Defaults to "
             "the backend host, but can be a shared parent domain such as "
-            "pr.listerine.malaber.de."
+            "pr.planini.malaber.de."
         ),
         "bundle_id": (
             "Bundle identifier used for the native app build; the final Apple "
@@ -1024,7 +1024,7 @@ def configure_ios_app(
     )
     project_yml = _replace_project_setting(
         project_yml,
-        "INFOPLIST_KEY_ListerineBackendBaseURL",
+        "INFOPLIST_KEY_PlaniniBackendBaseURL",
         backend_url,
     )
     IOS_PROJECT_YML_PATH.write_text(project_yml, encoding="utf-8")
@@ -1040,7 +1040,7 @@ def configure_ios_app(
         "project_dir": "Directory that contains the iOS XcodeGen project spec.",
     }
 )
-def generate_ios_project(c, project_dir="ios/ListerineIOS") -> None:
+def generate_ios_project(c, project_dir="ios/PlaniniIOS") -> None:
     c.run(
         f"cd {shlex.quote(project_dir)} && xcodegen generate",
         pty=False,
@@ -1058,8 +1058,8 @@ def generate_ios_project(c, project_dir="ios/ListerineIOS") -> None:
 )
 def build_ios_simulator(
     c,
-    project_dir="ios/ListerineIOS",
-    scheme="Listerine",
+    project_dir="ios/PlaniniIOS",
+    scheme="Planini",
     configuration="Debug",
     destination=DEFAULT_IOS_SIMULATOR_DESTINATION,
 ) -> None:
@@ -1069,7 +1069,7 @@ def build_ios_simulator(
             [
                 f"cd {shlex.quote(project_dir)} &&",
                 "xcodebuild",
-                "-project ListerineApp.xcodeproj",
+                "-project PlaniniApp.xcodeproj",
                 f"-scheme {shlex.quote(scheme)}",
                 f"-configuration {shlex.quote(configuration)}",
                 f"-destination {shlex.quote(destination)}",
@@ -1101,14 +1101,14 @@ def build_ios_simulator(
 )
 def run_ios_simulators_fresh(
     c,
-    project_dir="ios/ListerineIOS",
-    scheme="Listerine",
+    project_dir="ios/PlaniniIOS",
+    scheme="Planini",
     configuration="Debug",
     phone_device=DEFAULT_IOS_SIMULATOR_PHONE_DEVICE,
     watch_device=DEFAULT_IOS_SIMULATOR_WATCH_DEVICE,
     phone_udid="",
     watch_udid="",
-    derived_data_path="ios/ListerineIOS/.derived-run-fresh",
+    derived_data_path="ios/PlaniniIOS/.derived-run-fresh",
     backend_url_override="http://localhost:8000",
     bootstrap_email=DEFAULT_IOS_E2E_USER_EMAIL,
     initial_list_name=DEFAULT_IOS_UI_E2E_INITIAL_LIST,
@@ -1158,7 +1158,7 @@ def run_ios_simulators_fresh(
         [
             f"cd {shlex.quote(project_dir)} &&",
             "xcodebuild",
-            "-project ListerineApp.xcodeproj",
+            "-project PlaniniApp.xcodeproj",
             f"-scheme {shlex.quote(scheme)}",
             f"-configuration {shlex.quote(configuration)}",
             f"-derivedDataPath {shlex.quote(str(derived_data.resolve()))}",
@@ -1189,13 +1189,11 @@ def run_ios_simulators_fresh(
 
     launch_env = env.copy()
     if backend_url_override.strip():
-        launch_env["SIMCTL_CHILD_LISTERINE_BACKEND_BASE_URL_OVERRIDE"] = (
-            backend_url_override.strip()
-        )
+        launch_env["SIMCTL_CHILD_PLANINI_BACKEND_BASE_URL_OVERRIDE"] = backend_url_override.strip()
     if bootstrap_email.strip():
-        launch_env["SIMCTL_CHILD_LISTERINE_SIMULATOR_BOOTSTRAP_EMAIL"] = bootstrap_email.strip()
+        launch_env["SIMCTL_CHILD_PLANINI_SIMULATOR_BOOTSTRAP_EMAIL"] = bootstrap_email.strip()
     if initial_list_name.strip():
-        launch_env["SIMCTL_CHILD_LISTERINE_SIMULATOR_INITIAL_LIST_NAME"] = initial_list_name.strip()
+        launch_env["SIMCTL_CHILD_PLANINI_SIMULATOR_INITIAL_LIST_NAME"] = initial_list_name.strip()
 
     print(
         "[run-ios-simulators-fresh] Launching iPhone app with backend override "
@@ -1236,16 +1234,14 @@ def stream_ios_simulator_logs(
             watch_udid = _find_paired_watch_udid(env, phone_udid, watch_device)
     print(f"[stream-ios-simulator-logs] iPhone simulator: {phone_udid}")
     print(f"[stream-ios-simulator-logs] Watch simulator: {watch_udid}")
-    print(
-        "[stream-ios-simulator-logs] Streaming Listerine app and watch logs. Press Ctrl+C to stop."
-    )
+    print("[stream-ios-simulator-logs] Streaming Planini app and watch logs. Press Ctrl+C to stop.")
 
     predicate = (
-        'subsystem == "de.malaber.listerine.watch" OR '
-        'subsystem == "de.malaber.listerine.ios" OR '
-        'process == "Listerine" OR '
-        'process == "Listerine Watch" OR '
-        'process == "Listerine Watch Extension"'
+        'subsystem == "de.malaber.planini.watch" OR '
+        'subsystem == "de.malaber.planini.ios" OR '
+        'process == "Planini" OR '
+        'process == "Planini Watch" OR '
+        'process == "Planini Watch Extension"'
     )
     phone_process = subprocess.Popen(
         [
@@ -1315,7 +1311,7 @@ def stream_ios_simulator_logs(
         "origin": (
             "Optional origin embedded into the seeded passkey assertion. Defaults to "
             "the base_url origin, but can be set to a shared native passkey host such "
-            "as https://pr.listerine.malaber.de."
+            "as https://pr.planini.malaber.de."
         ),
     }
 )
@@ -1335,7 +1331,7 @@ def run_ios_e2e(
         origin=origin,
     )
     c.run(
-        "xcrun swift test --package-path ios/ListerineIOS --filter LiveBackendE2ETests",
+        "xcrun swift test --package-path ios/PlaniniIOS --filter LiveBackendE2ETests",
         env=env,
         pty=False,
         shell="/bin/bash",
@@ -1381,14 +1377,14 @@ def run_ios_ui_e2e(
     )
     command = " ".join(
         [
-            "cd ios/ListerineIOS &&",
+            "cd ios/PlaniniIOS &&",
             "xcodebuild",
-            "-project ListerineApp.xcodeproj",
-            "-scheme Listerine",
+            "-project PlaniniApp.xcodeproj",
+            "-scheme Planini",
             f"-destination {shlex.quote(f'platform=iOS Simulator,name={device_name}')}",
             f"-resultBundlePath {shlex.quote(str(result_bundle_path.resolve()))}",
             "-quiet",
-            "-only-testing:ListerineUITests",
+            "-only-testing:PlaniniUITests",
             "test",
         ]
     )

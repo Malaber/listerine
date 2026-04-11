@@ -1,8 +1,8 @@
 {
   "common": {
-    "app_name": "Listerine",
+    "app_name": "Planini",
     "app_tagline": "Haushalte und Einkaufslisten",
-    "home_aria": "Listerine Startseite",
+    "home_aria": "Planini Startseite",
     "settings": "Einstellungen",
     "admin": "Admin",
     "logout": "Abmelden",
@@ -190,8 +190,8 @@
   },
   "capabilities": {
     "kicker": "Funktionsüberblick",
-    "title": "Was Listerine für gemeinsame Einkaufs- und To-do-Listen kann.",
-    "intro": "Listerine ist dafür gebaut, Haushaltsplanung einfach zu halten: gemeinsame Einkaufslisten, praktische Aufgabenverwaltung, datenschutzfreundliche Zusammenarbeit und eine schnelle Oberfläche, die auch im Alltag ruhig bleibt.",
+    "title": "Was Planini für gemeinsame Einkaufs- und To-do-Listen kann.",
+    "intro": "Planini ist dafür gebaut, Haushaltsplanung einfach zu halten: gemeinsame Einkaufslisten, praktische Aufgabenverwaltung, datenschutzfreundliche Zusammenarbeit und eine schnelle Oberfläche, die auch im Alltag ruhig bleibt.",
     "try_live_demo": "Live-Demo ausprobieren",
     "open_real_lists": "Eigene Listen öffnen",
     "live_demo_note": "Die Live-Demo verwendet dieselbe Listenseite und denselben Interaktionscode wie das echte Produkt, nur mit lokal vorbereiteten Beispieldaten statt Backend-Aufrufen.",
@@ -211,7 +211,7 @@
     "household_todos_body": "Derselbe Listenfluss funktioniert für Erledigungen, Hausarbeit, Packlisten, Wochenendplanung und wiederkehrende Aufgaben, ohne das Denkmodell zu wechseln.",
     "privacy_label": "Datenschutz und Nutzbarkeit",
     "privacy_title": "Absichtlich einfach",
-    "privacy_body": "Listerine hält die Oberfläche auf die Liste selbst fokussiert, mit passkeybasierter Anmeldung und ohne private Haushaltsdaten auf öffentlichen Seiten preiszugeben.",
+    "privacy_body": "Planini hält die Oberfläche auf die Liste selbst fokussiert, mit passkeybasierter Anmeldung und ohne private Haushaltsdaten auf öffentlichen Seiten preiszugeben.",
     "demo_kicker": "Interaktive Vorschau",
     "demo_sync_text": "Interaktive Demo läuft lokal.",
     "back_to_roundup": "Zurück zum Funktionsüberblick",

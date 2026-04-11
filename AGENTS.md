@@ -92,7 +92,7 @@ the repo `.venv` before running verification.
 
 - Shared web styling lives in `app/web/static/app.css`.
 - The site favicon is `app/web/static/img/Favicon.png`.
-- The primary logo/wordmark asset is `app/web/static/img/Listerine.png`.
+- The primary logo/wordmark asset is `app/web/static/img/Planini.png`.
 - Brand color tokens are defined at the top of `app/web/static/app.css` as CSS custom properties.
 - When updating the site palette, prefer changing those root tokens first so headers, buttons,
   cards, focus states, and auth screens stay in sync.

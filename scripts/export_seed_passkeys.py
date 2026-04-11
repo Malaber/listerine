@@ -12,8 +12,8 @@ from typing import Any
 from sqlalchemy import bindparam, create_engine, text
 
 DEFAULT_EMAILS = (
-    "listerine_admin@schaedler.rocks",
-    "listerine@schaedler.rocks",
+    "planini_admin@schaedler.rocks",
+    "planini@schaedler.rocks",
 )
 
 

@@ -128,10 +128,10 @@ jobs:
       - name: Comment review URL on pull request
         uses: actions/github-script@v8
         env:
-          REVIEW_URL: https://pr-${{ github.event.pull_request.number }}.pr.listerine.malaber.de
+          REVIEW_URL: https://pr-${{ github.event.pull_request.number }}.pr.planini.malaber.de
         with:
           script: |
-            const marker = '<!-- listerine-review-url -->';
+            const marker = '<!-- planini-review-url -->';
             const body = [
               marker,
               `Review app: ${process.env.REVIEW_URL}`,

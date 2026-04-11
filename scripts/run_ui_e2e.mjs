@@ -425,7 +425,7 @@ async function loginAsAdmin(page, user) {
 }
 
 async function runAdminPasskeyAddLinkFlow(page, seed, rpId) {
-  const adminUser = fixtureUser(seed, "listerine_admin@schaedler.rocks");
+  const adminUser = fixtureUser(seed, "planini_admin@schaedler.rocks");
   const targetUser = fixtureAccount(seed, "review-neighbor@example.com");
 
   logStep("Checking that a normal user cannot access admin user management");

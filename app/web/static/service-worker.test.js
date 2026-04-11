@@ -31,7 +31,7 @@ function createServiceWorkerHarness(options = {}) {
     URL,
     caches: {
       open: async (name) => {
-        assert.equal(name, "listerine-shell-v4");
+        assert.equal(name, "planini-shell-v4");
         return openedCache;
       },
       match: async (request) => {
@@ -123,7 +123,7 @@ test("service worker precaches shell assets and skips waiting", async () => {
         "/static/app.css",
         "/static/app.js",
         "/static/img/Favicon.png",
-        "/static/img/Listerine.png",
+        "/static/img/Planini.png",
         "/static/img/apple-touch-icon.png",
         "/static/img/pwa-192.png",
         "/static/img/pwa-512.png",
@@ -143,12 +143,12 @@ test("service worker tolerates precache failures during install", async () => {
 
 test("service worker clears old caches and claims clients on activate", async () => {
   const harness = createServiceWorkerHarness({
-    cacheKeys: ["listerine-shell-v2", "listerine-shell-v3", "listerine-shell-v4"],
+    cacheKeys: ["planini-shell-v2", "planini-shell-v3", "planini-shell-v4"],
   });
 
   await dispatchExtendableEvent(harness.listeners.get("activate"));
 
-  assert.deepEqual(harness.deletedKeys, ["listerine-shell-v2", "listerine-shell-v3"]);
+  assert.deepEqual(harness.deletedKeys, ["planini-shell-v2", "planini-shell-v3"]);
   assert.equal(harness.self.clients.claimCalled, true);
 });
 

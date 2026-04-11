@@ -4,22 +4,22 @@ The published container is intended to run behind Docker Compose. For a low-traf
 
 ## Runtime characteristics
 
-- image example: `ghcr.io/malaber/listerine:0.1.2`
+- image example: `ghcr.io/malaber/planini:0.1.2`
 - multi-architecture image for `linux/amd64` and `linux/arm64`
 - app port inside the container: `8000`
 - health endpoint: `/health`
 - database migrations run automatically on startup
-- SQLite database path inside the container: `/data/listerine.db`
-- persisted SQLite file on the host: `./data/listerine.db`
+- SQLite database path inside the container: `/data/planini.db`
+- persisted SQLite file on the host: `./data/planini.db`
 
 ## Example `.env`
 
 ```dotenv
-LISTERINE_IMAGE=ghcr.io/malaber/listerine:0.1.2
+PLANINI_IMAGE=ghcr.io/malaber/planini:0.1.2
 SECRET_KEY=replace-this-with-a-long-random-secret
-APP_BASE_URL=https://listerine.example.com
-WEBAUTHN_RP_ID=listerine.example.com
-WEBCREDENTIALS_APPS=["VWKG94374J.de.malaber.listerine"]
+APP_BASE_URL=https://planini.example.com
+WEBAUTHN_RP_ID=planini.example.com
+WEBCREDENTIALS_APPS=["VWKG94374J.de.malaber.planini"]
 SECURE_COOKIES=true
 UVICORN_FORWARDED_ALLOW_IPS=127.0.0.1
 BOOTSTRAP_ADMIN_EMAIL=admin@example.com
@@ -30,11 +30,11 @@ BOOTSTRAP_ADMIN_EMAIL=admin@example.com
 ```yaml
 services:
   app:
-    image: ${LISTERINE_IMAGE}
+    image: ${PLANINI_IMAGE}
     restart: unless-stopped
     environment:
       SECRET_KEY: ${SECRET_KEY}
-      DATABASE_URL: sqlite+aiosqlite:////data/listerine.db
+      DATABASE_URL: sqlite+aiosqlite:////data/planini.db
       APP_BASE_URL: ${APP_BASE_URL}
       WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID}
       WEBCREDENTIALS_APPS: ${WEBCREDENTIALS_APPS}
@@ -71,7 +71,7 @@ If an account owner or admin loses their passkey, you can generate a one-time ad
 ```bash
 docker compose exec app python scripts/create_passkey_reset_link.py \
   --email admin@example.com \
-  --base-url https://listerine.example.com
+  --base-url https://planini.example.com
 ```
 
 If you prefer to target a user by ID instead of email:
@@ -79,7 +79,7 @@ If you prefer to target a user by ID instead of email:
 ```bash
 docker compose exec app python scripts/create_passkey_reset_link.py \
   --user-id 00000000-0000-0000-0000-000000000000 \
-  --base-url https://listerine.example.com
+  --base-url https://planini.example.com
 ```
 
 Notes:
@@ -99,5 +99,5 @@ Notes:
 - make the mounted data directory writable by the container user before first start, for example `sudo chown -R 100:101 data`
 - verify `https://YOUR_HOST/.well-known/apple-app-site-association` returns the expected `webcredentials.apps` payload
 - set `UVICORN_FORWARDED_ALLOW_IPS` to the IP or CIDR of your trusted proxy network
-- keep `./data` on persistent storage so `./data/listerine.db` survives container replacement
-- to upgrade, change `LISTERINE_IMAGE` and run `docker compose pull && docker compose up -d`
+- keep `./data` on persistent storage so `./data/planini.db` survives container replacement
+- to upgrade, change `PLANINI_IMAGE` and run `docker compose pull && docker compose up -d`

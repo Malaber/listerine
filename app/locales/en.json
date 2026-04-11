@@ -1,8 +1,8 @@
 {
   "common": {
-    "app_name": "Listerine",
+    "app_name": "Planini",
     "app_tagline": "Households and grocery lists",
-    "home_aria": "Listerine home",
+    "home_aria": "Planini home",
     "settings": "Settings",
     "admin": "Admin",
     "logout": "Logout",
@@ -190,8 +190,8 @@
   },
   "capabilities": {
     "kicker": "Feature roundup",
-    "title": "What Listerine can do for shared grocery and to-do lists.",
-    "intro": "Listerine is built to make household planning simple: shared shopping lists, practical task tracking, privacy-friendly collaboration, and a fast interface that stays calm even when daily life gets messy.",
+    "title": "What Planini can do for shared grocery and to-do lists.",
+    "intro": "Planini is built to make household planning simple: shared shopping lists, practical task tracking, privacy-friendly collaboration, and a fast interface that stays calm even when daily life gets messy.",
     "try_live_demo": "Try the live demo",
     "open_real_lists": "Open your real lists",
     "live_demo_note": "The live demo uses the same list page and interaction code as the real product, just with local seeded data instead of backend calls.",
@@ -211,7 +211,7 @@
     "household_todos_body": "The same list flow works for errands, chores, packing lists, weekend prep, and recurring home tasks without switching mental models.",
     "privacy_label": "Privacy and usability",
     "privacy_title": "Simple on purpose",
-    "privacy_body": "Listerine keeps the interface focused on the list itself, with passkey-based sign-in and no need to expose private household data on public pages.",
+    "privacy_body": "Planini keeps the interface focused on the list itself, with passkey-based sign-in and no need to expose private household data on public pages.",
     "demo_kicker": "Interactive showcase",
     "demo_sync_text": "Interactive demo running locally.",
     "back_to_roundup": "Back to feature roundup",

@@ -27,7 +27,7 @@ def test_database_url_for_device_uses_distinct_sqlite_file() -> None:
 
 
 def test_database_url_for_device_leaves_non_sqlite_urls_unchanged() -> None:
-    database_url = "postgresql+asyncpg://user:password@example.com/listerine"
+    database_url = "postgresql+asyncpg://user:password@example.com/planini"
 
     assert tasks._database_url_for_device(database_url, "iphone") == database_url
 
@@ -78,7 +78,7 @@ def test_ios_ui_e2e_failure_summaries_returns_empty_without_database(tmp_path: P
 
 
 def test_ios_ui_e2e_failure_summaries_reads_failed_test_messages(tmp_path: Path) -> None:
-    bundle_path = tmp_path / "ListerineUITests.xcresult"
+    bundle_path = tmp_path / "PlaniniUITests.xcresult"
     bundle_path.mkdir()
     database_path = bundle_path / "database.sqlite3"
 
@@ -263,16 +263,16 @@ def test_ios_e2e_env_uses_absolute_seed_and_workspace_cache(tmp_path: Path, monk
         origin="https://passkeys.example.com",
     )
 
-    assert env["LISTERINE_E2E_BASE_URL"] == "http://localhost:8017"
-    assert env["LISTERINE_E2E_SEED_PATH"] == str(
+    assert env["PLANINI_E2E_BASE_URL"] == "http://localhost:8017"
+    assert env["PLANINI_E2E_SEED_PATH"] == str(
         (tmp_path / "app" / "fixtures" / "review_seed_e2e.json").resolve()
     )
-    assert env["LISTERINE_E2E_USER_EMAIL"] == "ios@example.com"
-    assert env["LISTERINE_E2E_RP_ID"] == "localhost"
-    assert env["LISTERINE_E2E_ORIGIN"] == "https://passkeys.example.com"
+    assert env["PLANINI_E2E_USER_EMAIL"] == "ios@example.com"
+    assert env["PLANINI_E2E_RP_ID"] == "localhost"
+    assert env["PLANINI_E2E_ORIGIN"] == "https://passkeys.example.com"
     assert env["DEVELOPER_DIR"] == "/Applications/Xcode.app/Contents/Developer"
     assert env["CLANG_MODULE_CACHE_PATH"] == str(
-        (tmp_path / "ios" / "ListerineIOS" / ".clang-module-cache").resolve()
+        (tmp_path / "ios" / "PlaniniIOS" / ".clang-module-cache").resolve()
     )
 
 
@@ -283,7 +283,7 @@ def test_ios_toolchain_env_uses_workspace_cache(tmp_path: Path, monkeypatch) -> 
 
     assert env["DEVELOPER_DIR"] == "/Applications/Xcode.app/Contents/Developer"
     assert env["CLANG_MODULE_CACHE_PATH"] == str(
-        (tmp_path / "ios" / "ListerineIOS" / ".clang-module-cache").resolve()
+        (tmp_path / "ios" / "PlaniniIOS" / ".clang-module-cache").resolve()
     )
 
 
@@ -303,11 +303,11 @@ def test_ios_ui_test_env_uses_absolute_artifact_path(tmp_path: Path, monkeypatch
         initial_list_name="Browser Test Shop",
     )
 
-    assert env["LISTERINE_UI_TEST_BASE_URL"] == "http://localhost:8018"
-    assert env["LISTERINE_UI_TEST_BOOTSTRAP_BASE_URL"] == "http://127.0.0.1:8018"
-    assert env["LISTERINE_UI_TEST_USER_EMAIL"] == "ios@example.com"
-    assert env["LISTERINE_UI_TEST_INITIAL_LIST_NAME"] == "Browser Test Shop"
-    assert env["LISTERINE_UI_TEST_ARTIFACT_DIR"] == str(
+    assert env["PLANINI_UI_TEST_BASE_URL"] == "http://localhost:8018"
+    assert env["PLANINI_UI_TEST_BOOTSTRAP_BASE_URL"] == "http://127.0.0.1:8018"
+    assert env["PLANINI_UI_TEST_USER_EMAIL"] == "ios@example.com"
+    assert env["PLANINI_UI_TEST_INITIAL_LIST_NAME"] == "Browser Test Shop"
+    assert env["PLANINI_UI_TEST_ARTIFACT_DIR"] == str(
         (tmp_path / "e2e-artifacts" / "ios-ui-e2e").resolve()
     )
 
@@ -330,8 +330,8 @@ def test_ios_ui_test_env_includes_injected_session_values(tmp_path: Path, monkey
         display_name="Test User",
     )
 
-    assert env["LISTERINE_UI_TEST_ACCESS_TOKEN"] == "test-token"
-    assert env["LISTERINE_UI_TEST_DISPLAY_NAME"] == "Test User"
+    assert env["PLANINI_UI_TEST_ACCESS_TOKEN"] == "test-token"
+    assert env["PLANINI_UI_TEST_DISPLAY_NAME"] == "Test User"
 
 
 def test_bootstrap_ios_ui_test_session_returns_access_token(monkeypatch) -> None:
@@ -404,7 +404,7 @@ def test_validated_ios_backend_host_rejects_invalid_urls() -> None:
 
 
 def test_write_ios_entitlements_uses_configured_host(tmp_path: Path, monkeypatch) -> None:
-    entitlements_path = tmp_path / "Listerine.entitlements"
+    entitlements_path = tmp_path / "Planini.entitlements"
     monkeypatch.setattr(tasks, "IOS_ENTITLEMENTS_PATH", entitlements_path)
 
     tasks._write_ios_entitlements("example.com")
@@ -419,13 +419,13 @@ def test_configure_ios_app_updates_project_and_entitlements(monkeypatch, tmp_pat
             [
                 "PRODUCT_BUNDLE_IDENTIFIER: com.example.old",
                 "DEVELOPMENT_TEAM: OLDTEAM123",
-                "INFOPLIST_KEY_ListerineBackendBaseURL: https://old.example.com",
+                "INFOPLIST_KEY_PlaniniBackendBaseURL: https://old.example.com",
                 "",
             ]
         ),
         encoding="utf-8",
     )
-    entitlements_path = tmp_path / "Listerine.entitlements"
+    entitlements_path = tmp_path / "Planini.entitlements"
     generated_config_path = tmp_path / "BuildConfiguration.generated.swift"
     calls: list[str] = []
 
@@ -449,7 +449,7 @@ def test_configure_ios_app_updates_project_and_entitlements(monkeypatch, tmp_pat
     project_contents = project_path.read_text(encoding="utf-8")
     assert "PRODUCT_BUNDLE_IDENTIFIER: com.example.selfhost" in project_contents
     assert "DEVELOPMENT_TEAM: NEWTEAM456" in project_contents
-    assert "INFOPLIST_KEY_ListerineBackendBaseURL: https://selfhost.example.com" in project_contents
+    assert "INFOPLIST_KEY_PlaniniBackendBaseURL: https://selfhost.example.com" in project_contents
     assert "webcredentials:passkeys.example.com" in entitlements_path.read_text(encoding="utf-8")
     assert (
         'static let backendURL = "https://selfhost.example.com"'
@@ -501,11 +501,11 @@ def test_check_ios_package_invokes_swift_test(monkeypatch) -> None:
         lambda: {"DEVELOPER_DIR": "/Applications/Xcode.app/Contents/Developer"},
     )
 
-    tasks.check_ios_package.body(Context(), package_path="ios/ListerineIOS")
+    tasks.check_ios_package.body(Context(), package_path="ios/PlaniniIOS")
 
     assert calls == [
         (
-            "xcrun swift test --package-path ios/ListerineIOS --enable-code-coverage",
+            "xcrun swift test --package-path ios/PlaniniIOS --enable-code-coverage",
             {
                 "env": {"DEVELOPER_DIR": "/Applications/Xcode.app/Contents/Developer"},
                 "pty": False,
@@ -523,11 +523,11 @@ def test_generate_ios_project_invokes_xcodegen() -> None:
             calls.append((command, kwargs))
             return RunResult(exited=0)
 
-    tasks.generate_ios_project.body(Context(), project_dir="ios/ListerineIOS")
+    tasks.generate_ios_project.body(Context(), project_dir="ios/PlaniniIOS")
 
     assert calls == [
         (
-            "cd ios/ListerineIOS && xcodegen generate",
+            "cd ios/PlaniniIOS && xcodegen generate",
             {
                 "pty": False,
                 "shell": "/bin/bash",
@@ -573,17 +573,17 @@ def test_build_ios_simulator_invokes_xcodebuild(monkeypatch) -> None:
 
     tasks.build_ios_simulator.body(
         Context(),
-        project_dir="ios/ListerineIOS",
-        scheme="Listerine",
+        project_dir="ios/PlaniniIOS",
+        scheme="Planini",
         configuration="Debug",
         destination="generic/platform=iOS Simulator",
     )
 
     assert calls == [
         (
-            "cd ios/ListerineIOS && "
-            "xcodebuild -project ListerineApp.xcodeproj "
-            "-scheme Listerine "
+            "cd ios/PlaniniIOS && "
+            "xcodebuild -project PlaniniApp.xcodeproj "
+            "-scheme Planini "
             "-configuration Debug "
             "-destination 'generic/platform=iOS Simulator' "
             "-quiet "
@@ -609,11 +609,11 @@ def test_run_ios_e2e_invokes_swift_test_with_expected_env(monkeypatch) -> None:
         tasks,
         "_ios_e2e_env",
         lambda **kwargs: {
-            "LISTERINE_E2E_BASE_URL": kwargs["base_url"],
-            "LISTERINE_E2E_SEED_PATH": kwargs["e2e_seed_path"],
-            "LISTERINE_E2E_RP_ID": kwargs["webauthn_rp_id"],
-            "LISTERINE_E2E_USER_EMAIL": kwargs["user_email"],
-            "LISTERINE_E2E_ORIGIN": kwargs["origin"],
+            "PLANINI_E2E_BASE_URL": kwargs["base_url"],
+            "PLANINI_E2E_SEED_PATH": kwargs["e2e_seed_path"],
+            "PLANINI_E2E_RP_ID": kwargs["webauthn_rp_id"],
+            "PLANINI_E2E_USER_EMAIL": kwargs["user_email"],
+            "PLANINI_E2E_ORIGIN": kwargs["origin"],
         },
     )
 
@@ -628,14 +628,14 @@ def test_run_ios_e2e_invokes_swift_test_with_expected_env(monkeypatch) -> None:
 
     assert calls == [
         (
-            "xcrun swift test --package-path ios/ListerineIOS --filter LiveBackendE2ETests",
+            "xcrun swift test --package-path ios/PlaniniIOS --filter LiveBackendE2ETests",
             {
                 "env": {
-                    "LISTERINE_E2E_BASE_URL": "http://localhost:8017",
-                    "LISTERINE_E2E_SEED_PATH": "app/fixtures/review_seed_e2e.json",
-                    "LISTERINE_E2E_RP_ID": "localhost",
-                    "LISTERINE_E2E_USER_EMAIL": "ios@example.com",
-                    "LISTERINE_E2E_ORIGIN": "https://passkeys.example.com",
+                    "PLANINI_E2E_BASE_URL": "http://localhost:8017",
+                    "PLANINI_E2E_SEED_PATH": "app/fixtures/review_seed_e2e.json",
+                    "PLANINI_E2E_RP_ID": "localhost",
+                    "PLANINI_E2E_USER_EMAIL": "ios@example.com",
+                    "PLANINI_E2E_ORIGIN": "https://passkeys.example.com",
                 },
                 "pty": False,
                 "shell": "/bin/bash",
@@ -660,13 +660,13 @@ def test_run_ios_ui_e2e_invokes_xcodebuild_with_expected_env(monkeypatch, tmp_pa
         tasks,
         "_ios_ui_test_env",
         lambda **kwargs: {
-            "LISTERINE_UI_TEST_BASE_URL": kwargs["base_url"],
-            "LISTERINE_UI_TEST_BOOTSTRAP_BASE_URL": kwargs["bootstrap_base_url"],
-            "LISTERINE_UI_TEST_USER_EMAIL": kwargs["user_email"],
-            "LISTERINE_UI_TEST_ARTIFACT_DIR": kwargs["artifact_dir"],
-            "LISTERINE_UI_TEST_INITIAL_LIST_NAME": kwargs["initial_list_name"],
-            "LISTERINE_UI_TEST_ACCESS_TOKEN": kwargs["access_token"],
-            "LISTERINE_UI_TEST_DISPLAY_NAME": kwargs["display_name"],
+            "PLANINI_UI_TEST_BASE_URL": kwargs["base_url"],
+            "PLANINI_UI_TEST_BOOTSTRAP_BASE_URL": kwargs["bootstrap_base_url"],
+            "PLANINI_UI_TEST_USER_EMAIL": kwargs["user_email"],
+            "PLANINI_UI_TEST_ARTIFACT_DIR": kwargs["artifact_dir"],
+            "PLANINI_UI_TEST_INITIAL_LIST_NAME": kwargs["initial_list_name"],
+            "PLANINI_UI_TEST_ACCESS_TOKEN": kwargs["access_token"],
+            "PLANINI_UI_TEST_DISPLAY_NAME": kwargs["display_name"],
         },
     )
     summaries: list[str] = []
@@ -688,19 +688,19 @@ def test_run_ios_ui_e2e_invokes_xcodebuild_with_expected_env(monkeypatch, tmp_pa
 
     assert calls == [
         (
-            "cd ios/ListerineIOS && xcodebuild -project ListerineApp.xcodeproj "
-            "-scheme Listerine -destination 'platform=iOS Simulator,name=iPhone 17' "
+            "cd ios/PlaniniIOS && xcodebuild -project PlaniniApp.xcodeproj "
+            "-scheme Planini -destination 'platform=iOS Simulator,name=iPhone 17' "
             f"-resultBundlePath {str(result_bundle_path.resolve())} -quiet "
-            "-only-testing:ListerineUITests test",
+            "-only-testing:PlaniniUITests test",
             {
                 "env": {
-                    "LISTERINE_UI_TEST_BASE_URL": "http://localhost:8018",
-                    "LISTERINE_UI_TEST_BOOTSTRAP_BASE_URL": "http://127.0.0.1:8018",
-                    "LISTERINE_UI_TEST_USER_EMAIL": "ios@example.com",
-                    "LISTERINE_UI_TEST_ARTIFACT_DIR": "e2e-artifacts/ios-ui-e2e",
-                    "LISTERINE_UI_TEST_INITIAL_LIST_NAME": "Browser Test Shop",
-                    "LISTERINE_UI_TEST_ACCESS_TOKEN": "token-123",
-                    "LISTERINE_UI_TEST_DISPLAY_NAME": "Test User",
+                    "PLANINI_UI_TEST_BASE_URL": "http://localhost:8018",
+                    "PLANINI_UI_TEST_BOOTSTRAP_BASE_URL": "http://127.0.0.1:8018",
+                    "PLANINI_UI_TEST_USER_EMAIL": "ios@example.com",
+                    "PLANINI_UI_TEST_ARTIFACT_DIR": "e2e-artifacts/ios-ui-e2e",
+                    "PLANINI_UI_TEST_INITIAL_LIST_NAME": "Browser Test Shop",
+                    "PLANINI_UI_TEST_ACCESS_TOKEN": "token-123",
+                    "PLANINI_UI_TEST_DISPLAY_NAME": "Test User",
                 },
                 "pty": False,
                 "shell": "/bin/bash",
