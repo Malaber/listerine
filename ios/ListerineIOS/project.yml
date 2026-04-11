@@ -14,6 +14,8 @@ targets:
       - path: Assets.xcassets
         type: folder
     dependencies:
+      - target: ListerineWatchApp
+        embed: true
       - package: ListerineCore
         product: ListerineCore
     settings:
@@ -34,6 +36,78 @@ targets:
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.food-and-drink
+  ListerineWatchApp:
+    type: com.apple.product-type.application.watchapp2
+    platform: watchOS
+    deploymentTarget: "10.0"
+    sources:
+      - path: WatchApp
+        excludes:
+          - "*.swift"
+          - "*.plist"
+    dependencies:
+      - target: ListerineWatchExtension
+        embed: true
+      - target: ListerineWatchWidgetExtension
+        embed: true
+    settings:
+      base:
+        PRODUCT_NAME: Listerine Watch
+        PRODUCT_BUNDLE_IDENTIFIER: de.malaber.listerine.watchkitapp
+        DEVELOPMENT_TEAM: VWKG94374J
+        MARKETING_VERSION: 0.1.0
+        CURRENT_PROJECT_VERSION: 1
+        SWIFT_VERSION: 5.10
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: WatchApp/Info.plist
+  ListerineWatchExtension:
+    type: com.apple.product-type.watchkit2-extension
+    platform: watchOS
+    deploymentTarget: "10.0"
+    sources:
+      - path: WatchApp
+        excludes:
+          - "*.entitlements"
+          - "*.plist"
+      - path: WatchShared
+    dependencies:
+      - package: ListerineCore
+        product: ListerineCore
+    settings:
+      base:
+        PRODUCT_NAME: Listerine Watch Extension
+        PRODUCT_BUNDLE_IDENTIFIER: de.malaber.listerine.watchkitapp.watchkitextension
+        DEVELOPMENT_TEAM: VWKG94374J
+        MARKETING_VERSION: 0.1.0
+        CURRENT_PROJECT_VERSION: 1
+        SWIFT_VERSION: 5.10
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: WatchApp/ExtensionInfo.plist
+        CODE_SIGN_ENTITLEMENTS: WatchApp/ListerineWatch.entitlements
+  ListerineWatchWidgetExtension:
+    type: app-extension
+    platform: watchOS
+    deploymentTarget: "10.0"
+    sources:
+      - path: WatchWidget
+        excludes:
+          - "*.entitlements"
+          - "*.plist"
+      - path: WatchShared
+    dependencies:
+      - package: ListerineCore
+        product: ListerineCore
+    settings:
+      base:
+        PRODUCT_NAME: Listerine Watch Widgets
+        PRODUCT_BUNDLE_IDENTIFIER: de.malaber.listerine.watchkitapp.widget
+        DEVELOPMENT_TEAM: VWKG94374J
+        MARKETING_VERSION: 0.1.0
+        CURRENT_PROJECT_VERSION: 1
+        SWIFT_VERSION: 5.10
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: WatchWidget/Info.plist
+        CODE_SIGN_ENTITLEMENTS: WatchWidget/ListerineWatchWidget.entitlements
   ListerineUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -55,6 +129,9 @@ schemes:
     build:
       targets:
         Listerine: all
+        ListerineWatchApp: all
+        ListerineWatchExtension: all
+        ListerineWatchWidgetExtension: all
     test:
       gatherCoverageData: false
       targets:

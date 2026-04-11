@@ -5,6 +5,7 @@ let package = Package(
     name: "ListerineIOS",
     platforms: [
         .iOS(.v16),
+        .watchOS(.v10),
         .macOS(.v13)
     ],
     products: [

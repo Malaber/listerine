@@ -7,6 +7,7 @@ import FoundationNetworking
 import ListerineCore
 import Testing
 
+@Suite(.serialized)
 struct LiveBackendE2ETests {
     @Test("Seeded passkey login and list CRUD against a live backend")
     func seededPasskeyLoginAndListCrud() async throws {
@@ -16,26 +17,11 @@ struct LiveBackendE2ETests {
 
         let fixture = try SeedFixture.load(from: config.seedPath, userEmail: config.userEmail)
         let client = LiveBackendClient(baseURL: config.baseURL)
-
-        let loginOptions = try await client.jsonObject(
-            path: "/api/v1/auth/login/options",
-            method: "POST",
-            body: [:],
-            token: nil
+        let accessToken = try await loginSeededUser(
+            fixture: fixture,
+            client: client,
+            config: config
         )
-        let credential = try SeededAssertionFactory.makeCredential(
-            options: loginOptions,
-            origin: config.origin,
-            fallbackRelyingPartyIdentifier: config.rpID,
-            passkey: fixture.passkey
-        )
-        let tokenPayload = try await client.jsonObject(
-            path: "/api/v1/auth/login/verify",
-            method: "POST",
-            body: ["credential": credential],
-            token: nil
-        )
-        let accessToken = try #require(tokenPayload["access_token"] as? String)
 
         let me = try await client.jsonObject(
             path: "/api/v1/auth/me",
@@ -176,6 +162,142 @@ struct LiveBackendE2ETests {
         )
         #expect(itemsAfterDelete.contains(where: { ($0["id"] as? String) == itemID }) == false)
     }
+
+    @Test("List websocket emits live item lifecycle events against a live backend")
+    func listWebsocketEmitsItemLifecycleEvents() async throws {
+        guard let config = LiveBackendE2EConfiguration.fromEnvironment() else {
+            return
+        }
+
+        let fixture = try SeedFixture.load(from: config.seedPath, userEmail: config.userEmail)
+        let client = LiveBackendClient(baseURL: config.baseURL)
+        let accessToken = try await loginSeededUser(
+            fixture: fixture,
+            client: client,
+            config: config
+        )
+
+        let households = try await client.jsonArray(
+            path: "/api/v1/households",
+            token: accessToken
+        )
+        let household = try #require(households.first { $0["name"] as? String == fixture.primaryHouseholdName })
+        let householdID = try #require(household["id"] as? String)
+        let lists = try await client.jsonArray(
+            path: "/api/v1/households/\(householdID)/lists",
+            token: accessToken
+        )
+        let list = try #require(lists.first { $0["name"] as? String == fixture.primaryListName })
+        let listID = try #require(list["id"] as? String)
+
+        let socket = try client.openListWebSocket(listID: listID, token: accessToken)
+        defer {
+            socket.cancel(with: .normalClosure, reason: nil)
+        }
+
+        let snapshot = try await client.receiveWebSocketEvent(from: socket)
+        #expect(snapshot.type == "list_snapshot")
+
+        let uniqueSuffix = UUID().uuidString.prefix(8)
+        let originalName = "WebSocket E2E \(uniqueSuffix)"
+        let updatedName = "\(originalName) Updated"
+
+        let created = try await client.jsonObject(
+            path: "/api/v1/lists/\(listID)/items",
+            method: "POST",
+            body: [
+                "name": originalName,
+                "quantity_text": NSNull(),
+                "note": "Created by websocket e2e",
+                "category_id": NSNull(),
+            ],
+            token: accessToken
+        )
+        let itemID = try #require(created["id"] as? String)
+
+        let createdEvent = try await client.receiveWebSocketEvent(from: socket)
+        #expect(createdEvent.type == "item_created")
+        #expect(createdEvent.itemID?.lowercased() == itemID.lowercased())
+
+        _ = try await client.jsonObject(
+            path: "/api/v1/items/\(itemID)",
+            method: "PATCH",
+            body: [
+                "name": updatedName,
+                "note": "Updated by websocket e2e",
+            ],
+            token: accessToken
+        )
+
+        let updatedEvent = try await client.receiveWebSocketEvent(from: socket)
+        #expect(updatedEvent.type == "item_updated")
+        #expect(updatedEvent.itemName == updatedName)
+
+        _ = try await client.jsonObject(
+            path: "/api/v1/items/\(itemID)/check",
+            method: "POST",
+            body: [:],
+            token: accessToken
+        )
+        let checkedEvent = try await client.receiveWebSocketEvent(from: socket)
+        #expect(checkedEvent.type == "item_checked")
+
+        _ = try await client.jsonObject(
+            path: "/api/v1/items/\(itemID)/uncheck",
+            method: "POST",
+            body: [:],
+            token: accessToken
+        )
+        let uncheckedEvent = try await client.receiveWebSocketEvent(from: socket)
+        #expect(uncheckedEvent.type == "item_unchecked")
+
+        _ = try await client.data(
+            path: "/api/v1/items/\(itemID)",
+            method: "DELETE",
+            body: nil,
+            token: accessToken
+        )
+        let deletedEvent = try await client.receiveWebSocketEvent(from: socket)
+        #expect(deletedEvent.type == "item_deleted")
+        #expect(deletedEvent.itemID?.lowercased() == itemID.lowercased())
+    }
+}
+
+private func loginSeededUser(
+    fixture: SeedFixture,
+    client: LiveBackendClient,
+    config: LiveBackendE2EConfiguration
+) async throws -> String {
+    let loginOptions = try await client.jsonObject(
+        path: "/api/v1/auth/login/options",
+        method: "POST",
+        body: [:],
+        token: nil
+    )
+
+    var lastError: Error?
+    for signCountOffset in 1 ... 4 {
+        do {
+            let credential = try SeededAssertionFactory.makeCredential(
+                options: loginOptions,
+                origin: config.origin,
+                fallbackRelyingPartyIdentifier: config.rpID,
+                passkey: fixture.passkey,
+                signCountOffset: signCountOffset
+            )
+            let tokenPayload = try await client.jsonObject(
+                path: "/api/v1/auth/login/verify",
+                method: "POST",
+                body: ["credential": credential],
+                token: nil
+            )
+            return try #require(tokenPayload["access_token"] as? String)
+        } catch {
+            lastError = error
+        }
+    }
+
+    throw lastError ?? LiveBackendE2EError("Seeded login failed without a specific error.")
 }
 
 private struct LiveBackendE2EConfiguration {
@@ -380,6 +502,65 @@ private final class LiveBackendClient {
         }
         return data
     }
+
+    func openListWebSocket(listID: String, token: String) throws -> URLSessionWebSocketTask {
+        guard
+            var components = URLComponents(
+                url: URL(string: "/api/v1/ws/lists/\(listID)", relativeTo: baseURL)!,
+                resolvingAgainstBaseURL: true
+            )
+        else {
+            throw LiveBackendE2EError("Could not build websocket URL for list \(listID).")
+        }
+        components.scheme = baseURL.scheme == "https" ? "wss" : "ws"
+        components.queryItems = [URLQueryItem(name: "token", value: token)]
+        guard let url = components.url else {
+            throw LiveBackendE2EError("Could not resolve websocket URL for list \(listID).")
+        }
+        let task = session.webSocketTask(with: url)
+        task.resume()
+        return task
+    }
+
+    func receiveWebSocketEvent(from socket: URLSessionWebSocketTask) async throws -> LiveListSocketEvent {
+        let message = try await socket.receive()
+        let payloadData: Data
+        switch message {
+        case let .string(text):
+            guard let data = text.data(using: .utf8) else {
+                throw LiveBackendE2EError("Websocket text event was not valid UTF-8.")
+            }
+            payloadData = data
+        case let .data(data):
+            payloadData = data
+        @unknown default:
+            throw LiveBackendE2EError("Received unknown websocket message type.")
+        }
+
+        return try JSONDecoder().decode(LiveListSocketEvent.self, from: payloadData)
+    }
+}
+
+private struct LiveListSocketEvent: Decodable {
+    struct Payload: Decodable {
+        struct Item: Decodable {
+            let id: String?
+            let name: String?
+        }
+
+        let item: Item?
+    }
+
+    let type: String
+    let payload: Payload?
+
+    var itemID: String? {
+        payload?.item?.id
+    }
+
+    var itemName: String? {
+        payload?.item?.name
+    }
 }
 
 private enum SeededAssertionFactory {
@@ -387,7 +568,8 @@ private enum SeededAssertionFactory {
         options: [String: Any],
         origin: String,
         fallbackRelyingPartyIdentifier: String?,
-        passkey: SeedFixture.Passkey
+        passkey: SeedFixture.Passkey,
+        signCountOffset: Int = 1
     ) throws -> [String: Any] {
         let publicKey = (options["publicKey"] as? [String: Any]) ?? options
         guard let challenge = publicKey["challenge"] as? String else {
@@ -410,7 +592,7 @@ private enum SeededAssertionFactory {
         let clientDataHash = Data(SHA256.hash(data: clientDataJSON))
         let authenticatorData = makeAuthenticatorData(
             rpID: rpID,
-            nextSignCount: UInt32(passkey.signCount + 1)
+            nextSignCount: UInt32(passkey.signCount + signCountOffset)
         )
 
         var signaturePayload = Data()

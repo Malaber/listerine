@@ -37,6 +37,9 @@ private enum AppBuildConfiguration {
 @MainActor
 final class MobileAppViewModel: ObservableObject {
     private static let favoriteListKey = "listerine.favoriteListID"
+    private static let authTokenKey = "listerine.authToken"
+    private static let displayNameKey = "listerine.displayName"
+    private static let quickAddItemKey = "listerine.quickAddItemName"
 
     @Published private(set) var backendURL: URL?
     @Published private(set) var isAuthenticating = false
@@ -48,27 +51,62 @@ final class MobileAppViewModel: ObservableObject {
     @Published private(set) var categoryOrder: [ListCategoryOrderEntry] = []
     @Published var selectedListID: UUID?
     @Published private(set) var favoriteListID: UUID?
+    @Published var quickAddItemName: String
     @Published var errorMessage: String?
 
     private let passkeyClient: ApplePasskeyClient
     private let userDefaults: UserDefaults
     private let processInfo: ProcessInfo
+    private let watchSyncCoordinator: WatchSyncCoordinator
+    private let sharedStateStore: SharedAppStateStore
+    private let liveUpdates: MobileListLiveUpdateClient
+    private let isSimulatorBuild: Bool
     private var didAttemptLaunchBootstrap = false
 
     init(
         passkeyClient: ApplePasskeyClient = ApplePasskeyClient(),
         userDefaults: UserDefaults = .standard,
-        processInfo: ProcessInfo = .processInfo
+        processInfo: ProcessInfo = .processInfo,
+        watchSyncCoordinator: WatchSyncCoordinator = .shared,
+        liveUpdates: MobileListLiveUpdateClient = MobileListLiveUpdateClient()
     ) {
         self.passkeyClient = passkeyClient
         self.userDefaults = userDefaults
         self.processInfo = processInfo
+        self.watchSyncCoordinator = watchSyncCoordinator
+        self.liveUpdates = liveUpdates
+        self.sharedStateStore = SharedAppStateStore(
+            userDefaults: UserDefaults(suiteName: ListerineSharedConstants.watchAppGroupID) ?? .standard
+        )
+        #if targetEnvironment(simulator)
+            isSimulatorBuild = true
+        #else
+            isSimulatorBuild = false
+        #endif
         backendURL = AppBuildConfiguration.backendURL
         if processInfo.environment["LISTERINE_UI_TEST_MODE"] == "1" {
             favoriteListID = nil
+            authToken = nil
+            displayName = nil
+            quickAddItemName = SharedAppState.defaultQuickAddItemName
         } else {
             favoriteListID = userDefaults.string(forKey: Self.favoriteListKey).flatMap(UUID.init(uuidString:))
+            authToken = userDefaults.string(forKey: Self.authTokenKey)
+            displayName = userDefaults.string(forKey: Self.displayNameKey)
+            quickAddItemName = userDefaults.string(forKey: Self.quickAddItemKey) ?? SharedAppState.defaultQuickAddItemName
         }
+        watchSyncCoordinator.setStateProvider { [weak self] in
+            let state = self?.makeSharedAppState() ?? SharedAppState()
+            self?.sharedStateStore.save(state)
+            return state
+        }
+        self.liveUpdates.onListChanged = { [weak self] listID in
+            Task { @MainActor in
+                await self?.handleLiveListChanged(listID)
+            }
+        }
+        sharedStateStore.save(makeSharedAppState())
+        watchSyncCoordinator.publishCurrentState()
     }
 
     var backendDisplayName: String {
@@ -136,6 +174,7 @@ final class MobileAppViewModel: ObservableObject {
             }
 
             authToken = accessToken
+            userDefaults.set(accessToken, forKey: Self.authTokenKey)
 
             let me = try await requestJSON(
                 backendURL: backendURL,
@@ -145,8 +184,10 @@ final class MobileAppViewModel: ObservableObject {
                 token: accessToken
             )
             displayName = me["display_name"] as? String
+            userDefaults.set(displayName, forKey: Self.displayNameKey)
             try await reloadAllData()
             errorMessage = nil
+            watchSyncCoordinator.publishCurrentState()
         } catch {
             let nsErr = error as NSError
             netLog.error("Passkey login failed. Type=\(String(describing: type(of: error)), privacy: .public) Domain=\(nsErr.domain, privacy: .public) Code=\(nsErr.code) Desc=\(nsErr.localizedDescription, privacy: .public)")
@@ -159,50 +200,102 @@ final class MobileAppViewModel: ObservableObject {
         didAttemptLaunchBootstrap = true
 
         let environment = processInfo.environment
-        guard
-            environment["LISTERINE_UI_TEST_MODE"] == "1",
-            let accessToken = environment["LISTERINE_UI_TEST_ACCESS_TOKEN"],
-            accessToken.isEmpty == false
-        else {
-            return
-        }
-
-        authToken = accessToken
-
         do {
-            if let backendURL {
-                let me = try await requestJSON(
-                    backendURL: backendURL,
-                    path: "/api/v1/auth/me",
-                    method: "GET",
-                    body: nil,
-                    token: accessToken
+            if
+                environment["LISTERINE_UI_TEST_MODE"] == "1",
+                let accessToken = environment["LISTERINE_UI_TEST_ACCESS_TOKEN"],
+                accessToken.isEmpty == false
+            {
+                try await applyBootstrappedSession(
+                    accessToken: accessToken,
+                    displayNameOverride: environment["LISTERINE_UI_TEST_DISPLAY_NAME"],
+                    preferredListName: environment["LISTERINE_UI_TEST_INITIAL_LIST_NAME"]
                 )
-                displayName = me["display_name"] as? String
-            } else if let displayName = environment["LISTERINE_UI_TEST_DISPLAY_NAME"], displayName.isEmpty == false {
-                self.displayName = displayName
+                return
             }
-
-            try await reloadAllData()
 
             if
-                let preferredListName = environment["LISTERINE_UI_TEST_INITIAL_LIST_NAME"]?.trimmingCharacters(in: .whitespacesAndNewlines),
-                preferredListName.isEmpty == false,
-                let matchingList = lists.first(where: { $0.name == preferredListName })
+                isSimulatorBuild,
+                let bootstrapEmail = environment["LISTERINE_SIMULATOR_BOOTSTRAP_EMAIL"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+                bootstrapEmail.isEmpty == false
             {
-                selectedListID = matchingList.id
-                setFavoriteList(id: matchingList.id)
-                try await reloadItems()
+                try await bootstrapSimulatorSession(
+                    email: bootstrapEmail,
+                    preferredListName: environment["LISTERINE_SIMULATOR_INITIAL_LIST_NAME"]
+                )
             }
-
-            errorMessage = nil
         } catch {
             authToken = nil
+            userDefaults.removeObject(forKey: Self.authTokenKey)
             errorMessage = error.localizedDescription
         }
     }
 
+    private func bootstrapSimulatorSession(email: String, preferredListName: String?) async throws {
+        guard let backendURL else {
+            throw AppError.invalidResponse
+        }
+
+        let payload = try await requestJSON(
+            backendURL: backendURL,
+            path: "/api/v1/auth/ui-test-bootstrap",
+            method: "POST",
+            body: ["email": email],
+            token: nil
+        )
+
+        guard let accessToken = payload["access_token"] as? String else {
+            throw AppError.invalidResponse
+        }
+
+        try await applyBootstrappedSession(
+            accessToken: accessToken,
+            displayNameOverride: payload["display_name"] as? String,
+            preferredListName: preferredListName
+        )
+    }
+
+    private func applyBootstrappedSession(
+        accessToken: String,
+        displayNameOverride: String?,
+        preferredListName: String?
+    ) async throws {
+        authToken = accessToken
+        userDefaults.set(accessToken, forKey: Self.authTokenKey)
+
+        if let backendURL {
+            let me = try await requestJSON(
+                backendURL: backendURL,
+                path: "/api/v1/auth/me",
+                method: "GET",
+                body: nil,
+                token: accessToken
+            )
+            displayName = me["display_name"] as? String
+        } else if let displayNameOverride, displayNameOverride.isEmpty == false {
+            displayName = displayNameOverride
+        }
+
+        userDefaults.set(displayName, forKey: Self.displayNameKey)
+
+        try await reloadAllData()
+
+        if
+            let preferredListName = preferredListName?.trimmingCharacters(in: .whitespacesAndNewlines),
+            preferredListName.isEmpty == false,
+            let matchingList = lists.first(where: { $0.name == preferredListName })
+        {
+            selectedListID = matchingList.id
+            setFavoriteList(id: matchingList.id)
+            try await reloadItems()
+        }
+
+        errorMessage = nil
+        watchSyncCoordinator.publishCurrentState()
+    }
+
     func signOut() {
+        liveUpdates.disconnect()
         authToken = nil
         displayName = nil
         lists = []
@@ -211,6 +304,9 @@ final class MobileAppViewModel: ObservableObject {
         categoryOrder = []
         selectedListID = nil
         errorMessage = nil
+        userDefaults.removeObject(forKey: Self.authTokenKey)
+        userDefaults.removeObject(forKey: Self.displayNameKey)
+        watchSyncCoordinator.publishCurrentState()
     }
 
     func showFavoriteList() async {
@@ -222,6 +318,14 @@ final class MobileAppViewModel: ObservableObject {
     func setFavoriteList(id: UUID) {
         favoriteListID = id
         userDefaults.set(id.uuidString, forKey: Self.favoriteListKey)
+        watchSyncCoordinator.publishCurrentState()
+    }
+
+    func updateQuickAddItemName(_ rawValue: String) {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        quickAddItemName = trimmed.isEmpty ? SharedAppState.defaultQuickAddItemName : trimmed
+        userDefaults.set(quickAddItemName, forKey: Self.quickAddItemKey)
+        watchSyncCoordinator.publishCurrentState()
     }
 
     func reloadAllData() async throws {
@@ -295,12 +399,15 @@ final class MobileAppViewModel: ObservableObject {
         }
 
         try await reloadItems()
+        updateLiveUpdatesConnection()
+        watchSyncCoordinator.publishCurrentState()
     }
 
     func selectList(id: UUID) async {
         guard selectedListID != id else { return }
         selectedListID = id
         try? await reloadItems()
+        updateLiveUpdatesConnection()
     }
 
     func reloadItems() async throws {
@@ -330,6 +437,8 @@ final class MobileAppViewModel: ObservableObject {
         items = try await itemPayload.compactMap(GroceryItemRecord.init)
         categories = try await categoryPayload.compactMap(GroceryCategorySummary.init)
         categoryOrder = try await categoryOrderPayload.compactMap(ListCategoryOrderEntry.init)
+        updateLiveUpdatesConnection()
+        watchSyncCoordinator.publishCurrentState()
     }
 
     @discardableResult
@@ -353,6 +462,7 @@ final class MobileAppViewModel: ObservableObject {
                 token: authToken
             )
             try await reloadItems()
+            watchSyncCoordinator.publishCurrentState()
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -373,6 +483,7 @@ final class MobileAppViewModel: ObservableObject {
                 token: authToken
             )
             try await reloadItems()
+            watchSyncCoordinator.publishCurrentState()
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -406,6 +517,7 @@ final class MobileAppViewModel: ObservableObject {
                 token: authToken
             )
             try await reloadItems()
+            watchSyncCoordinator.publishCurrentState()
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -426,10 +538,56 @@ final class MobileAppViewModel: ObservableObject {
                 token: authToken
             )
             try await reloadItems()
+            watchSyncCoordinator.publishCurrentState()
             return true
         } catch {
             errorMessage = error.localizedDescription
             return false
+        }
+    }
+
+    private func makeSharedAppState() -> SharedAppState {
+        let syncedItems = selectedListID == favoriteListID ? items : []
+        return SharedAppState(
+            backendURL: backendURL,
+            authToken: authToken,
+            displayName: displayName,
+            favoriteListID: favoriteListID,
+            quickAddItemName: quickAddItemName,
+            lists: lists,
+            items: syncedItems
+        )
+    }
+
+    private func updateLiveUpdatesConnection() {
+        guard
+            let backendURL,
+            let authToken,
+            authToken.isEmpty == false,
+            let selectedListID
+        else {
+            liveUpdates.disconnect()
+            return
+        }
+
+        liveUpdates.connect(
+            listID: selectedListID,
+            backendURL: backendURL,
+            authToken: authToken
+        )
+    }
+
+    private func handleLiveListChanged(_ listID: UUID) async {
+        guard selectedListID == listID else { return }
+        netLog.debug(
+            "Received live list update for selected iPhone list \(listID.uuidString, privacy: .public)."
+        )
+        do {
+            try await reloadItems()
+        } catch {
+            netLog.error(
+                "Failed to reload items after live update: \(error.localizedDescription, privacy: .public)"
+            )
         }
     }
 
@@ -545,6 +703,147 @@ final class MobileAppViewModel: ObservableObject {
             )
         }
         return nil
+    }
+}
+
+final class MobileListLiveUpdateClient {
+    var onListChanged: ((UUID) -> Void)?
+
+    private var webSocketTask: URLSessionWebSocketTask?
+    private var reconnectTask: Task<Void, Never>?
+    private var currentListID: UUID?
+    private var backendURL: URL?
+    private var authToken: String?
+
+    func connect(listID: UUID, backendURL: URL, authToken: String) {
+        if
+            currentListID == listID,
+            self.backendURL == backendURL,
+            self.authToken == authToken,
+            webSocketTask != nil
+        {
+            return
+        }
+
+        disconnect()
+        currentListID = listID
+        self.backendURL = backendURL
+        self.authToken = authToken
+        openSocket()
+    }
+
+    func disconnect() {
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        webSocketTask?.cancel(with: .goingAway, reason: nil)
+        webSocketTask = nil
+        currentListID = nil
+        backendURL = nil
+        authToken = nil
+    }
+
+    private func openSocket() {
+        guard
+            let currentListID,
+            let backendURL,
+            let authToken,
+            let url = makeWebSocketURL(
+                backendURL: backendURL,
+                listID: currentListID,
+                authToken: authToken
+            )
+        else {
+            return
+        }
+
+        netLog.debug(
+            "Connecting live updates socket for iPhone list \(currentListID.uuidString, privacy: .public)."
+        )
+        let task = URLSession.shared.webSocketTask(with: url)
+        webSocketTask = task
+        task.resume()
+        receiveNextMessage(from: task, listID: currentListID)
+    }
+
+    private func receiveNextMessage(from task: URLSessionWebSocketTask, listID: UUID) {
+        task.receive { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case let .success(message):
+                self.handle(message, for: listID)
+                if self.webSocketTask === task {
+                    self.receiveNextMessage(from: task, listID: listID)
+                }
+            case let .failure(error):
+                netLog.error(
+                    "iPhone live updates socket failed: \(error.localizedDescription, privacy: .public)"
+                )
+                self.scheduleReconnect()
+            }
+        }
+    }
+
+    private func handle(_ message: URLSessionWebSocketTask.Message, for listID: UUID) {
+        let data: Data?
+        switch message {
+        case let .data(payload):
+            data = payload
+        case let .string(text):
+            data = text.data(using: .utf8)
+        @unknown default:
+            data = nil
+        }
+
+        guard
+            let data,
+            let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let type = payload["type"] as? String
+        else {
+            return
+        }
+
+        let liveUpdateTypes: Set<String> = [
+            "list_snapshot",
+            "item_created",
+            "item_updated",
+            "item_checked",
+            "item_unchecked",
+            "item_deleted",
+            "category_order_updated",
+        ]
+        guard liveUpdateTypes.contains(type) else { return }
+
+        netLog.debug(
+            "Received iPhone live updates event \(type, privacy: .public) for list \(listID.uuidString, privacy: .public)."
+        )
+        onListChanged?(listID)
+    }
+
+    private func scheduleReconnect() {
+        guard currentListID != nil, backendURL != nil, authToken != nil else { return }
+        reconnectTask?.cancel()
+        reconnectTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            guard Task.isCancelled == false else { return }
+            self?.openSocket()
+        }
+    }
+
+    private func makeWebSocketURL(
+        backendURL: URL,
+        listID: UUID,
+        authToken: String
+    ) -> URL? {
+        guard var components = URLComponents(url: backendURL, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+        components.scheme = backendURL.scheme == "https" ? "wss" : "ws"
+        let basePath = components.path == "/" ? "" : components.path
+        components.path = "\(basePath)/api/v1/ws/lists/\(listID.uuidString)"
+        components.queryItems = (components.queryItems ?? []) + [
+            URLQueryItem(name: "token", value: authToken)
+        ]
+        return components.url
     }
 }
 

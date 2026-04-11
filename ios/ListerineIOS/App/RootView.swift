@@ -4,6 +4,11 @@ import SwiftUI
 import UIKit
 #endif
 
+private struct AppErrorAlert: Identifiable {
+    let id = UUID()
+    let message: String
+}
+
 private enum AppTab: Hashable {
     case favorite
     case lists
@@ -13,6 +18,7 @@ private enum AppTab: Hashable {
 struct RootView: View {
     @EnvironmentObject private var viewModel: MobileAppViewModel
     @State private var selectedTab: AppTab = .favorite
+    @State private var presentedError: AppErrorAlert?
 
     var body: some View {
         Group {
@@ -25,16 +31,19 @@ struct RootView: View {
                 appTabs
             }
         }
-        .alert(
-            "Error",
-            isPresented: Binding(
-                get: { viewModel.errorMessage != nil },
-                set: { if !$0 { viewModel.errorMessage = nil } }
+        .onChange(of: viewModel.errorMessage) { newValue in
+            if let newValue, newValue.isEmpty == false {
+                presentedError = AppErrorAlert(message: newValue)
+            }
+        }
+        .alert(item: $presentedError) { error in
+            Alert(
+                title: Text("Error"),
+                message: Text(error.message),
+                dismissButton: .cancel(Text("OK")) {
+                    viewModel.errorMessage = nil
+                }
             )
-        ) {
-            Button("OK", role: .cancel) { viewModel.errorMessage = nil }
-        } message: {
-            Text(viewModel.errorMessage ?? "Unknown error")
         }
         .task(id: selectedTab) {
             guard selectedTab == .favorite else { return }

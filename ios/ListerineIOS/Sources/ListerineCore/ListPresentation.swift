@@ -1,6 +1,6 @@
 import Foundation
 
-public struct GroceryListSummary: Identifiable, Equatable, Sendable {
+public struct GroceryListSummary: Identifiable, Equatable, Codable, Sendable {
     public let id: UUID
     public let householdID: UUID
     public let householdName: String
@@ -62,7 +62,7 @@ public struct ListCategoryOrderEntry: Equatable, Sendable {
     }
 }
 
-public struct GroceryItemRecord: Identifiable, Equatable, Sendable {
+public struct GroceryItemRecord: Identifiable, Equatable, Codable, Sendable {
     public let id: UUID
     public let listID: UUID
     public let name: String

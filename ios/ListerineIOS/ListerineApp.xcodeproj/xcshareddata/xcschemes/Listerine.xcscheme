@@ -21,6 +21,48 @@
                ReferencedContainer = "container:ListerineApp.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "06743117C96695329D07FE18"
+               BuildableName = "ListerineWatchApp.app"
+               BlueprintName = "ListerineWatchApp"
+               ReferencedContainer = "container:ListerineApp.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "EA75BD7BB6403AF944FB7F0B"
+               BuildableName = "ListerineWatchExtension.appex"
+               BlueprintName = "ListerineWatchExtension"
+               ReferencedContainer = "container:ListerineApp.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "1F7657A9A94B006441CAE68F"
+               BuildableName = "ListerineWatchWidgetExtension.appex"
+               BlueprintName = "ListerineWatchWidgetExtension"
+               ReferencedContainer = "container:ListerineApp.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction

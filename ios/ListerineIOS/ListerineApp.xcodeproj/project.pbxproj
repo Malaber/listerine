@@ -9,15 +9,44 @@
 /* Begin PBXBuildFile section */
 		0DF0CA0086C7585B6E4DEBC3 /* ListerineApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8491C1AEF2BC348977951F06 /* ListerineApp.swift */; };
 		0EC30171F179B4640712AD7A /* BuildConfiguration.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2E20E622D1483C4892ECDE4 /* BuildConfiguration.generated.swift */; };
+		1C4DB50DF0A12E1437B7D153 /* WatchAppViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 038F92A437250EA61E9765AE /* WatchAppViewModel.swift */; };
 		1D527318E2B0DF81653EE0DE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6FD39624D7CA829381C145D7 /* Assets.xcassets */; };
+		25065792418B8EDF77F1440B /* ListerineWatchWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = DB59FAC8D2DFB225BA4A2CF0 /* ListerineWatchWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		27AF5962A512108259C0C42F /* MobileAppViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EC61542B67179C9B0637940 /* MobileAppViewModel.swift */; };
+		2CEE3DA88169046302C78367 /* ListerineCore in Frameworks */ = {isa = PBXBuildFile; productRef = 1E6B3A05CED09FC017FE397D /* ListerineCore */; };
+		2F446B0E6E1411B459754A99 /* ListerineWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 869A9BC99E6DA42CD145FCAA /* ListerineWatchApp.swift */; };
 		3967759140BC8B5C2218FAD6 /* ApplePasskeyClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 551B3360068D6020C456D4B0 /* ApplePasskeyClient.swift */; };
+		3ABCD9AB6A5B0D3A4997A6B9 /* AppGroupSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09D809216D405D9D057191BD /* AppGroupSupport.swift */; };
+		411A7EDA247EFDA6F6C47A52 /* WatchBackendClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA492E97AE0E4A470F30ECA7 /* WatchBackendClient.swift */; };
+		540B98A6154F77286948C920 /* ListerineWatchExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 92B3D680B60D248E7A7A66B3 /* ListerineWatchExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		54D219049D1C64B391228A5E /* WatchConnectivityBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99C1A76EDAEEE89FD59946FA /* WatchConnectivityBridge.swift */; };
+		638314071A89E2DFE7124BBA /* ListerineWatchApp.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = F732C8FF6FE4B555634BEC39 /* ListerineWatchApp.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		67B81BCC4656D3B209B370C8 /* ListerineCore in Frameworks */ = {isa = PBXBuildFile; productRef = FEE9CD5DEA44E9C8BE44845E /* ListerineCore */; };
 		844561BFFF84892FB58B564F /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E59F81D2ECEBDEED61800D9 /* RootView.swift */; };
+		8DFE1873C1F59423DA9C92BB /* WatchBackendClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA492E97AE0E4A470F30ECA7 /* WatchBackendClient.swift */; };
+		8E585879B4F1B97685E14595 /* WatchSyncCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16450F17A9DF80C2728B251E /* WatchSyncCoordinator.swift */; };
 		BFC14EEB3ED0EF1B44F41EFF /* ListerineUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69DDCE77716148CC4D98C922 /* ListerineUITests.swift */; };
+		C9EE1C9A85123BACC87270ED /* WatchRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A33D0EAB5F6A7752BA340E8D /* WatchRootView.swift */; };
+		EA0DC88F8CC10BFCECE315F5 /* AppGroupSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09D809216D405D9D057191BD /* AppGroupSupport.swift */; };
+		F34A5E9D167899D99DE6BA30 /* ListerineWatchWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 113A9DF7832859292B38EA26 /* ListerineWatchWidget.swift */; };
+		F6A7EEC8365DCB2C87B89553 /* ListerineCore in Frameworks */ = {isa = PBXBuildFile; productRef = BDC74571C0AA114D22BB43C7 /* ListerineCore */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		0A49145517CED26C22FA726E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6A78E51AD6C9D216B021B153 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 1F7657A9A94B006441CAE68F;
+			remoteInfo = ListerineWatchWidgetExtension;
+		};
+		1A394DC8CD3A25BB1D6F8D4C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6A78E51AD6C9D216B021B153 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 06743117C96695329D07FE18;
+			remoteInfo = ListerineWatchApp;
+		};
 		EB700CD7E16F3E39934DC67D /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 6A78E51AD6C9D216B021B153 /* Project object */;
@@ -25,20 +54,65 @@
 			remoteGlobalIDString = 4E911D4D424651A104F1C399;
 			remoteInfo = Listerine;
 		};
+		EBBBAD0A53FF1429F1D3C378 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6A78E51AD6C9D216B021B153 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = EA75BD7BB6403AF944FB7F0B;
+			remoteInfo = ListerineWatchExtension;
+		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		0C2B01A8D302BCB5F964599A /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				540B98A6154F77286948C920 /* ListerineWatchExtension.appex in Embed Foundation Extensions */,
+				25065792418B8EDF77F1440B /* ListerineWatchWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DA7A3A4753F040DC48B59A7F /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				638314071A89E2DFE7124BBA /* ListerineWatchApp.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		038F92A437250EA61E9765AE /* WatchAppViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchAppViewModel.swift; sourceTree = "<group>"; };
+		09D809216D405D9D057191BD /* AppGroupSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroupSupport.swift; sourceTree = "<group>"; };
+		113A9DF7832859292B38EA26 /* ListerineWatchWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListerineWatchWidget.swift; sourceTree = "<group>"; };
+		16450F17A9DF80C2728B251E /* WatchSyncCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSyncCoordinator.swift; sourceTree = "<group>"; };
 		235BABE9DE69DE7A433B762A /* Listerine.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Listerine.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4E59F81D2ECEBDEED61800D9 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		551B3360068D6020C456D4B0 /* ApplePasskeyClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplePasskeyClient.swift; sourceTree = "<group>"; };
 		5EC61542B67179C9B0637940 /* MobileAppViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileAppViewModel.swift; sourceTree = "<group>"; };
+		60603CAC120E4E812242A435 /* ListerineWatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ListerineWatch.entitlements; sourceTree = "<group>"; };
 		69DDCE77716148CC4D98C922 /* ListerineUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListerineUITests.swift; sourceTree = "<group>"; };
 		6FD39624D7CA829381C145D7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Assets.xcassets; sourceTree = SOURCE_ROOT; };
 		8491C1AEF2BC348977951F06 /* ListerineApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListerineApp.swift; sourceTree = "<group>"; };
+		869A9BC99E6DA42CD145FCAA /* ListerineWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListerineWatchApp.swift; sourceTree = "<group>"; };
+		92B3D680B60D248E7A7A66B3 /* ListerineWatchExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ListerineWatchExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		99C1A76EDAEEE89FD59946FA /* WatchConnectivityBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchConnectivityBridge.swift; sourceTree = "<group>"; };
+		A33D0EAB5F6A7752BA340E8D /* WatchRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRootView.swift; sourceTree = "<group>"; };
 		AF9BDC88BED8495FB5471C16 /* Listerine.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Listerine.entitlements; sourceTree = "<group>"; };
 		B2E20E622D1483C4892ECDE4 /* BuildConfiguration.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildConfiguration.generated.swift; sourceTree = "<group>"; };
 		C2EC8AC13D3FBD3F3FA08CF7 /* ListerineIOS */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ListerineIOS; path = .; sourceTree = SOURCE_ROOT; };
+		DA492E97AE0E4A470F30ECA7 /* WatchBackendClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchBackendClient.swift; sourceTree = "<group>"; };
+		DB59FAC8D2DFB225BA4A2CF0 /* ListerineWatchWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ListerineWatchWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		F26DAB49AF5373AD31059430 /* ListerineUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ListerineUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F732C8FF6FE4B555634BEC39 /* ListerineWatchApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ListerineWatchApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -50,14 +124,42 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		23C5628D6F3386AB4C9A86D0 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F6A7EEC8365DCB2C87B89553 /* ListerineCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E8D9A4AABEA969B7396658BC /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2CEE3DA88169046302C78367 /* ListerineCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		489C81DA789B3C883D00EF42 /* WatchShared */ = {
+			isa = PBXGroup;
+			children = (
+				09D809216D405D9D057191BD /* AppGroupSupport.swift */,
+				DA492E97AE0E4A470F30ECA7 /* WatchBackendClient.swift */,
+			);
+			path = WatchShared;
+			sourceTree = "<group>";
+		};
 		6009D4F07D9C82C7EF4563DD /* Products */ = {
 			isa = PBXGroup;
 			children = (
 				235BABE9DE69DE7A433B762A /* Listerine.app */,
 				F26DAB49AF5373AD31059430 /* ListerineUITests.xctest */,
+				F732C8FF6FE4B555634BEC39 /* ListerineWatchApp.app */,
+				92B3D680B60D248E7A7A66B3 /* ListerineWatchExtension.appex */,
+				DB59FAC8D2DFB225BA4A2CF0 /* ListerineWatchWidgetExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -79,8 +181,17 @@
 				8491C1AEF2BC348977951F06 /* ListerineApp.swift */,
 				5EC61542B67179C9B0637940 /* MobileAppViewModel.swift */,
 				4E59F81D2ECEBDEED61800D9 /* RootView.swift */,
+				16450F17A9DF80C2728B251E /* WatchSyncCoordinator.swift */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		B74860FABC60AC98FE29ABA8 /* WatchWidget */ = {
+			isa = PBXGroup;
+			children = (
+				113A9DF7832859292B38EA26 /* ListerineWatchWidget.swift */,
+			);
+			path = WatchWidget;
 			sourceTree = "<group>";
 		};
 		CFBDB1A3C142C5EBDB9D8F89 = {
@@ -90,6 +201,9 @@
 				9016EAE4FB57386C9C3F20C5 /* App */,
 				D1D3F812E56DEAEE612D5246 /* Packages */,
 				6526DED7438BFC1CFC4FED11 /* UITests */,
+				F693227FF26C6875E450CDBF /* WatchApp */,
+				489C81DA789B3C883D00EF42 /* WatchShared */,
+				B74860FABC60AC98FE29ABA8 /* WatchWidget */,
 				6009D4F07D9C82C7EF4563DD /* Products */,
 			);
 			sourceTree = "<group>";
@@ -102,9 +216,59 @@
 			name = Packages;
 			sourceTree = "<group>";
 		};
+		F693227FF26C6875E450CDBF /* WatchApp */ = {
+			isa = PBXGroup;
+			children = (
+				60603CAC120E4E812242A435 /* ListerineWatch.entitlements */,
+				869A9BC99E6DA42CD145FCAA /* ListerineWatchApp.swift */,
+				038F92A437250EA61E9765AE /* WatchAppViewModel.swift */,
+				99C1A76EDAEEE89FD59946FA /* WatchConnectivityBridge.swift */,
+				A33D0EAB5F6A7752BA340E8D /* WatchRootView.swift */,
+			);
+			path = WatchApp;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		06743117C96695329D07FE18 /* ListerineWatchApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BE81942E09286A03801033B6 /* Build configuration list for PBXNativeTarget "ListerineWatchApp" */;
+			buildPhases = (
+				0C2B01A8D302BCB5F964599A /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				870B5EE0DF611AA90C454D42 /* PBXTargetDependency */,
+				22A1E81465882332E9D3BAA0 /* PBXTargetDependency */,
+			);
+			name = ListerineWatchApp;
+			packageProductDependencies = (
+			);
+			productName = ListerineWatchApp;
+			productReference = F732C8FF6FE4B555634BEC39 /* ListerineWatchApp.app */;
+			productType = "com.apple.product-type.application.watchapp2";
+		};
+		1F7657A9A94B006441CAE68F /* ListerineWatchWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9FFA5E63F68CF42ECD6D7035 /* Build configuration list for PBXNativeTarget "ListerineWatchWidgetExtension" */;
+			buildPhases = (
+				0B875A33B3AD8090B689B172 /* Sources */,
+				23C5628D6F3386AB4C9A86D0 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ListerineWatchWidgetExtension;
+			packageProductDependencies = (
+				BDC74571C0AA114D22BB43C7 /* ListerineCore */,
+			);
+			productName = ListerineWatchWidgetExtension;
+			productReference = DB59FAC8D2DFB225BA4A2CF0 /* ListerineWatchWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		469CB328A278D84136A808DA /* ListerineUITests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 3BF9F8D05F1D55A44BF0F01B /* Build configuration list for PBXNativeTarget "ListerineUITests" */;
@@ -130,10 +294,12 @@
 				E9AC6557DBDFA48C35ADE583 /* Sources */,
 				982835F7346C693DB8F83C3D /* Resources */,
 				16FBB000FBED0DD5281014C1 /* Frameworks */,
+				DA7A3A4753F040DC48B59A7F /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				4A661A17AD036C71DFF113B3 /* PBXTargetDependency */,
 			);
 			name = Listerine;
 			packageProductDependencies = (
@@ -142,6 +308,25 @@
 			productName = Listerine;
 			productReference = 235BABE9DE69DE7A433B762A /* Listerine.app */;
 			productType = "com.apple.product-type.application";
+		};
+		EA75BD7BB6403AF944FB7F0B /* ListerineWatchExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C7B548BC1DB0A2D6BBC0DAC0 /* Build configuration list for PBXNativeTarget "ListerineWatchExtension" */;
+			buildPhases = (
+				2CC11F5D56EEA2BDCA3AF61D /* Sources */,
+				E8D9A4AABEA969B7396658BC /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ListerineWatchExtension;
+			packageProductDependencies = (
+				1E6B3A05CED09FC017FE397D /* ListerineCore */,
+			);
+			productName = ListerineWatchExtension;
+			productReference = 92B3D680B60D248E7A7A66B3 /* ListerineWatchExtension.appex */;
+			productType = "com.apple.product-type.watchkit2-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -152,11 +337,20 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					06743117C96695329D07FE18 = {
+						DevelopmentTeam = VWKG94374J;
+					};
+					1F7657A9A94B006441CAE68F = {
+						DevelopmentTeam = VWKG94374J;
+					};
 					469CB328A278D84136A808DA = {
 						DevelopmentTeam = VWKG94374J;
 						TestTargetID = 4E911D4D424651A104F1C399;
 					};
 					4E911D4D424651A104F1C399 = {
+						DevelopmentTeam = VWKG94374J;
+					};
+					EA75BD7BB6403AF944FB7F0B = {
 						DevelopmentTeam = VWKG94374J;
 					};
 				};
@@ -180,6 +374,9 @@
 			targets = (
 				4E911D4D424651A104F1C399 /* Listerine */,
 				469CB328A278D84136A808DA /* ListerineUITests */,
+				06743117C96695329D07FE18 /* ListerineWatchApp */,
+				EA75BD7BB6403AF944FB7F0B /* ListerineWatchExtension */,
+				1F7657A9A94B006441CAE68F /* ListerineWatchWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -196,11 +393,34 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		0B875A33B3AD8090B689B172 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3ABCD9AB6A5B0D3A4997A6B9 /* AppGroupSupport.swift in Sources */,
+				F34A5E9D167899D99DE6BA30 /* ListerineWatchWidget.swift in Sources */,
+				8DFE1873C1F59423DA9C92BB /* WatchBackendClient.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		286B3DBE4E130007A5F54AC1 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				BFC14EEB3ED0EF1B44F41EFF /* ListerineUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		2CC11F5D56EEA2BDCA3AF61D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EA0DC88F8CC10BFCECE315F5 /* AppGroupSupport.swift in Sources */,
+				2F446B0E6E1411B459754A99 /* ListerineWatchApp.swift in Sources */,
+				1C4DB50DF0A12E1437B7D153 /* WatchAppViewModel.swift in Sources */,
+				411A7EDA247EFDA6F6C47A52 /* WatchBackendClient.swift in Sources */,
+				54D219049D1C64B391228A5E /* WatchConnectivityBridge.swift in Sources */,
+				C9EE1C9A85123BACC87270ED /* WatchRootView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -213,6 +433,7 @@
 				0DF0CA0086C7585B6E4DEBC3 /* ListerineApp.swift in Sources */,
 				27AF5962A512108259C0C42F /* MobileAppViewModel.swift in Sources */,
 				844561BFFF84892FB58B564F /* RootView.swift in Sources */,
+				8E585879B4F1B97685E14595 /* WatchSyncCoordinator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -223,6 +444,21 @@
 			isa = PBXTargetDependency;
 			target = 4E911D4D424651A104F1C399 /* Listerine */;
 			targetProxy = EB700CD7E16F3E39934DC67D /* PBXContainerItemProxy */;
+		};
+		22A1E81465882332E9D3BAA0 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 1F7657A9A94B006441CAE68F /* ListerineWatchWidgetExtension */;
+			targetProxy = 0A49145517CED26C22FA726E /* PBXContainerItemProxy */;
+		};
+		4A661A17AD036C71DFF113B3 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 06743117C96695329D07FE18 /* ListerineWatchApp */;
+			targetProxy = 1A394DC8CD3A25BB1D6F8D4C /* PBXContainerItemProxy */;
+		};
+		870B5EE0DF611AA90C454D42 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = EA75BD7BB6403AF944FB7F0B /* ListerineWatchExtension */;
+			targetProxy = EBBBAD0A53FF1429F1D3C378 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -255,6 +491,91 @@
 				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
+		};
+		3375C46B009BDDEEA72F682E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = VWKG94374J;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = WatchApp/Info.plist;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = de.malaber.listerine.watchkitapp;
+				PRODUCT_NAME = "Listerine Watch";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.1;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Debug;
+		};
+		67178F1DB68D912E51654B2A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_COMPLICATION_NAME = Complication;
+				CODE_SIGN_ENTITLEMENTS = WatchApp/ListerineWatch.entitlements;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = VWKG94374J;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = WatchApp/ExtensionInfo.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = de.malaber.listerine.watchkitapp.watchkitextension;
+				PRODUCT_NAME = "Listerine Watch Extension";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.1;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Debug;
+		};
+		6B3CE6D7E92DF525955A03C6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = VWKG94374J;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = WatchApp/Info.plist;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = de.malaber.listerine.watchkitapp;
+				PRODUCT_NAME = "Listerine Watch";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.1;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Release;
+		};
+		9319D4B05856D74208CCDC07 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = WatchWidget/ListerineWatchWidget.entitlements;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = VWKG94374J;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = WatchWidget/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = de.malaber.listerine.watchkitapp.widget;
+				PRODUCT_NAME = "Listerine Watch Widgets";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.1;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Debug;
 		};
 		AFF0C65FAEF8EA5C66425DDC /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -311,7 +632,6 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
@@ -366,7 +686,6 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
@@ -401,6 +720,55 @@
 				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
+		};
+		BE06BC1FB67F88F11A592350 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_COMPLICATION_NAME = Complication;
+				CODE_SIGN_ENTITLEMENTS = WatchApp/ListerineWatch.entitlements;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = VWKG94374J;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = WatchApp/ExtensionInfo.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = de.malaber.listerine.watchkitapp.watchkitextension;
+				PRODUCT_NAME = "Listerine Watch Extension";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.1;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Release;
+		};
+		C218ED5D9CC1BBEDA8D463E5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = WatchWidget/ListerineWatchWidget.entitlements;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = VWKG94374J;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = WatchWidget/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = de.malaber.listerine.watchkitapp.widget;
+				PRODUCT_NAME = "Listerine Watch Widgets";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.1;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Release;
 		};
 		E076005B5B0F52642B53753F /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -465,11 +833,38 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
+		9FFA5E63F68CF42ECD6D7035 /* Build configuration list for PBXNativeTarget "ListerineWatchWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9319D4B05856D74208CCDC07 /* Debug */,
+				C218ED5D9CC1BBEDA8D463E5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		B3C72804072D54337B6CA36F /* Build configuration list for PBXNativeTarget "Listerine" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				B808B1C1752CBDC1261B11FD /* Debug */,
 				20C266BC38B2C4AF2AF3C32F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		BE81942E09286A03801033B6 /* Build configuration list for PBXNativeTarget "ListerineWatchApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3375C46B009BDDEEA72F682E /* Debug */,
+				6B3CE6D7E92DF525955A03C6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C7B548BC1DB0A2D6BBC0DAC0 /* Build configuration list for PBXNativeTarget "ListerineWatchExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				67178F1DB68D912E51654B2A /* Debug */,
+				BE06BC1FB67F88F11A592350 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
@@ -484,6 +879,14 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		1E6B3A05CED09FC017FE397D /* ListerineCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ListerineCore;
+		};
+		BDC74571C0AA114D22BB43C7 /* ListerineCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ListerineCore;
+		};
 		FEE9CD5DEA44E9C8BE44845E /* ListerineCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = ListerineCore;

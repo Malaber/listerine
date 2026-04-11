@@ -172,6 +172,7 @@ def test_ui_test_bootstrap_requires_explicit_enable_flag(client, monkeypatch) ->
     response = client.post(
         "/api/v1/auth/ui-test-bootstrap",
         json={"email": "missing@example.com"},
+        headers={"host": "localhost:8000"},
     )
 
     assert response.status_code == 404
@@ -184,6 +185,7 @@ def test_ui_test_bootstrap_returns_access_token_for_seeded_user(client, monkeypa
     response = client.post(
         "/api/v1/auth/ui-test-bootstrap",
         json={"email": "ui-test@example.com"},
+        headers={"host": "localhost:8000"},
     )
 
     assert response.status_code == 200
@@ -199,6 +201,20 @@ def test_ui_test_bootstrap_returns_not_found_for_unknown_user(client, monkeypatc
     response = client.post(
         "/api/v1/auth/ui-test-bootstrap",
         json={"email": "missing@example.com"},
+        headers={"host": "localhost:8000"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_ui_test_bootstrap_requires_loopback_host(client, monkeypatch) -> None:
+    monkeypatch.setattr("app.api.v1.routes.auth.settings.ui_test_bootstrap_enabled", True)
+    asyncio.run(_create_user("ui-test@example.com", with_passkey=False))
+
+    response = client.post(
+        "/api/v1/auth/ui-test-bootstrap",
+        json={"email": "ui-test@example.com"},
+        headers={"host": "example.com"},
     )
 
     assert response.status_code == 404
@@ -2456,10 +2472,120 @@ def test_admin_passkey_add_link_action_redirects_to_user_list_when_user_is_missi
     assert response.headers["location"].endswith("/admin/user/list")
 
 
-def test_login_page_localhost_hint(client) -> None:
+def test_login_page_does_not_include_local_bootstrap_hint(client) -> None:
     response = client.get("/login", headers={"host": "127.0.0.1:8000"})
     assert response.status_code == 200
-    assert "open this page on <strong>localhost</strong>" in response.text
+    assert "open this page on <strong>localhost</strong>" not in response.text
+
+
+def test_login_local_page_requires_explicit_enable_flag(client, monkeypatch) -> None:
+    monkeypatch.setattr("app.web.routes.settings.ui_test_bootstrap_enabled", False)
+
+    response = client.get("/login-local", headers={"host": "localhost:8000"})
+
+    assert response.status_code == 404
+
+
+def test_login_local_page_requires_loopback_host(client, monkeypatch) -> None:
+    monkeypatch.setattr("app.web.routes.settings.ui_test_bootstrap_enabled", True)
+
+    response = client.get("/login-local", headers={"host": "example.com"})
+
+    assert response.status_code == 404
+
+
+def test_login_local_page_renders_when_enabled_on_localhost(client, monkeypatch) -> None:
+    monkeypatch.setattr("app.web.routes.settings.ui_test_bootstrap_enabled", True)
+
+    response = client.get("/login-local", headers={"host": "localhost:8000"})
+
+    assert response.status_code == 200
+    assert "Local development sign in" in response.text
+
+
+def test_login_local_page_redirects_authenticated_user(client, monkeypatch) -> None:
+    monkeypatch.setattr("app.web.routes.settings.ui_test_bootstrap_enabled", True)
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: _mock_verified_registration(),
+    )
+
+    client.post(
+        "/api/v1/auth/register/options",
+        json={"email": f"{uuid4()}@example.com", "display_name": "User"},
+        headers={"host": "localhost:8000"},
+    )
+    verify = client.post(
+        "/api/v1/auth/register/verify",
+        json=_passkey_finish_payload(),
+        headers={"host": "localhost:8000"},
+    )
+    assert verify.status_code == 200
+
+    response = client.get(
+        "/login-local?next=/settings",
+        headers={"host": "localhost:8000"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/settings"
+
+
+def test_login_local_post_requires_explicit_enable_flag(client, monkeypatch) -> None:
+    monkeypatch.setattr("app.web.routes.settings.ui_test_bootstrap_enabled", False)
+
+    response = client.post(
+        "/login-local",
+        data={"email": "ui-test@example.com", "next_path": "/"},
+        headers={"host": "localhost:8000"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 404
+
+
+def test_login_local_blank_email_redirects_back_to_form(client, monkeypatch) -> None:
+    monkeypatch.setattr("app.web.routes.settings.ui_test_bootstrap_enabled", True)
+
+    response = client.post(
+        "/login-local",
+        data={"email": "   ", "next_path": "/settings"},
+        headers={"host": "localhost:8000"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login-local?next=/settings"
+
+
+def test_login_local_creates_web_session_for_seeded_user(client, monkeypatch) -> None:
+    monkeypatch.setattr("app.web.routes.settings.ui_test_bootstrap_enabled", True)
+    user_id = asyncio.run(_create_user("ui-test@example.com", with_passkey=False))
+
+    response = client.post(
+        "/login-local",
+        data={"email": "ui-test@example.com", "next_path": "/settings"},
+        headers={"host": "localhost:8000"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/settings"
+    assert asyncio.run(_get_auth_session(user_id)) is not None
+
+
+def test_login_local_returns_error_for_unknown_user(client, monkeypatch) -> None:
+    monkeypatch.setattr("app.web.routes.settings.ui_test_bootstrap_enabled", True)
+
+    response = client.post(
+        "/login-local",
+        data={"email": "missing@example.com", "next_path": "/"},
+        headers={"host": "localhost:8000"},
+    )
+
+    assert response.status_code == 404
+    assert "That seeded local account was not found." in response.text
 
 
 def test_web_logout_redirects_to_login(client, monkeypatch) -> None:
