@@ -129,13 +129,14 @@ final class ListerineUITests: XCTestCase {
         let listTitle = app.staticTexts["list-detail-title"]
         XCTAssertTrue(listTitle.waitForExistence(timeout: 10))
         XCTAssertEqual(listTitle.label, initialListName)
+        XCTAssertTrue(app.staticTexts["Loose item"].waitForExistence(timeout: 5))
 
         let uniqueSuffix = UUID().uuidString.prefix(8)
         let itemName = "UI Live \(uniqueSuffix)"
-        let updatedNote = "Updated live note \(uniqueSuffix)"
+        let updatedName = "\(itemName) Updated"
         let itemID = try createItem(
             named: itemName,
-            note: "Initial live note",
+            note: "",
             inListNamed: initialListName,
             accessToken: session.accessToken
         )
@@ -145,14 +146,15 @@ final class ListerineUITests: XCTestCase {
 
         try updateItem(
             itemID: itemID,
-            note: updatedNote,
+            name: updatedName,
+            note: "",
             accessToken: session.accessToken
         )
-        XCTAssertTrue(app.staticTexts[updatedNote].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts[updatedName].waitForExistence(timeout: 8))
 
         try deleteItem(itemID: itemID, accessToken: session.accessToken)
         XCTAssertTrue(
-            waitForElementToDisappear(app.staticTexts[itemName], timeout: 8),
+            waitForElementToDisappear(app.staticTexts[updatedName], timeout: 8),
             "Expected live-deleted item to disappear without manual refresh."
         )
     }
@@ -305,6 +307,7 @@ final class ListerineUITests: XCTestCase {
 
     private func updateItem(
         itemID: UUID,
+        name: String,
         note: String,
         accessToken: String
     ) throws {
@@ -313,6 +316,7 @@ final class ListerineUITests: XCTestCase {
             method: "PATCH",
             token: accessToken,
             body: [
+                "name": name,
                 "note": note,
             ]
         )
