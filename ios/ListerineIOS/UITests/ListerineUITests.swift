@@ -105,6 +105,58 @@ final class ListerineUITests: XCTestCase {
         captureScreenshot(named: "ios-ui-settings")
     }
 
+    func testListReceivesLiveUpdates() throws {
+        try assertLocalTestBackend()
+        let session = if
+            let accessToken = ProcessInfo.processInfo.environment["LISTERINE_UI_TEST_ACCESS_TOKEN"],
+            let displayName = ProcessInfo.processInfo.environment["LISTERINE_UI_TEST_DISPLAY_NAME"],
+            accessToken.isEmpty == false,
+            displayName.isEmpty == false
+        {
+            UITestSession(accessToken: accessToken, displayName: displayName)
+        } else {
+            try bootstrapSession(email: userEmail)
+        }
+
+        let app = XCUIApplication()
+        app.launchEnvironment["LISTERINE_UI_TEST_MODE"] = "1"
+        app.launchEnvironment["LISTERINE_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
+        app.launchEnvironment["LISTERINE_UI_TEST_ACCESS_TOKEN"] = session.accessToken
+        app.launchEnvironment["LISTERINE_UI_TEST_DISPLAY_NAME"] = session.displayName
+        app.launchEnvironment["LISTERINE_UI_TEST_INITIAL_LIST_NAME"] = initialListName
+        app.launch()
+
+        let listTitle = app.staticTexts["list-detail-title"]
+        XCTAssertTrue(listTitle.waitForExistence(timeout: 10))
+        XCTAssertEqual(listTitle.label, initialListName)
+
+        let uniqueSuffix = UUID().uuidString.prefix(8)
+        let itemName = "UI Live \(uniqueSuffix)"
+        let updatedNote = "Updated live note \(uniqueSuffix)"
+        let itemID = try createItem(
+            named: itemName,
+            note: "Initial live note",
+            inListNamed: initialListName,
+            accessToken: session.accessToken
+        )
+
+        XCTAssertTrue(app.staticTexts[itemName].waitForExistence(timeout: 8))
+        captureScreenshot(named: "ios-ui-live-item-created")
+
+        try updateItem(
+            itemID: itemID,
+            note: updatedNote,
+            accessToken: session.accessToken
+        )
+        XCTAssertTrue(app.staticTexts[updatedNote].waitForExistence(timeout: 8))
+
+        try deleteItem(itemID: itemID, accessToken: session.accessToken)
+        XCTAssertTrue(
+            waitForElementToDisappear(app.staticTexts[itemName], timeout: 8),
+            "Expected live-deleted item to disappear without manual refresh."
+        )
+    }
+
     private var baseURL: URL {
         if
             let value = ProcessInfo.processInfo.environment["LISTERINE_UI_TEST_BASE_URL"],
@@ -184,6 +236,17 @@ final class ListerineUITests: XCTestCase {
         return false
     }
 
+    private func waitForElementToDisappear(_ element: XCUIElement, timeout: TimeInterval = 8) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if element.exists == false {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        return element.exists == false
+    }
+
     private func fetchItems(inListNamed listName: String, accessToken: String) throws -> [UITestItem] {
         let householdRequest = jsonRequest(
             path: "/api/v1/households",
@@ -215,6 +278,83 @@ final class ListerineUITests: XCTestCase {
         }
 
         return []
+    }
+
+    private func createItem(
+        named name: String,
+        note: String,
+        inListNamed listName: String,
+        accessToken: String
+    ) throws -> UUID {
+        let listID = try listID(named: listName, accessToken: accessToken)
+        let request = jsonRequest(
+            path: "/api/v1/lists/\(listID.uuidString)/items",
+            method: "POST",
+            token: accessToken,
+            body: [
+                "name": name,
+                "quantity_text": NSNull(),
+                "note": note,
+                "category_id": NSNull(),
+            ]
+        )
+        let data = try performRequest(request)
+        let item = try JSONDecoder().decode(UITestIdentifiedItem.self, from: data)
+        return item.id
+    }
+
+    private func updateItem(
+        itemID: UUID,
+        note: String,
+        accessToken: String
+    ) throws {
+        let request = jsonRequest(
+            path: "/api/v1/items/\(itemID.uuidString)",
+            method: "PATCH",
+            token: accessToken,
+            body: [
+                "note": note,
+            ]
+        )
+        _ = try performRequest(request)
+    }
+
+    private func deleteItem(itemID: UUID, accessToken: String) throws {
+        let request = jsonRequest(
+            path: "/api/v1/items/\(itemID.uuidString)",
+            method: "DELETE",
+            token: accessToken
+        )
+        _ = try performRequest(request)
+    }
+
+    private func listID(named listName: String, accessToken: String) throws -> UUID {
+        let householdRequest = jsonRequest(
+            path: "/api/v1/households",
+            method: "GET",
+            token: accessToken
+        )
+        let householdData = try performRequest(householdRequest)
+        let households = try JSONDecoder().decode([UITestHousehold].self, from: householdData)
+
+        for household in households {
+            let listsRequest = jsonRequest(
+                path: "/api/v1/households/\(household.id.uuidString)/lists",
+                method: "GET",
+                token: accessToken
+            )
+            let listData = try performRequest(listsRequest)
+            let lists = try JSONDecoder().decode([UITestList].self, from: listData)
+            if let matchingList = lists.first(where: { $0.name == listName }) {
+                return matchingList.id
+            }
+        }
+
+        throw NSError(
+            domain: "ListerineUITests",
+            code: 4,
+            userInfo: [NSLocalizedDescriptionKey: "Could not find seeded list named \(listName)."]
+        )
     }
 
     private func jsonRequest(
@@ -319,4 +459,8 @@ private struct UITestList: Decodable {
 private struct UITestItem: Decodable {
     let name: String
     let checked: Bool
+}
+
+private struct UITestIdentifiedItem: Decodable {
+    let id: UUID
 }
