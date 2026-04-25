@@ -417,6 +417,21 @@ async function loginFromRoot(page, user, expectedHeading) {
   );
 }
 
+async function registerAccountFromLogin(page, { displayName, email }, expectedUrlPattern) {
+  await page.goto(new URL("/", baseUrl).toString(), { waitUntil: "networkidle" });
+  await page.waitForURL(/\/login(\?|$)/);
+  await assertLoginPageTabs(page);
+  await page.locator('[data-auth-tab-trigger="signup"]').click();
+  await expectVisible(
+    page.locator('[data-auth-tab-panel="signup"] h2'),
+    "Expected the create account heading inside the active auth panel",
+  );
+  await page.locator('[data-passkey-register] input[name="display_name"]').fill(displayName);
+  await page.locator('[data-passkey-register] input[name="email"]').fill(email);
+  await page.locator("[data-passkey-register-button]").click();
+  await page.waitForURL(expectedUrlPattern, { waitUntil: "commit", timeout: 10_000 });
+}
+
 async function loginAsAdmin(page, user) {
   await page.goto(new URL("/", baseUrl).toString(), { waitUntil: "networkidle" });
   await page.waitForURL(/\/login(\?|$)/);
@@ -701,6 +716,77 @@ async function runInviteFlow(ownerPage, browser, scenario, seed, rpId) {
   }
 }
 
+async function runDashboardEmptyStateFlow(browser) {
+  logStep("Checking dashboard empty-state add cards");
+  const context = await browser.newContext(contextOptions());
+  const page = await context.newPage();
+  const authenticator = await createVirtualAuthenticator(page);
+  const timestamp = Date.now();
+  const emptyStateAccount = {
+    displayName: `Dashboard Empty ${timestamp}`,
+    email: `dashboard-empty-${timestamp}@example.com`,
+  };
+
+  try {
+    await registerAccountFromLogin(page, emptyStateAccount, new URL("/", baseUrl).toString());
+    await expectVisible(
+      page.getByRole("heading", { name: "Households and Lists" }),
+      "Expected a brand-new account to land on the dashboard",
+    );
+
+    const ordering = await page.evaluate(() => {
+      const lists = document.querySelector(".dashboard-lists");
+      const organized = document.querySelector("[data-dashboard-organized]");
+      if (!(lists instanceof HTMLElement) || !(organized instanceof HTMLElement)) {
+        return null;
+      }
+      return lists.compareDocumentPosition(organized);
+    });
+    assert(ordering !== null, "Expected dashboard lists section and organized section");
+    assert(
+      Boolean(ordering & 4),
+      "Expected the organized section to appear after the lists section",
+    );
+
+    const emptyHouseholdButton = page.locator(
+      '[data-dashboard-empty] [data-dashboard-add-option="household"]',
+    );
+    await expectVisible(emptyHouseholdButton, "Expected add-household action card when no households exist");
+    await emptyHouseholdButton.click();
+    await expectVisible(
+      page.getByRole("heading", { name: "Add household" }),
+      "Expected add-household panel from the empty-state card",
+    );
+
+    const householdName = "Fresh household";
+    await page.getByLabel("Household name").fill(householdName);
+    await page.getByRole("button", { name: "Create household" }).click();
+    const newHouseholdCard = page.locator(".household-card", { hasText: householdName }).first();
+    await expectVisible(newHouseholdCard, "Expected the new household to appear on the dashboard");
+
+    const emptyListButton = newHouseholdCard.locator('[data-dashboard-add-option="list"]');
+    await expectVisible(emptyListButton, "Expected add-list action card for a household without lists");
+    await emptyListButton.click();
+    await expectVisible(
+      page.getByRole("heading", { name: "Add list to household" }),
+      "Expected add-list panel from the empty-state card",
+    );
+
+    const listName = "Fresh list";
+    await page.getByLabel("List name").fill(listName);
+    await page.getByRole("button", { name: "Create list" }).click();
+    await page.waitForURL(/\/lists\/.+$/);
+    await expectVisible(
+      page.getByRole("heading", { name: listName }),
+      "Expected the new list detail page after creating a list from the empty-state card",
+    );
+    await screenshot(page, "dashboard-empty-state-actions");
+  } finally {
+    await removeAuthenticator(authenticator);
+    await context.close();
+  }
+}
+
 async function main() {
   logStep(`Preparing artifacts in ${artifactDir}`);
   await resetDir(artifactDir);
@@ -728,6 +814,7 @@ async function main() {
     await assertHeaderActionsFitTranslatedLabels(page);
     await runAdminPasskeyAddLinkFlow(page, seed, rpId);
     await runPasskeyManagementFlow(page, context, owner, rpId, authenticator);
+    await runDashboardEmptyStateFlow(browser);
 
     const scenario = await scenarioFromSeed(seed, context.request);
     logStep(`Resetting seeded list state for ${scenario.listName}`);

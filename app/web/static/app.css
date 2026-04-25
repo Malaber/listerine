@@ -434,6 +434,8 @@ main {
 }
 
 .dashboard-empty {
+  display: grid;
+  gap: 1rem;
   border: 1px dashed var(--border-strong);
   border-radius: 18px;
   padding: 1.2rem;
@@ -544,25 +546,43 @@ main {
   gap: 0.75rem;
 }
 
+.list-grid li a,
+.dashboard-action-card {
+  padding: 0.95rem 1rem;
+  border-radius: 16px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+}
+
 .list-grid li a {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.95rem 1rem;
-  border-radius: 16px;
   text-decoration: none;
   color: inherit;
-  background: var(--surface-muted);
-  border: 1px solid var(--border);
 }
 
-.list-grid li a:hover {
+.dashboard-action-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  width: 100%;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.list-grid li a:hover,
+.dashboard-action-card:hover {
   background: rgba(223, 248, 253, 0.7);
   border-color: var(--border-strong);
 }
 
-.list-grid small {
+.list-grid small,
+.dashboard-action-card small {
   color: var(--text-muted);
 }
 
