@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import Request
 
 DEFAULT_LOCALE = "en"
-LOCALE_COOKIE_NAME = "listerine_locale"
+LOCALE_COOKIE_NAME = "planini_locale"
 LOCALES_DIR = Path(__file__).resolve().parent / "locales"
 
 

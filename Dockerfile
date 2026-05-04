@@ -4,7 +4,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
-ARG LISTERINE_VERSION=0.0.0.dev0
+ARG PLANINI_VERSION=0.0.0.dev0
 
 WORKDIR /app
 
@@ -24,8 +24,8 @@ COPY docker ./docker
 COPY scripts/export_seed_passkeys.py ./scripts/export_seed_passkeys.py
 COPY scripts/create_passkey_reset_link.py ./scripts/create_passkey_reset_link.py
 
-RUN SETUPTOOLS_SCM_PRETEND_VERSION=${LISTERINE_VERSION} pip install --no-deps . \
-    && printf '%s\n' "${LISTERINE_VERSION}" > VERSION \
+RUN SETUPTOOLS_SCM_PRETEND_VERSION=${PLANINI_VERSION} pip install --no-deps . \
+    && printf '%s\n' "${PLANINI_VERSION}" > VERSION \
     && chmod +x /app/docker/start.sh \
     && chown -R app:app /app
 

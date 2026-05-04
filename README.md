@@ -1,6 +1,6 @@
-# Listerine
+# Planini
 
-Listerine is a self-hostable grocery-list backend and fallback browser UI built with FastAPI.
+Planini is a self-hostable grocery-list backend and fallback browser UI built with FastAPI.
 
 ## Highlights
 
@@ -36,7 +36,7 @@ using `.venv/bin/...` commands rather than stopping.
 - [Deployment overview](docs/deployment/README.md)
 - [Docker Compose deployment](docs/deployment/docker-compose.md)
 - [Webhooker deployment](docs/deployment/webhooker.md)
-- [iOS starter app](ios/ListerineIOS/README.md)
+- [iOS starter app](ios/PlaniniIOS/README.md)
 
 ## Native iOS passkey deployments
 
@@ -68,8 +68,8 @@ contain only the human-readable title.
 
 The checked-in review fixture (`app/fixtures/review_seed.json`) includes deterministic preview users:
 
-- `listerine@schaedler.rocks` (non-admin): seeded into all households (owner/member as appropriate)
-- `listerine_admin@schaedler.rocks` (admin): instance-admin only; household memberships are stripped
+- `planini@schaedler.rocks` (non-admin): seeded into all households (owner/member as appropriate)
+- `planini_admin@schaedler.rocks` (admin): instance-admin only; household memberships are stripped
 - `preview@example.com` and `preview-invitee@example.com` are kept for compatibility
 
 The browser e2e flow uses a separate fixture, `app/fixtures/review_seed_e2e.json`, so the review deployment seed does not need to carry browser-private authenticator material.
@@ -110,8 +110,8 @@ Optional flags:
 If someone loses their passkey, you can generate the same one-time add-passkey link that the admin UI creates directly from inside the Docker container:
 
 ```bash
-DATABASE_URL='sqlite+aiosqlite:///./listerine.db' \
-APP_BASE_URL='https://listerine.example.com' \
+DATABASE_URL='sqlite+aiosqlite:///./planini.db' \
+APP_BASE_URL='https://planini.example.com' \
 python scripts/create_passkey_reset_link.py --email admin@example.com
 ```
 
@@ -128,7 +128,7 @@ For Docker Compose deployments, you can run it directly in the live container:
 ```bash
 docker compose exec app python scripts/create_passkey_reset_link.py \
   --email admin@example.com \
-  --base-url https://listerine.example.com
+  --base-url https://planini.example.com
 ```
 
 ## Python version

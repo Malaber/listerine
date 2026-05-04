@@ -37,7 +37,7 @@ def _write_locale(directory: Path, locale: str, payload: dict[str, object]) -> N
 
 
 def test_available_locales_requires_default_locale(tmp_path, monkeypatch) -> None:
-    _write_locale(tmp_path, "de", {"common": {"app_name": "Listerine"}})
+    _write_locale(tmp_path, "de", {"common": {"app_name": "Planini"}})
     monkeypatch.setattr(i18n, "LOCALES_DIR", tmp_path)
     i18n.available_locales.cache_clear()
     i18n.load_catalog.cache_clear()
@@ -77,7 +77,7 @@ def test_resolve_locale_uses_query_then_cookie_then_accept_language(monkeypatch)
     monkeypatch.setattr(i18n, "available_locales", lambda: ("en", "de"))
 
     assert i18n.resolve_locale(_request(query_string=b"lang=de")) == "de"
-    assert i18n.resolve_locale(_request(headers=[(b"cookie", b"listerine_locale=de")])) == "de"
+    assert i18n.resolve_locale(_request(headers=[(b"cookie", b"planini_locale=de")])) == "de"
     assert (
         i18n.resolve_locale(_request(headers=[(b"accept-language", b"de-DE,de;q=0.9,en;q=0.8")]))
         == "de"

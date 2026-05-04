@@ -1,6 +1,6 @@
 # Deployment
 
-Listerine currently ships with two documented deployment paths.
+Planini currently ships with two documented deployment paths.
 
 ## Options
 

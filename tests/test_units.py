@@ -422,14 +422,14 @@ def test_config_error_helpers_cover_edge_cases() -> None:
 
 def test_settings_normalize_app_base_url_and_webcredentials_apps() -> None:
     settings_obj = Settings(
-        app_base_url=" https://listerine.malaber.de/ ",
-        webcredentials_apps="VWKG94374J.de.malaber.listerine, VWKG94374J.de.malaber.listerine.beta",
+        app_base_url=" https://planini.malaber.de/ ",
+        webcredentials_apps="VWKG94374J.de.malaber.planini, VWKG94374J.de.malaber.planini.beta",
     )
 
-    assert settings_obj.app_base_url == "https://listerine.malaber.de"
+    assert settings_obj.app_base_url == "https://planini.malaber.de"
     assert settings_obj.webcredentials_apps == [
-        "VWKG94374J.de.malaber.listerine",
-        "VWKG94374J.de.malaber.listerine.beta",
+        "VWKG94374J.de.malaber.planini",
+        "VWKG94374J.de.malaber.planini.beta",
     ]
 
 
@@ -456,30 +456,30 @@ def test_ui_test_bootstrap_rejects_non_localhost_auth_configuration() -> None:
     with pytest.raises(ValidationError) as exc_info:
         Settings(
             ui_test_bootstrap_enabled=True,
-            app_base_url="https://listerine.malaber.de",
-            webauthn_rp_id="listerine.malaber.de",
-            webcredentials_apps=["VWKG94374J.de.malaber.listerine"],
+            app_base_url="https://planini.malaber.de",
+            webauthn_rp_id="planini.malaber.de",
+            webcredentials_apps=["VWKG94374J.de.malaber.planini"],
         )
 
     message = str(exc_info.value)
     assert "Refusing startup because UI_TEST_BOOTSTRAP_ENABLED may only be used" in message
-    assert "APP_BASE_URL='https://listerine.malaber.de' must point to localhost" in message
+    assert "APP_BASE_URL='https://planini.malaber.de' must point to localhost" in message
     assert "WEBAUTHN_RP_ID must be 'localhost'" in message
     assert "WEBCREDENTIALS_APPS must be empty" in message
 
 
 def test_load_settings_rejects_ui_test_bootstrap_with_production_env(monkeypatch) -> None:
     monkeypatch.setenv("UI_TEST_BOOTSTRAP_ENABLED", "true")
-    monkeypatch.setenv("APP_BASE_URL", "https://listerine.malaber.de")
-    monkeypatch.setenv("WEBAUTHN_RP_ID", "listerine.malaber.de")
-    monkeypatch.setenv("WEBCREDENTIALS_APPS", '["VWKG94374J.de.malaber.listerine"]')
+    monkeypatch.setenv("APP_BASE_URL", "https://planini.malaber.de")
+    monkeypatch.setenv("WEBAUTHN_RP_ID", "planini.malaber.de")
+    monkeypatch.setenv("WEBCREDENTIALS_APPS", '["VWKG94374J.de.malaber.planini"]')
 
     with pytest.raises(ConfigurationError) as exc_info:
         load_settings(Settings)
 
     message = str(exc_info.value)
     assert "Refusing startup because UI_TEST_BOOTSTRAP_ENABLED may only be used" in message
-    assert "APP_BASE_URL='https://listerine.malaber.de' must point to localhost" in message
+    assert "APP_BASE_URL='https://planini.malaber.de' must point to localhost" in message
 
 
 def test_passkey_request_helpers() -> None:
@@ -536,11 +536,11 @@ def test_passkey_request_helpers_prefer_configured_app_base_url(monkeypatch) -> 
     monkeypatch.setattr("app.api.v1.routes.auth.settings.webauthn_rp_id", None)
     monkeypatch.setattr(
         "app.api.v1.routes.auth.settings.app_base_url",
-        "https://listerine.malaber.de",
+        "https://planini.malaber.de",
     )
 
-    assert _rp_id_for_request(request) == "listerine.malaber.de"
-    assert _origin_for_request(request) == "https://listerine.malaber.de"
+    assert _rp_id_for_request(request) == "planini.malaber.de"
+    assert _origin_for_request(request) == "https://planini.malaber.de"
 
 
 def test_sqlite_database_path_helper_handles_sqlite_and_non_sqlite_urls(tmp_path) -> None:

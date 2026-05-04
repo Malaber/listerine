@@ -1,10 +1,10 @@
-const CACHE_NAME = "listerine-shell-v4";
+const CACHE_NAME = "planini-shell-v4";
 const APP_SHELL_ASSETS = [
   "/manifest.webmanifest",
   "/static/app.css",
   "/static/app.js",
   "/static/img/Favicon.png",
-  "/static/img/Listerine.png",
+  "/static/img/Planini.png",
   "/static/img/apple-touch-icon.png",
   "/static/img/pwa-192.png",
   "/static/img/pwa-512.png",

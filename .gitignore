@@ -23,8 +23,8 @@ e2e-artifacts/*
 
 # macOS / Xcode / SwiftPM local artifacts
 .DS_Store
-ios/ListerineIOS/.build/
-ios/ListerineIOS/.clang-module-cache/
-ios/ListerineIOS/.swiftpm/
-ios/ListerineIOS/ListerineApp.xcodeproj/xcuserdata/
-ios/ListerineIOS/ListerineApp.xcodeproj/project.xcworkspace/xcuserdata/
+ios/PlaniniIOS/.build/
+ios/PlaniniIOS/.clang-module-cache/
+ios/PlaniniIOS/.swiftpm/
+ios/PlaniniIOS/PlaniniApp.xcodeproj/xcuserdata/
+ios/PlaniniIOS/PlaniniApp.xcodeproj/project.xcworkspace/xcuserdata/

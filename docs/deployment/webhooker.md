@@ -1,6 +1,6 @@
 # Webhooker deployment
 
-Listerine ships the app-side bundle files needed for a `webhooker` deployment,
+Planini ships the app-side bundle files needed for a `webhooker` deployment,
 while the reusable Ansible role now lives in the separate
 [`malaber.webhooker`](https://github.com/Malaber/webhooker) collection.
 
@@ -12,15 +12,15 @@ Use this deployment path when you want:
 
 ## What lives where
 
-This repository provides the Listerine-specific deployment bundle in
+This repository provides the Planini-specific deployment bundle in
 [`deploy/webhooker/`](../../deploy/webhooker/README.md):
 
 - `compose.review.yml`
 - `compose.production.yml`
 - `env/review.common.env`
 - `env/production.common.env`
-- `config/listerine-review.yaml`
-- `config/listerine-production.yaml`
+- `config/planini-review.yaml`
+- `config/planini-production.yaml`
 
 The external `malaber.webhooker` collection provides the generic Ansible role
 that:
@@ -32,8 +32,8 @@ that:
 - renders app secret env files
 - adds extra worker bind mounts
 
-No Listerine application code changes are needed for this integration. The work
-on the Listerine side is:
+No Planini application code changes are needed for this integration. The work
+on the Planini side is:
 
 - keep the bundle files in `deploy/webhooker/` current
 - configure the consuming infra repo to publish those files with
@@ -52,7 +52,7 @@ The CI workflow is already wired for `webhooker`-managed deployments:
 
 ## GitHub Actions settings
 
-Configure these in the Listerine repository:
+Configure these in the Planini repository:
 
 - repository variable `WEBHOOKER_REVIEW_WAKE_URL`
 - repository variable `WEBHOOKER_PRODUCTION_WAKE_URL`
@@ -64,8 +64,8 @@ API and worker services in the infra repo.
 ## Runtime behavior
 
 - review deployments seed deterministic real data from `/app/app/fixtures/review_seed.json`
-- review deployments set `APP_BASE_URL=https://pr-<PR>.pr.listerine.malaber.de`
-- review deployments set `WEBAUTHN_RP_ID=pr.listerine.malaber.de` so one shared passkey works across all PR hosts
+- review deployments set `APP_BASE_URL=https://pr-<PR>.pr.planini.malaber.de`
+- review deployments set `WEBAUTHN_RP_ID=pr.planini.malaber.de` so one shared passkey works across all PR hosts
 - review deployments set `WEBCREDENTIALS_APPS` to the JSON array of signed iOS app IDs allowed to use native passkeys
 - both modes use host-mounted SQLite
 - both modes join the external Traefik network `system_traefik_external`
@@ -75,40 +75,40 @@ API and worker services in the infra repo.
 Native iOS passkeys for review deployments need one extra host in addition to the
 per-PR app URLs:
 
-- app host: `https://pr-<PR>.pr.listerine.malaber.de`
-- shared passkey host: `https://pr.listerine.malaber.de`
+- app host: `https://pr-<PR>.pr.planini.malaber.de`
+- shared passkey host: `https://pr.planini.malaber.de`
 
-The iOS app can talk to `pr-<PR>.pr.listerine.malaber.de`, but Apple validates the
+The iOS app can talk to `pr-<PR>.pr.planini.malaber.de`, but Apple validates the
 Associated Domains entitlement against the exact host named in the app entitlement
 and the WebAuthn RP ID. In the shared review setup that host is
-`pr.listerine.malaber.de`, so that domain must serve the Apple App Site Association
+`pr.planini.malaber.de`, so that domain must serve the Apple App Site Association
 response independently of each PR app container.
 
 That means review passkey validation only works when all of these are true:
 
-- the app is built with `webcredentials:pr.listerine.malaber.de`
-- review deployments set `WEBAUTHN_RP_ID=pr.listerine.malaber.de`
-- `pr.listerine.malaber.de` serves the Apple App Site Association file
+- the app is built with `webcredentials:pr.planini.malaber.de`
+- review deployments set `WEBAUTHN_RP_ID=pr.planini.malaber.de`
+- `pr.planini.malaber.de` serves the Apple App Site Association file
 - the AASA payload contains the signed app ID in `webcredentials.apps`
 
-Example Nginx config behind Traefik for `pr.listerine.malaber.de`:
+Example Nginx config behind Traefik for `pr.planini.malaber.de`:
 
 ```nginx
 server {
     listen 80;
     listen [::]:80;
-    server_name pr.listerine.malaber.de;
+    server_name pr.planini.malaber.de;
 
     location = /.well-known/apple-app-site-association {
         default_type application/json;
         add_header Cache-Control "public, max-age=300";
-        return 200 '{"webcredentials":{"apps":["VWKG94374J.de.malaber.listerine"]}}';
+        return 200 '{"webcredentials":{"apps":["VWKG94374J.de.malaber.planini"]}}';
     }
 
     location = /apple-app-site-association {
         default_type application/json;
         add_header Cache-Control "public, max-age=300";
-        return 200 '{"webcredentials":{"apps":["VWKG94374J.de.malaber.listerine"]}}';
+        return 200 '{"webcredentials":{"apps":["VWKG94374J.de.malaber.planini"]}}';
     }
 
     location = /health {
@@ -125,28 +125,28 @@ server {
 After deploying that shared host, verify both of these return `200` with the same
 JSON payload:
 
-- `https://pr.listerine.malaber.de/.well-known/apple-app-site-association`
-- `https://pr.listerine.malaber.de/apple-app-site-association`
+- `https://pr.planini.malaber.de/.well-known/apple-app-site-association`
+- `https://pr.planini.malaber.de/apple-app-site-association`
 
 ## Review deployment layout
 
-The intended contained host layout keeps everything for review deploys under `/srv/listerine-pr/`:
+The intended contained host layout keeps everything for review deploys under `/srv/planini-pr/`:
 
-- `/srv/listerine-pr/deploy/`: Compose templates and non-secret env files
-- `/srv/listerine-pr/secrets/`: runtime secret env files
-- `/srv/listerine-pr/data/reviews/pr-<PR>/`: per-PR SQLite data
-- `/srv/listerine-pr/webhooker/`: `webhooker` compose stack, project YAML, state, and wake files
+- `/srv/planini-pr/deploy/`: Compose templates and non-secret env files
+- `/srv/planini-pr/secrets/`: runtime secret env files
+- `/srv/planini-pr/data/reviews/pr-<PR>/`: per-PR SQLite data
+- `/srv/planini-pr/webhooker/`: `webhooker` compose stack, project YAML, state, and wake files
 
 The intended review URL for a pull request is:
 
-- `https://pr-<PR>.pr.listerine.malaber.de`
+- `https://pr-<PR>.pr.planini.malaber.de`
 
 ## Consuming From An Infra Repo
 
 The normal flow is:
 
 1. Install `malaber.webhooker` from a GitHub Release tarball in the infra repo.
-2. Copy the Listerine bundle files from `deploy/webhooker/` in this repo into the infra repo's `files/` tree.
+2. Copy the Planini bundle files from `deploy/webhooker/` in this repo into the infra repo's `files/` tree.
 3. Create a playbook that includes `malaber.webhooker.webhooker`.
 4. Add one non-secret vars file with:
    - `webhooker_env`
@@ -165,7 +165,7 @@ The normal flow is:
 
 ## Next step
 
-Follow the detailed Listerine-specific consumption guide in
+Follow the detailed Planini-specific consumption guide in
 [`deploy/webhooker/README.md`](../../deploy/webhooker/README.md). It explains
 exactly which files to copy into an infra repo, which host paths must exist, and
 which `malaber.webhooker` variables need to be set.

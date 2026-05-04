@@ -1,0 +1,42 @@
+project_id: planini-pr-review
+
+github:
+  owner: Malaber
+  repo: planini
+  token_env: GITHUB_TOKEN
+  webhook_secret_env: GITHUB_WEBHOOK_SECRET
+  required_event_types:
+    - pull_request
+    - ping
+
+deployment:
+  mode: review
+  compose_file: /srv/planini-pr/deploy/compose.review.yml
+  working_directory: /srv/planini-pr/deploy
+  hostname_template: pr-{pr}.pr.planini.malaber.de
+  project_name_prefix: planini-pr-
+
+image:
+  registry: ghcr.io
+  repository: malaber/planini
+  tag_template: pr-{pr}-{sha7}
+
+preview:
+  base_dir: /srv/planini-pr/data/reviews
+  data_dir_template: ../data/reviews/pr-{pr}/data
+  sqlite_path_template: ../data/reviews/pr-{pr}/data/planini.db
+
+reconcile:
+  poll_interval_seconds: 60
+  cleanup_closed_prs: true
+  redeploy_on_sha_change: true
+
+traefik:
+  enable_labels: true
+  certresolver: letsencrypt
+
+state:
+  state_file: /srv/planini-pr/webhooker/runtime/state/planini-pr-review.json
+
+wake:
+  wake_file: /srv/planini-pr/webhooker/runtime/wake/planini-pr-review

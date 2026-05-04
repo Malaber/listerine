@@ -1,0 +1,470 @@
+import XCTest
+
+final class PlaniniUITests: XCTestCase {
+    private let seededEmail = "planini@schaedler.rocks"
+    private let initialListName = "Browser Test Shop"
+
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+    }
+
+    func testListViewFlow() throws {
+        try assertLocalTestBackend()
+        let session = if
+            let accessToken = ProcessInfo.processInfo.environment["PLANINI_UI_TEST_ACCESS_TOKEN"],
+            let displayName = ProcessInfo.processInfo.environment["PLANINI_UI_TEST_DISPLAY_NAME"],
+            accessToken.isEmpty == false,
+            displayName.isEmpty == false
+        {
+            UITestSession(accessToken: accessToken, displayName: displayName)
+        } else {
+            try bootstrapSession(email: userEmail)
+        }
+        let app = XCUIApplication()
+        app.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
+        app.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
+        app.launchEnvironment["PLANINI_UI_TEST_ACCESS_TOKEN"] = session.accessToken
+        app.launchEnvironment["PLANINI_UI_TEST_DISPLAY_NAME"] = session.displayName
+        app.launchEnvironment["PLANINI_UI_TEST_INITIAL_LIST_NAME"] = initialListName
+
+        app.launch()
+
+        let listTitle = app.staticTexts["list-detail-title"]
+        XCTAssertTrue(listTitle.waitForExistence(timeout: 10))
+        app.tabBars.buttons["Lists"].tap()
+        XCTAssertTrue(app.navigationBars["Lists"].waitForExistence(timeout: 5))
+        app.buttons["list-row-\(initialListName)"].tap()
+        XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
+        XCTAssertEqual(listTitle.label, initialListName)
+        captureScreenshot(named: "ios-ui-list-detail")
+
+        XCTAssertTrue(app.staticTexts["Uncategorized"].waitForExistence(timeout: 3))
+        if app.buttons["favorite-list-button"].exists {
+            app.buttons["favorite-list-button"].tap()
+        }
+
+        app.tabBars.buttons["Favorite"].tap()
+        XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
+        XCTAssertEqual(listTitle.label, initialListName)
+        captureScreenshot(named: "ios-ui-favorite-list")
+
+        app.buttons["add-item-button"].tap()
+        XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
+        captureScreenshot(named: "ios-ui-add-item-sheet")
+
+        let itemName = "UI Test Fresh Herbs"
+        let itemQuantity = "1 bunch"
+        let updatedName = "\(itemName) Updated"
+
+        let nameField = app.textFields["add-item-name-field"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 3))
+        nameField.tap()
+        nameField.typeText(itemName)
+
+        let quantityField = app.textFields["add-item-quantity-field"]
+        quantityField.tap()
+        quantityField.typeText(itemQuantity)
+
+        let noteField = app.textFields["add-item-note-field"]
+        noteField.tap()
+        noteField.typeText("for pasta")
+
+        app.buttons["add-item-save-button"].tap()
+        XCTAssertTrue(app.staticTexts[itemName].waitForExistence(timeout: 5))
+        captureScreenshot(named: "ios-ui-added-item")
+
+        app.staticTexts[itemName].tap()
+        XCTAssertTrue(app.otherElements["edit-item-sheet"].waitForExistence(timeout: 3))
+
+        let editNameField = app.textFields["edit-item-name-field"]
+        editNameField.tap()
+        editNameField.typeText(" Updated")
+        app.buttons["edit-item-save-button"].tap()
+        XCTAssertTrue(app.staticTexts[updatedName].waitForExistence(timeout: 5))
+
+        app.buttons["Check \(updatedName)"].tap()
+        XCTAssertTrue(
+            waitForCheckedItem(
+                named: updatedName,
+                inListNamed: initialListName,
+                accessToken: session.accessToken
+            )
+        )
+        captureScreenshot(named: "ios-ui-checked-item")
+
+        app.tabBars.buttons["Lists"].tap()
+        returnToListsRootIfNeeded(app)
+        XCTAssertTrue(app.navigationBars["Lists"].waitForExistence(timeout: 5))
+        app.buttons["list-row-Hosting errands"].tap()
+        XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
+        XCTAssertEqual(listTitle.label, "Hosting errands")
+        captureScreenshot(named: "ios-ui-list-switcher")
+
+        app.tabBars.buttons["Settings"].tap()
+        XCTAssertTrue(app.buttons["settings-sign-out-button"].waitForExistence(timeout: 5))
+        captureScreenshot(named: "ios-ui-settings")
+    }
+
+    func testListReceivesLiveUpdates() throws {
+        try assertLocalTestBackend()
+        let session = if
+            let accessToken = ProcessInfo.processInfo.environment["PLANINI_UI_TEST_ACCESS_TOKEN"],
+            let displayName = ProcessInfo.processInfo.environment["PLANINI_UI_TEST_DISPLAY_NAME"],
+            accessToken.isEmpty == false,
+            displayName.isEmpty == false
+        {
+            UITestSession(accessToken: accessToken, displayName: displayName)
+        } else {
+            try bootstrapSession(email: userEmail)
+        }
+
+        let app = XCUIApplication()
+        app.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
+        app.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
+        app.launchEnvironment["PLANINI_UI_TEST_ACCESS_TOKEN"] = session.accessToken
+        app.launchEnvironment["PLANINI_UI_TEST_DISPLAY_NAME"] = session.displayName
+        app.launchEnvironment["PLANINI_UI_TEST_INITIAL_LIST_NAME"] = initialListName
+        app.launch()
+
+        let listTitle = app.staticTexts["list-detail-title"]
+        XCTAssertTrue(listTitle.waitForExistence(timeout: 10))
+        XCTAssertEqual(listTitle.label, initialListName)
+        XCTAssertTrue(app.staticTexts["Loose item"].waitForExistence(timeout: 5))
+
+        let uniqueSuffix = UUID().uuidString.prefix(8)
+        let itemName = "UI Live \(uniqueSuffix)"
+        let updatedName = "\(itemName) Updated"
+        let itemID = try createItem(
+            named: itemName,
+            note: "",
+            inListNamed: initialListName,
+            accessToken: session.accessToken
+        )
+
+        XCTAssertTrue(app.staticTexts[itemName].waitForExistence(timeout: 8))
+        captureScreenshot(named: "ios-ui-live-item-created")
+
+        try updateItem(
+            itemID: itemID,
+            name: updatedName,
+            note: "",
+            accessToken: session.accessToken
+        )
+        XCTAssertTrue(app.staticTexts[updatedName].waitForExistence(timeout: 8))
+
+        try deleteItem(itemID: itemID, accessToken: session.accessToken)
+        XCTAssertTrue(
+            waitForElementToDisappear(app.staticTexts[updatedName], timeout: 8),
+            "Expected live-deleted item to disappear without manual refresh."
+        )
+    }
+
+    private var baseURL: URL {
+        if
+            let value = ProcessInfo.processInfo.environment["PLANINI_UI_TEST_BASE_URL"],
+            let url = URL(string: value)
+        {
+            return url
+        }
+        return URL(string: "http://localhost:8018")!
+    }
+
+    private var bootstrapBaseURL: URL {
+        if
+            let value = ProcessInfo.processInfo.environment["PLANINI_UI_TEST_BOOTSTRAP_BASE_URL"],
+            let url = URL(string: value)
+        {
+            return url
+        }
+        return URL(string: "http://127.0.0.1:8018")!
+    }
+
+    private var userEmail: String {
+        guard let configuredEmail = ProcessInfo.processInfo.environment["PLANINI_UI_TEST_USER_EMAIL"],
+            configuredEmail.isEmpty == false
+        else {
+            return seededEmail
+        }
+        return configuredEmail
+    }
+
+    private func assertLocalTestBackend() throws {
+        try assertLoopbackURL(baseURL, label: "app backend")
+        try assertLoopbackURL(bootstrapBaseURL, label: "bootstrap backend")
+    }
+
+    private func assertLoopbackURL(_ url: URL, label: String) throws {
+        guard let host = url.host?.lowercased(),
+            ["localhost", "127.0.0.1", "::1"].contains(host)
+        else {
+            throw NSError(
+                domain: "PlaniniUITests",
+                code: 2,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Refusing to run iOS UI tests against a non-local \(label) URL: \(url.absoluteString)"
+                ]
+            )
+        }
+    }
+
+    private func bootstrapSession(email: String) throws -> UITestSession {
+        let request = jsonRequest(
+            path: "/api/v1/auth/ui-test-bootstrap",
+            method: "POST",
+            token: nil,
+            body: ["email": email],
+            baseURL: bootstrapBaseURL
+        )
+        let capturedData = try performRequest(request)
+        return try JSONDecoder().decode(UITestSession.self, from: capturedData)
+    }
+
+    private func waitForCheckedItem(
+        named itemName: String,
+        inListNamed listName: String,
+        accessToken: String,
+        timeout: TimeInterval = 8
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let items = try? fetchItems(inListNamed: listName, accessToken: accessToken),
+                items.contains(where: { $0.name == itemName && $0.checked })
+            {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.35))
+        }
+        return false
+    }
+
+    private func waitForElementToDisappear(_ element: XCUIElement, timeout: TimeInterval = 8) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if element.exists == false {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        return element.exists == false
+    }
+
+    private func fetchItems(inListNamed listName: String, accessToken: String) throws -> [UITestItem] {
+        let householdRequest = jsonRequest(
+            path: "/api/v1/households",
+            method: "GET",
+            token: accessToken
+        )
+        let householdData = try performRequest(householdRequest)
+        let households = try JSONDecoder().decode([UITestHousehold].self, from: householdData)
+
+        for household in households {
+            let listsRequest = jsonRequest(
+                path: "/api/v1/households/\(household.id.uuidString)/lists",
+                method: "GET",
+                token: accessToken
+            )
+            let listData = try performRequest(listsRequest)
+            let lists = try JSONDecoder().decode([UITestList].self, from: listData)
+            guard let matchingList = lists.first(where: { $0.name == listName }) else {
+                continue
+            }
+
+            let itemsRequest = jsonRequest(
+                path: "/api/v1/lists/\(matchingList.id.uuidString)/items",
+                method: "GET",
+                token: accessToken
+            )
+            let itemData = try performRequest(itemsRequest)
+            return try JSONDecoder().decode([UITestItem].self, from: itemData)
+        }
+
+        return []
+    }
+
+    private func createItem(
+        named name: String,
+        note: String,
+        inListNamed listName: String,
+        accessToken: String
+    ) throws -> UUID {
+        let listID = try listID(named: listName, accessToken: accessToken)
+        let request = jsonRequest(
+            path: "/api/v1/lists/\(listID.uuidString)/items",
+            method: "POST",
+            token: accessToken,
+            body: [
+                "name": name,
+                "quantity_text": NSNull(),
+                "note": note,
+                "category_id": NSNull(),
+            ]
+        )
+        let data = try performRequest(request)
+        let item = try JSONDecoder().decode(UITestIdentifiedItem.self, from: data)
+        return item.id
+    }
+
+    private func updateItem(
+        itemID: UUID,
+        name: String,
+        note: String,
+        accessToken: String
+    ) throws {
+        let request = jsonRequest(
+            path: "/api/v1/items/\(itemID.uuidString)",
+            method: "PATCH",
+            token: accessToken,
+            body: [
+                "name": name,
+                "note": note,
+            ]
+        )
+        _ = try performRequest(request)
+    }
+
+    private func deleteItem(itemID: UUID, accessToken: String) throws {
+        let request = jsonRequest(
+            path: "/api/v1/items/\(itemID.uuidString)",
+            method: "DELETE",
+            token: accessToken
+        )
+        _ = try performRequest(request)
+    }
+
+    private func listID(named listName: String, accessToken: String) throws -> UUID {
+        let householdRequest = jsonRequest(
+            path: "/api/v1/households",
+            method: "GET",
+            token: accessToken
+        )
+        let householdData = try performRequest(householdRequest)
+        let households = try JSONDecoder().decode([UITestHousehold].self, from: householdData)
+
+        for household in households {
+            let listsRequest = jsonRequest(
+                path: "/api/v1/households/\(household.id.uuidString)/lists",
+                method: "GET",
+                token: accessToken
+            )
+            let listData = try performRequest(listsRequest)
+            let lists = try JSONDecoder().decode([UITestList].self, from: listData)
+            if let matchingList = lists.first(where: { $0.name == listName }) {
+                return matchingList.id
+            }
+        }
+
+        throw NSError(
+            domain: "PlaniniUITests",
+            code: 4,
+            userInfo: [NSLocalizedDescriptionKey: "Could not find seeded list named \(listName)."]
+        )
+    }
+
+    private func jsonRequest(
+        path: String,
+        method: String,
+        token: String?,
+        body: [String: Any]? = nil,
+        baseURL overrideBaseURL: URL? = nil
+    ) -> URLRequest {
+        let targetBaseURL = overrideBaseURL ?? baseURL
+        var request = URLRequest(url: targetBaseURL.appending(path: path))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpMethod = method
+        if let token {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        if let body {
+            request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        }
+        return request
+    }
+
+    private func performRequest(_ request: URLRequest) throws -> Data {
+        let semaphore = DispatchSemaphore(value: 0)
+        var capturedData: Data?
+        var capturedError: Error?
+        URLSession.shared.dataTask(with: request) { data, _, error in
+            capturedData = data
+            capturedError = error
+            semaphore.signal()
+        }.resume()
+        let waitResult = semaphore.wait(timeout: .now() + 10)
+
+        if let capturedError {
+            throw capturedError
+        }
+        if waitResult == .timedOut {
+            throw NSError(
+                domain: "PlaniniUITests",
+                code: 3,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Timed out waiting for response from \(request.url?.absoluteString ?? "unknown request")"
+                ]
+            )
+        }
+        guard let capturedData else {
+            throw NSError(domain: "PlaniniUITests", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing bootstrap response"])
+        }
+        return capturedData
+    }
+
+    private func returnToListsRootIfNeeded(_ app: XCUIApplication) {
+        if app.navigationBars["Lists"].waitForExistence(timeout: 1) {
+            return
+        }
+
+        let backButton = app.navigationBars.buttons.firstMatch
+        if backButton.exists {
+            backButton.tap()
+        }
+    }
+
+    private func captureScreenshot(named name: String) {
+        let screenshot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+
+        guard let artifactDirectory = ProcessInfo.processInfo.environment["PLANINI_UI_TEST_ARTIFACT_DIR"] else {
+            return
+        }
+        let directoryURL = URL(fileURLWithPath: artifactDirectory, isDirectory: true)
+        try? FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        let fileURL = directoryURL.appending(path: "\(name).png")
+        try? screenshot.pngRepresentation.write(to: fileURL)
+    }
+
+}
+
+private struct UITestSession: Decodable {
+    let accessToken: String
+    let displayName: String
+
+    private enum CodingKeys: String, CodingKey {
+        case accessToken = "access_token"
+        case displayName = "display_name"
+    }
+}
+
+private struct UITestHousehold: Decodable {
+    let id: UUID
+}
+
+private struct UITestList: Decodable {
+    let id: UUID
+    let name: String
+}
+
+private struct UITestItem: Decodable {
+    let name: String
+    let checked: Bool
+}
+
+private struct UITestIdentifiedItem: Decodable {
+    let id: UUID
+}

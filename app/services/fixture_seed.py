@@ -17,8 +17,8 @@ from app.models import (
     User,
 )
 
-PREVIEW_INSTANCE_ADMIN_EMAIL = "listerine_admin@schaedler.rocks"
-PREVIEW_MEMBER_EMAIL = "listerine@schaedler.rocks"
+PREVIEW_INSTANCE_ADMIN_EMAIL = "planini_admin@schaedler.rocks"
+PREVIEW_MEMBER_EMAIL = "planini@schaedler.rocks"
 
 
 def _decode_public_key(value: str) -> bytes:
