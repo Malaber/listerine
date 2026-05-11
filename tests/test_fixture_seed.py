@@ -224,12 +224,12 @@ def test_seed_data_enforces_preview_member_and_admin_membership_rules(tmp_path) 
             {
                 "users": [
                     {
-                        "email": "listerine_admin@schaedler.rocks",
+                        "email": "planini_admin@schaedler.rocks",
                         "display_name": "Admin",
                         "is_admin": True,
                     },
                     {
-                        "email": "listerine@schaedler.rocks",
+                        "email": "planini@schaedler.rocks",
                         "display_name": "Member",
                         "is_admin": False,
                     },
@@ -238,8 +238,8 @@ def test_seed_data_enforces_preview_member_and_admin_membership_rules(tmp_path) 
                 "households": [
                     {
                         "name": "Home",
-                        "owner_email": "listerine@schaedler.rocks",
-                        "members": [{"email": "listerine_admin@schaedler.rocks", "role": "member"}],
+                        "owner_email": "planini@schaedler.rocks",
+                        "members": [{"email": "planini_admin@schaedler.rocks", "role": "member"}],
                         "lists": [],
                     },
                     {
@@ -260,8 +260,8 @@ def test_seed_data_enforces_preview_member_and_admin_membership_rules(tmp_path) 
             await ensure_seed_data(session, str(fixture_path))
             users = (await session.execute(select(User))).scalars().all()
             by_email = {user.email: user for user in users}
-            admin_user = by_email["listerine_admin@schaedler.rocks"]
-            member_user = by_email["listerine@schaedler.rocks"]
+            admin_user = by_email["planini_admin@schaedler.rocks"]
+            member_user = by_email["planini@schaedler.rocks"]
             households = (await session.execute(select(Household))).scalars().all()
             assert len(households) == 2
             for household in households:

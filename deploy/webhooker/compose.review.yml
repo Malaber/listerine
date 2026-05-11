@@ -8,7 +8,7 @@ services:
     environment:
       APP_HOSTNAME: ${APP_HOSTNAME}
       APP_BASE_URL: https://${APP_HOSTNAME}
-      DATABASE_URL: sqlite+aiosqlite:////data/listerine.db
+      DATABASE_URL: sqlite+aiosqlite:////data/planini.db
       WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID}
       WEBCREDENTIALS_APPS: ${WEBCREDENTIALS_APPS}
     volumes:

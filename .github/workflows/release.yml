@@ -74,7 +74,7 @@ jobs:
           file: ./Dockerfile
           platforms: ${{ matrix.platform }}
           build-args: |
-            LISTERINE_VERSION=${{ needs.version.outputs.release_version }}
+            PLANINI_VERSION=${{ needs.version.outputs.release_version }}
           outputs: type=image,name=${{ steps.image.outputs.image }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=docker-${{ matrix.artifact_suffix }}
           cache-to: type=gha,mode=max,scope=docker-${{ matrix.artifact_suffix }}

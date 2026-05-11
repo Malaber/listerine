@@ -1,4 +1,4 @@
-const LANGUAGE_COOKIE_NAME = "listerine_locale";
+const LANGUAGE_COOKIE_NAME = "planini_locale";
 const SUPPORTED_LANGUAGE_OPTIONS = [
   { value: "", label: "Browser default" },
   { value: "en", label: "English" },

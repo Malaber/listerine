@@ -1,0 +1,46 @@
+project_id: planini-production
+
+github:
+  owner: Malaber
+  repo: planini
+  token_env: GITHUB_TOKEN
+  webhook_secret_env: GITHUB_WEBHOOK_SECRET
+  required_event_types:
+    - push
+    - ping
+
+deployment:
+  mode: production
+  compose_file: /srv/planini-pr/deploy/compose.production.yml
+  working_directory: /srv/planini-pr/deploy
+  project_name_prefix: planini-
+  production_project_name: planini
+  production_hostname: planini.malaber.de
+
+image:
+  registry: ghcr.io
+  repository: malaber/planini
+  tag_template: sha-{sha}
+  production_tag_template: sha-{sha}
+
+production:
+  branch: main
+  data_dir: ../data/production/data
+  sqlite_path: ../data/production/data/planini.db
+  backup_dir: ../data/production/backups
+  backup_keep: 3
+
+reconcile:
+  poll_interval_seconds: 60
+  cleanup_closed_prs: false
+  redeploy_on_sha_change: true
+
+traefik:
+  enable_labels: true
+  certresolver: letsencrypt
+
+state:
+  state_file: /srv/planini-pr/webhooker/runtime/state/planini-production.json
+
+wake:
+  wake_file: /srv/planini-pr/webhooker/runtime/wake/planini-production

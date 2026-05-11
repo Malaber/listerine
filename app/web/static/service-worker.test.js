@@ -31,7 +31,7 @@ function createServiceWorkerHarness(options = {}) {
     URL,
     caches: {
       open: async (name) => {
-        assert.equal(name, "listerine-shell-v4");
+        assert.equal(name, "planini-shell-v5");
         return openedCache;
       },
       match: async (request) => {
@@ -122,8 +122,7 @@ test("service worker precaches shell assets and skips waiting", async () => {
         "/manifest.webmanifest",
         "/static/app.css",
         "/static/app.js",
-        "/static/img/Favicon.png",
-        "/static/img/Listerine.png",
+        "/static/img/planini.svg",
         "/static/img/apple-touch-icon.png",
         "/static/img/pwa-192.png",
         "/static/img/pwa-512.png",
@@ -143,12 +142,12 @@ test("service worker tolerates precache failures during install", async () => {
 
 test("service worker clears old caches and claims clients on activate", async () => {
   const harness = createServiceWorkerHarness({
-    cacheKeys: ["listerine-shell-v2", "listerine-shell-v3", "listerine-shell-v4"],
+    cacheKeys: ["planini-shell-v2", "planini-shell-v3", "planini-shell-v5"],
   });
 
   await dispatchExtendableEvent(harness.listeners.get("activate"));
 
-  assert.deepEqual(harness.deletedKeys, ["listerine-shell-v2", "listerine-shell-v3"]);
+  assert.deepEqual(harness.deletedKeys, ["planini-shell-v2", "planini-shell-v3"]);
   assert.equal(harness.self.clients.claimCalled, true);
 });
 
@@ -183,7 +182,7 @@ test("service worker ignores admin navigations", async () => {
 test("service worker serves cached immutable static assets", async () => {
   const cachedResponse = { cached: true };
   const harness = createServiceWorkerHarness({ cachedResponse });
-  const request = { method: "GET", url: "https://example.com/static/img/Favicon.png" };
+  const request = { method: "GET", url: "https://example.com/static/img/planini.svg" };
 
   const responsePromise = await dispatchFetchEvent(harness.listeners.get("fetch"), request);
 

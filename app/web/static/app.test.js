@@ -534,7 +534,7 @@ test("language settings dialog syncs and saves the selected language", () => {
     assert.equal(summary.textContent, "Deutsch");
     assert.equal(success.hidden, false);
     assert.equal(success.textContent, "Language set to Deutsch.");
-    assert.equal(dom.window.document.cookie, "listerine_locale=de");
+    assert.equal(dom.window.document.cookie, "planini_locale=de");
     assert.deepEqual(assigned, ["/settings?lang=de"]);
   } finally {
     setGlobalProperty("document", originalDocument);

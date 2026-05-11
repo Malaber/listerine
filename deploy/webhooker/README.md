@@ -1,7 +1,7 @@
-# Listerine webhooker deployment
+# Planini webhooker deployment
 
-This directory contains the Listerine-specific deployment bundle for running
-Listerine with [`webhooker`](https://github.com/Malaber/webhooker) in both
+This directory contains the Planini-specific deployment bundle for running
+Planini with [`webhooker`](https://github.com/Malaber/webhooker) in both
 production and review mode.
 
 The generic Ansible role is not in this repository. It is provided by the
@@ -15,18 +15,18 @@ and reference from that role.
 - `compose.review.yml`: review Compose template reused for each pull request
 - `env/production.common.env`: non-secret production runtime defaults
 - `env/review.common.env`: non-secret review runtime defaults
-- `config/listerine-production.yaml`: `webhooker` project definition for production
-- `config/listerine-review.yaml`: `webhooker` project definition for review deployments
+- `config/planini-production.yaml`: `webhooker` project definition for production
+- `config/planini-review.yaml`: `webhooker` project definition for review deployments
 
 ## What the infra repo should do
 
 Use the external `malaber.webhooker.webhooker` role to:
 
 - deploy the `webhooker` stack itself
-- render `/srv/listerine-pr/webhooker/env/webhooker.env`
-- publish these Listerine bundle files onto the target host
-- render Listerine secret env files
-- add worker mounts for every Listerine host path the worker must read
+- render `/srv/planini-pr/webhooker/env/webhooker.env`
+- publish these Planini bundle files onto the target host
+- render Planini secret env files
+- add worker mounts for every Planini host path the worker must read
 
 In other words: this repo provides the app bundle, and the `webhooker` repo
 provides the reusable deployment role.
@@ -44,7 +44,7 @@ infra-repo/
 │   ├── webhooker.yml
 │   └── webhooker.secrets.yml
 └── files/
-    └── listerine/
+    └── planini/
         └── deploy/
             └── webhooker/
                 ├── compose.production.yml
@@ -84,7 +84,7 @@ ansible-galaxy collection install -r requirements.yml
 
 ## Non-secret vars in the infra repo
 
-The non-secret vars file should publish the Listerine bundle files and define
+The non-secret vars file should publish the Planini bundle files and define
 both the review and production `webhooker` projects.
 
 Example `vars/webhooker.yml`:
@@ -98,32 +98,32 @@ webhooker_env:
   GITHUB_WEBHOOK_SECRET: "{{ webhooker_github_webhook_secret }}"
 
 webhooker_worker_extra_mounts:
-  - /srv/listerine-pr:/srv/listerine-pr
+  - /srv/planini-pr:/srv/planini-pr
 
 webhooker_managed_files:
-  - src: files/listerine/deploy/webhooker/compose.review.yml
-    dest: /opt/listerine/deploy/webhooker/compose.review.yml
+  - src: files/planini/deploy/webhooker/compose.review.yml
+    dest: /opt/planini/deploy/webhooker/compose.review.yml
     mode: "0644"
 
-  - src: files/listerine/deploy/webhooker/compose.production.yml
-    dest: /opt/listerine/deploy/webhooker/compose.production.yml
+  - src: files/planini/deploy/webhooker/compose.production.yml
+    dest: /opt/planini/deploy/webhooker/compose.production.yml
     mode: "0644"
 
-  - src: files/listerine/deploy/webhooker/env/review.common.env
-    dest: /opt/listerine/deploy/webhooker/env/review.common.env
+  - src: files/planini/deploy/webhooker/env/review.common.env
+    dest: /opt/planini/deploy/webhooker/env/review.common.env
     mode: "0644"
 
-  - src: files/listerine/deploy/webhooker/env/production.common.env
-    dest: /opt/listerine/deploy/webhooker/env/production.common.env
+  - src: files/planini/deploy/webhooker/env/production.common.env
+    dest: /opt/planini/deploy/webhooker/env/production.common.env
     mode: "0644"
 
 webhooker_projects:
-  - filename: listerine-review.yaml
+  - filename: planini-review.yaml
     content:
-      project_id: listerine-pr-review
+      project_id: planini-pr-review
       github:
         owner: Malaber
-        repo: listerine
+        repo: planini
         token_env: GITHUB_TOKEN
         webhook_secret_env: GITHUB_WEBHOOK_SECRET
         required_event_types:
@@ -131,18 +131,18 @@ webhooker_projects:
           - ping
       deployment:
         mode: review
-        compose_file: /srv/listerine-pr/deploy/compose.review.yml
-        working_directory: /srv/listerine-pr/deploy
-        hostname_template: pr-{pr}.pr.listerine.malaber.de
-        project_name_prefix: listerine-pr-
+        compose_file: /srv/planini-pr/deploy/compose.review.yml
+        working_directory: /srv/planini-pr/deploy
+        hostname_template: pr-{pr}.pr.planini.malaber.de
+        project_name_prefix: planini-pr-
       image:
         registry: ghcr.io
-        repository: malaber/listerine
+        repository: malaber/planini
         tag_template: pr-{pr}-{sha7}
       preview:
-        base_dir: /srv/listerine-pr/data/reviews
+        base_dir: /srv/planini-pr/data/reviews
         data_dir_template: ../data/reviews/pr-{pr}/data
-        sqlite_path_template: ../data/reviews/pr-{pr}/data/listerine.db
+        sqlite_path_template: ../data/reviews/pr-{pr}/data/planini.db
       reconcile:
         poll_interval_seconds: 60
         cleanup_closed_prs: true
@@ -151,16 +151,16 @@ webhooker_projects:
         enable_labels: true
         certresolver: letsencrypt
       state:
-        state_file: /srv/listerine-pr/webhooker/runtime/state/listerine-pr-review.json
+        state_file: /srv/planini-pr/webhooker/runtime/state/planini-pr-review.json
       wake:
-        wake_file: /srv/listerine-pr/webhooker/runtime/wake/listerine-pr-review
+        wake_file: /srv/planini-pr/webhooker/runtime/wake/planini-pr-review
 
-  - filename: listerine-production.yaml
+  - filename: planini-production.yaml
     content:
-      project_id: listerine-production
+      project_id: planini-production
       github:
         owner: Malaber
-        repo: listerine
+        repo: planini
         token_env: GITHUB_TOKEN
         webhook_secret_env: GITHUB_WEBHOOK_SECRET
         required_event_types:
@@ -168,20 +168,20 @@ webhooker_projects:
           - ping
       deployment:
         mode: production
-        compose_file: /srv/listerine-pr/deploy/compose.production.yml
-        working_directory: /srv/listerine-pr/deploy
-        project_name_prefix: listerine-
-        production_project_name: listerine
-        production_hostname: listerine.malaber.de
+        compose_file: /srv/planini-pr/deploy/compose.production.yml
+        working_directory: /srv/planini-pr/deploy
+        project_name_prefix: planini-
+        production_project_name: planini
+        production_hostname: planini.malaber.de
       image:
         registry: ghcr.io
-        repository: malaber/listerine
+        repository: malaber/planini
         tag_template: sha-{sha}
         production_tag_template: sha-{sha}
       production:
         branch: main
         data_dir: ../data/production/data
-        sqlite_path: ../data/production/data/listerine.db
+        sqlite_path: ../data/production/data/planini.db
         backup_dir: ../data/production/backups
         backup_keep: 3
       reconcile:
@@ -192,9 +192,9 @@ webhooker_projects:
         enable_labels: true
         certresolver: letsencrypt
       state:
-        state_file: /srv/listerine-pr/webhooker/runtime/state/listerine-production.json
+        state_file: /srv/planini-pr/webhooker/runtime/state/planini-production.json
       wake:
-        wake_file: /srv/listerine-pr/webhooker/runtime/wake/listerine-production
+        wake_file: /srv/planini-pr/webhooker/runtime/wake/planini-production
 ```
 
 If you deploy your own fork, update:
@@ -213,12 +213,12 @@ webhooker_github_token: replace-me
 webhooker_github_webhook_secret: replace-me
 
 webhooker_secret_env_files:
-  - path: /srv/listerine-pr/secrets/review.env
+  - path: /srv/planini-pr/secrets/review.env
     mode: "0600"
     content:
       SECRET_KEY: replace-me
 
-  - path: /srv/listerine-pr/secrets/production.env
+  - path: /srv/planini-pr/secrets/production.env
     mode: "0600"
     content:
       SECRET_KEY: replace-me
@@ -227,7 +227,7 @@ webhooker_secret_env_files:
 ## Expected host layout
 
 ```text
-/opt/listerine/
+/opt/planini/
 └── deploy/
     └── webhooker/
         ├── compose.production.yml
@@ -236,25 +236,25 @@ webhooker_secret_env_files:
         │   ├── production.common.env
         │   └── review.common.env
         └── config/
-            ├── listerine-production.yaml
-            └── listerine-review.yaml
+            ├── planini-production.yaml
+            └── planini-review.yaml
 
-/etc/listerine/
+/etc/planini/
 ├── production.secrets.env
 └── review.secrets.env
 
 /etc/webhooker/projects/
-├── listerine-production.yaml
-└── listerine-review.yaml
+├── planini-production.yaml
+└── planini-review.yaml
 
 /srv/webhooker/
-├── production/listerine/
+├── production/planini/
 │   ├── compose.production.yml
 │   ├── data/
 │   ├── backups/
 │   └── env/
 │       └── production.common.env
-└── reviews/listerine/
+└── reviews/planini/
     └── pr-123/
         ├── compose.review.yml
         ├── data/
@@ -270,28 +270,28 @@ The `malaber.webhooker.webhooker` role is expected to create and populate these
 paths based on the vars you provide, except for any higher-level OS or Docker
 installation prerequisites.
 
-## Why `/etc/listerine` matters
+## Why `/etc/planini` matters
 
-The Listerine Compose templates use `env_file` entries that point at:
+The Planini Compose templates use `env_file` entries that point at:
 
-- `/etc/listerine/production.secrets.env`
-- `/etc/listerine/review.secrets.env`
+- `/etc/planini/production.secrets.env`
+- `/etc/planini/review.secrets.env`
 
 Because `docker compose` is executed by the `webhooker-worker` container, the worker must be able to read those files. Add this mount to the worker service in your `webhooker` stack:
 
 ```yaml
     volumes:
-      - /etc/listerine:/etc/listerine:ro
+      - /etc/planini:/etc/planini:ro
 ```
 
-Keep the existing mount for the Listerine deployment bundle as well:
+Keep the existing mount for the Planini deployment bundle as well:
 
 ```yaml
     volumes:
-      - /opt/listerine/deploy/webhooker:/opt/listerine/deploy/webhooker:ro
+      - /opt/planini/deploy/webhooker:/opt/planini/deploy/webhooker:ro
 ```
 
-The worker also needs write access to the Listerine data directories referenced
+The worker also needs write access to the Planini data directories referenced
 by the app Compose templates, so include:
 
 ```yaml
@@ -299,22 +299,22 @@ by the app Compose templates, so include:
       - /srv/webhooker:/srv/webhooker
 ```
 
-Together, the typical worker mounts for Listerine are:
+Together, the typical worker mounts for Planini are:
 
 ```yaml
 webhooker_worker_extra_mounts:
-  - /opt/listerine/deploy/webhooker:/opt/listerine/deploy/webhooker:ro
-  - /etc/listerine:/etc/listerine:ro
+  - /opt/planini/deploy/webhooker:/opt/planini/deploy/webhooker:ro
+  - /etc/planini:/etc/planini:ro
   - /srv/webhooker:/srv/webhooker
 ```
 
 ## Runtime behavior
 
 - Review deployments seed deterministic real data from `/app/app/fixtures/review_seed.json`.
-- Review deployments set `APP_BASE_URL=https://pr-<PR>.pr.listerine.malaber.de`.
-- Review deployments set `WEBAUTHN_RP_ID=pr.listerine.malaber.de` so one shared passkey works across all PR hosts.
+- Review deployments set `APP_BASE_URL=https://pr-<PR>.pr.planini.malaber.de`.
+- Review deployments set `WEBAUTHN_RP_ID=pr.planini.malaber.de` so one shared passkey works across all PR hosts.
 - Review deployments set `WEBCREDENTIALS_APPS` to the JSON array of signed iOS app IDs allowed to use native passkeys.
-- Both modes mount the host data directory at `/data` in the container and use `DATABASE_URL=sqlite+aiosqlite:////data/listerine.db`.
+- Both modes mount the host data directory at `/data` in the container and use `DATABASE_URL=sqlite+aiosqlite:////data/planini.db`.
 - The rendered `APP_DATA_DIR` should stay relative when possible, for example `./data`, so the Compose bundle remains portable with its sibling folders.
 - Both modes join the external Traefik network `system_traefik_external`.
 - CI publishes `sha-<full git sha>` tags on branch pushes, and PR review jobs reuse the matching `sha-<pr head sha>` image.
@@ -323,11 +323,11 @@ webhooker_worker_extra_mounts:
 ### Shared passkey validation host
 
 Review passkeys need one extra deployment target besides the individual PR app
-hosts. The app UI still lives on `pr-<PR>.pr.listerine.malaber.de`, but the iOS
+hosts. The app UI still lives on `pr-<PR>.pr.planini.malaber.de`, but the iOS
 Associated Domains entitlement and `WEBAUTHN_RP_ID` both point at the shared
-domain `pr.listerine.malaber.de`.
+domain `pr.planini.malaber.de`.
 
-Because of that, `pr.listerine.malaber.de` must exist as its own deployment and
+Because of that, `pr.planini.malaber.de` must exist as its own deployment and
 serve the Apple App Site Association payload for the signed app identifier. A
 simple Nginx service behind Traefik is enough:
 
@@ -335,18 +335,18 @@ simple Nginx service behind Traefik is enough:
 server {
     listen 80;
     listen [::]:80;
-    server_name pr.listerine.malaber.de;
+    server_name pr.planini.malaber.de;
 
     location = /.well-known/apple-app-site-association {
         default_type application/json;
         add_header Cache-Control "public, max-age=300";
-        return 200 '{"webcredentials":{"apps":["VWKG94374J.de.malaber.listerine"]}}';
+        return 200 '{"webcredentials":{"apps":["VWKG94374J.de.malaber.planini"]}}';
     }
 
     location = /apple-app-site-association {
         default_type application/json;
         add_header Cache-Control "public, max-age=300";
-        return 200 '{"webcredentials":{"apps":["VWKG94374J.de.malaber.listerine"]}}';
+        return 200 '{"webcredentials":{"apps":["VWKG94374J.de.malaber.planini"]}}';
     }
 
     location = /health {
@@ -363,8 +363,8 @@ server {
 Before testing native iOS passkeys against review builds, confirm both of these
 URLs return `200` with the expected JSON body:
 
-- `https://pr.listerine.malaber.de/.well-known/apple-app-site-association`
-- `https://pr.listerine.malaber.de/apple-app-site-association`
+- `https://pr.planini.malaber.de/.well-known/apple-app-site-association`
+- `https://pr.planini.malaber.de/apple-app-site-association`
 
 ## GitHub Actions settings
 
@@ -395,15 +395,15 @@ ansible-playbook -i inventory/hosts.ini playbooks/deploy-webhooker.yml \
 5. Confirm these files exist on the target host:
    - `/opt/webhooker/docker-compose.yml`
    - `/etc/webhooker/env/webhooker.env`
-   - `/etc/webhooker/projects/listerine-review.yaml`
-   - `/etc/webhooker/projects/listerine-production.yaml`
-   - `/etc/listerine/review.secrets.env`
-   - `/etc/listerine/production.secrets.env`
-   - `/opt/listerine/deploy/webhooker/compose.review.yml`
-   - `/opt/listerine/deploy/webhooker/compose.production.yml`
+   - `/etc/webhooker/projects/planini-review.yaml`
+   - `/etc/webhooker/projects/planini-production.yaml`
+   - `/etc/planini/review.secrets.env`
+   - `/etc/planini/production.secrets.env`
+   - `/opt/planini/deploy/webhooker/compose.review.yml`
+   - `/opt/planini/deploy/webhooker/compose.production.yml`
 6. Confirm the `webhooker-worker` container can access:
-   - `/opt/listerine/deploy/webhooker`
-   - `/etc/listerine`
+   - `/opt/planini/deploy/webhooker`
+   - `/etc/planini`
    - `/srv/webhooker`
 
 ## Secrets files
@@ -413,17 +413,17 @@ repo. They should be rendered onto the host by `webhooker_secret_env_files`.
 
 Typical contents:
 
-`/etc/listerine/production.secrets.env`
+`/etc/planini/production.secrets.env`
 
 ```dotenv
 SECRET_KEY=replace-me
 ```
 
-`/etc/listerine/review.secrets.env`
+`/etc/planini/review.secrets.env`
 
 ```dotenv
 SECRET_KEY=replace-me
 ```
 
-You can add future Listerine secrets there without changing the checked-in app
+You can add future Planini secrets there without changing the checked-in app
 bundle files in this repository.

@@ -32,7 +32,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=os.environ.get("APP_BASE_URL"),
         help=(
             "Public app base URL used to build the link. Defaults to APP_BASE_URL, "
-            "for example https://listerine.example.com."
+            "for example https://planini.example.com."
         ),
     )
     target_group = parser.add_mutually_exclusive_group(required=True)

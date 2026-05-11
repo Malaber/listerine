@@ -15,4 +15,4 @@ Use these guides depending on what you need to do next.
 
 ## Other app docs
 
-- [iOS starter app](../ios/ListerineIOS/README.md)
+- [iOS starter app](../ios/PlaniniIOS/README.md)

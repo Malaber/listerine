@@ -45,7 +45,7 @@ class UserAdmin(ModelView, model=User):
     column_list = [User.email, User.display_name, User.is_admin, User.is_active, User.created_at]
     form_columns = [User.email, User.display_name, User.is_admin, User.is_active]
     can_create = False
-    edit_template = "listerine_admin/user_edit.html"
+    edit_template = "planini_admin/user_edit.html"
 
     @expose("/{pk}/passkey-add-link", methods=["POST"], include_in_schema=False)
     async def generate_passkey_add_link(self, request: Request) -> Response:
@@ -110,21 +110,21 @@ def get_application_version() -> str:
         return "development"
 
 
-class ListerineAdmin(Admin):
+class PlaniniAdmin(Admin):
     @login_required
     async def index(self, request: Request) -> Response:
         return await self.templates.TemplateResponse(
             request,
-            "listerine_admin/index.html",
-            {"listerine_version": get_application_version()},
+            "planini_admin/index.html",
+            {"planini_version": get_application_version()},
         )
 
 
 def configure_admin(app: FastAPI) -> Admin:
-    admin = ListerineAdmin(
+    admin = PlaniniAdmin(
         app=app,
         engine=engine,
-        title="Listerine Admin",
+        title="Planini Admin",
         templates_dir=str(PROJECT_ROOT / "app" / "admin_templates"),
         authentication_backend=SessionAdminAuth(),
     )
