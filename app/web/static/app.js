@@ -568,14 +568,15 @@ function renderHouseholds(root, households, listsByHousehold) {
     listGrid.className = "list-grid";
 
     if (lists.length === 0) {
-      const emptyListState = document.createElement("p");
-      emptyListState.className = "dashboard-helper";
-      emptyListState.textContent = translate(
-        "dashboard.no_lists_yet",
-        {},
-        "No lists yet. Use the form above to create the first one."
-      );
-      card.appendChild(emptyListState);
+      const emptyListState = document.createElement("li");
+      emptyListState.innerHTML = `
+        <button type="button" class="dashboard-action-card" data-dashboard-add-option="list">
+          <strong>${translate("dashboard.add_list", {}, "List")}</strong>
+          <small>${translate("dashboard.no_lists_yet", {}, "No lists yet. Add the first list for this household.")}</small>
+        </button>
+      `;
+      listGrid.appendChild(emptyListState);
+      card.appendChild(listGrid);
     } else {
       lists.forEach((list) => {
         const item = document.createElement("li");
@@ -1074,6 +1075,14 @@ async function initDashboard() {
       navigateTo(`/lists/${listId}?addItem=1`);
       return;
     }
+
+    const addOptionButton = event.target.closest("[data-dashboard-add-option]");
+    if (addOptionButton) {
+      const panelName = addOptionButton.getAttribute("data-dashboard-add-option");
+      if (panelName === "household" || panelName === "list") {
+        setDashboardPanelOpen(root, panelName, true);
+      }
+    }
   });
 
   root.querySelector("[data-dashboard-add-toggle]")?.addEventListener("click", () => {
@@ -1102,15 +1111,6 @@ async function initDashboard() {
   root.querySelectorAll("[data-dashboard-panel-back]").forEach((node) => {
     node.addEventListener("click", () => {
       setDashboardPanelOpen(root, "add", true);
-    });
-  });
-
-  root.querySelectorAll("[data-dashboard-add-option]").forEach((node) => {
-    node.addEventListener("click", () => {
-      const panelName = node.getAttribute("data-dashboard-add-option");
-      if (panelName === "household" || panelName === "list") {
-        setDashboardPanelOpen(root, panelName, true);
-      }
     });
   });
 
