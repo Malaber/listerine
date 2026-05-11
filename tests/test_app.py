@@ -360,7 +360,7 @@ def test_login_page_renders_selected_locale_and_persists_cookie(client) -> None:
     assert response.status_code == 200
     assert 'lang="de"' in response.text
     assert "Anmelden" in response.text
-    assert "listerine_locale=de" in response.headers["set-cookie"]
+    assert "planini_locale=de" in response.headers["set-cookie"]
 
     follow_up = client.get("/login")
     assert follow_up.status_code == 200
@@ -1162,7 +1162,7 @@ def test_passkey_flow_uses_configured_app_base_url(client, monkeypatch) -> None:
     monkeypatch.setattr("app.api.v1.routes.auth.settings.webauthn_rp_id", None)
     monkeypatch.setattr(
         "app.api.v1.routes.auth.settings.app_base_url",
-        "https://listerine.malaber.de",
+        "https://planini.malaber.de",
     )
 
     email = f"{uuid4()}@example.com"
@@ -1194,10 +1194,10 @@ def test_passkey_flow_uses_configured_app_base_url(client, monkeypatch) -> None:
         headers=forwarded_headers,
     )
     assert login_verify.status_code == 200
-    assert captured_rp_ids == ["listerine.malaber.de", "listerine.malaber.de"]
+    assert captured_rp_ids == ["planini.malaber.de", "planini.malaber.de"]
     assert captured_origins == [
-        "https://listerine.malaber.de",
-        "https://listerine.malaber.de",
+        "https://planini.malaber.de",
+        "https://planini.malaber.de",
     ]
 
 
@@ -1209,20 +1209,20 @@ def test_expected_origins_handles_missing_values() -> None:
 def test_expected_origins_deduplicates_matching_rp_origin() -> None:
     assert _expected_origins(
         {
-            "origin": "https://pr.listerine.malaber.de",
-            "rp_id": "pr.listerine.malaber.de",
+            "origin": "https://pr.planini.malaber.de",
+            "rp_id": "pr.planini.malaber.de",
         }
-    ) == ["https://pr.listerine.malaber.de"]
+    ) == ["https://pr.planini.malaber.de"]
 
 
 def test_login_verification_accepts_shared_rp_origin_for_native_apps(client, monkeypatch) -> None:
     captured_origins: list[str] = []
     headers = {
-        "host": "pr-49.pr.listerine.malaber.de",
+        "host": "pr-49.pr.planini.malaber.de",
         "x-forwarded-proto": "https",
     }
 
-    monkeypatch.setattr("app.api.v1.routes.auth.settings.webauthn_rp_id", "pr.listerine.malaber.de")
+    monkeypatch.setattr("app.api.v1.routes.auth.settings.webauthn_rp_id", "pr.planini.malaber.de")
 
     user_id = asyncio.run(
         _create_user(
@@ -1234,7 +1234,7 @@ def test_login_verification_accepts_shared_rp_origin_for_native_apps(client, mon
 
     def _capture_authentication(**kwargs):
         captured_origins.append(kwargs["expected_origin"])
-        if kwargs["expected_origin"] == "https://pr-49.pr.listerine.malaber.de":
+        if kwargs["expected_origin"] == "https://pr-49.pr.planini.malaber.de":
             raise Exception("web origin mismatch for native passkey")
         return _mock_verified_authentication()
 
@@ -1253,8 +1253,8 @@ def test_login_verification_accepts_shared_rp_origin_for_native_apps(client, mon
     )
     assert login_verify.status_code == 200
     assert captured_origins == [
-        "https://pr-49.pr.listerine.malaber.de",
-        "https://pr.listerine.malaber.de",
+        "https://pr-49.pr.planini.malaber.de",
+        "https://pr.planini.malaber.de",
     ]
 
 
@@ -1263,15 +1263,15 @@ def test_registration_verification_accepts_shared_rp_origin_for_native_apps(
 ) -> None:
     captured_origins: list[str] = []
     headers = {
-        "host": "pr-49.pr.listerine.malaber.de",
+        "host": "pr-49.pr.planini.malaber.de",
         "x-forwarded-proto": "https",
     }
 
-    monkeypatch.setattr("app.api.v1.routes.auth.settings.webauthn_rp_id", "pr.listerine.malaber.de")
+    monkeypatch.setattr("app.api.v1.routes.auth.settings.webauthn_rp_id", "pr.planini.malaber.de")
 
     def _capture_registration(**kwargs):
         captured_origins.append(kwargs["expected_origin"])
-        if kwargs["expected_origin"] == "https://pr-49.pr.listerine.malaber.de":
+        if kwargs["expected_origin"] == "https://pr-49.pr.planini.malaber.de":
             raise Exception("web origin mismatch for native passkey")
         return _mock_verified_registration()
 
@@ -1294,8 +1294,8 @@ def test_registration_verification_accepts_shared_rp_origin_for_native_apps(
     )
     assert register_verify.status_code == 200
     assert captured_origins == [
-        "https://pr-49.pr.listerine.malaber.de",
-        "https://pr.listerine.malaber.de",
+        "https://pr-49.pr.planini.malaber.de",
+        "https://pr.planini.malaber.de",
     ]
 
 
@@ -1308,7 +1308,7 @@ def test_apple_app_site_association_requires_configuration(client) -> None:
 def test_apple_app_site_association_returns_webcredentials_apps(client, monkeypatch) -> None:
     monkeypatch.setattr(
         "app.web.routes.settings.webcredentials_apps",
-        ["VWKG94374J.de.malaber.listerine"],
+        ["VWKG94374J.de.malaber.planini"],
     )
 
     response = client.get("/.well-known/apple-app-site-association")
@@ -1316,7 +1316,7 @@ def test_apple_app_site_association_returns_webcredentials_apps(client, monkeypa
     assert response.status_code == 200
     assert response.json() == {
         "webcredentials": {
-            "apps": ["VWKG94374J.de.malaber.listerine"],
+            "apps": ["VWKG94374J.de.malaber.planini"],
         }
     }
 

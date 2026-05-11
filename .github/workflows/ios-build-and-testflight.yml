@@ -4,7 +4,7 @@ on:
   push:
     paths:
       - '.github/workflows/ios-build-and-testflight.yml'
-      - 'ios/ListerineIOS/**'
+      - 'ios/PlaniniIOS/**'
   workflow_dispatch:
     inputs:
       upload_to_testflight:
@@ -71,7 +71,7 @@ jobs:
       - name: Install XcodeGen
         run: python -m invoke install-xcodegen
       - name: Generate Xcode project
-        run: cd ios/ListerineIOS && xcodegen generate
+        run: cd ios/PlaniniIOS && xcodegen generate
       - name: Install signing certificate
         run: |
           CERT_PATH=$RUNNER_TEMP/build_certificate.p12
@@ -85,7 +85,7 @@ jobs:
       - name: Install provisioning profile
         run: |
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          PROFILE_PATH=~/Library/MobileDevice/Provisioning\ Profiles/listerine.mobileprovision
+          PROFILE_PATH=~/Library/MobileDevice/Provisioning\ Profiles/planini.mobileprovision
           echo "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH"
       - name: Write App Store Connect API key
         run: |
@@ -95,12 +95,12 @@ jobs:
           KEY
       - name: Archive app
         run: |
-          cd ios/ListerineIOS
+          cd ios/PlaniniIOS
           xcodebuild \
-            -project ListerineApp.xcodeproj \
-            -scheme Listerine \
+            -project PlaniniApp.xcodeproj \
+            -scheme Planini \
             -configuration Release \
-            -archivePath $RUNNER_TEMP/Listerine.xcarchive \
+            -archivePath $RUNNER_TEMP/Planini.xcarchive \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             PRODUCT_BUNDLE_IDENTIFIER="$IOS_BUNDLE_IDENTIFIER" \
             CODE_SIGN_STYLE=Manual \
@@ -127,10 +127,10 @@ jobs:
           </dict>
           </plist>
           PLIST
-          cd ios/ListerineIOS
+          cd ios/PlaniniIOS
           xcodebuild \
             -exportArchive \
-            -archivePath $RUNNER_TEMP/Listerine.xcarchive \
+            -archivePath $RUNNER_TEMP/Planini.xcarchive \
             -exportPath $RUNNER_TEMP/export \
             -exportOptionsPlist $RUNNER_TEMP/ExportOptions.plist
       - name: Upload IPA to TestFlight
@@ -138,6 +138,6 @@ jobs:
           xcrun altool \
             --upload-app \
             --type ios \
-            --file $RUNNER_TEMP/export/Listerine.ipa \
+            --file $RUNNER_TEMP/export/Planini.ipa \
             --apiKey "$APP_STORE_CONNECT_KEY_ID" \
             --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"

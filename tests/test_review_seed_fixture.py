@@ -20,8 +20,8 @@ def test_review_seed_fixture_has_unique_passkey_credentials_and_seeds() -> None:
         user["passkey"]["credential_id"] for user in users if isinstance(user.get("passkey"), dict)
     ]
     assert len(credential_ids) == len(set(credential_ids))
-    assert "listerine_admin@schaedler.rocks" in emails
-    assert "listerine@schaedler.rocks" in emails
+    assert "planini_admin@schaedler.rocks" in emails
+    assert "planini@schaedler.rocks" in emails
     for user in users:
         passkey = user.get("passkey")
         if isinstance(passkey, dict):
@@ -40,8 +40,8 @@ def test_review_seed_fixture_has_unique_passkey_credentials_and_seeds() -> None:
                         select(User).where(
                             User.email.in_(
                                 [
-                                    "listerine_admin@schaedler.rocks",
-                                    "listerine@schaedler.rocks",
+                                    "planini_admin@schaedler.rocks",
+                                    "planini@schaedler.rocks",
                                     "preview@example.com",
                                     "preview-invitee@example.com",
                                 ]
@@ -82,11 +82,11 @@ def test_review_e2e_seed_fixture_contains_private_passkey_material() -> None:
         if grocery_list["name"] == payload["e2e"]["checked_stress_list"]
     )
 
-    assert payload["e2e"]["owner_email"] == "listerine@schaedler.rocks"
+    assert payload["e2e"]["owner_email"] == "planini@schaedler.rocks"
     assert payload["e2e"]["invitee_email"] == "preview-invitee@example.com"
     assert payload["e2e"]["checked_stress_list"] == "Checked History Stress Test"
     assert sum(1 for item in checked_stress_list["items"] if item["checked"]) == 258
-    assert users["listerine@schaedler.rocks"]["passkey"]["private_key_pkcs8_b64"]
-    assert users["listerine@schaedler.rocks"]["passkey"]["user_handle_b64"]
+    assert users["planini@schaedler.rocks"]["passkey"]["private_key_pkcs8_b64"]
+    assert users["planini@schaedler.rocks"]["passkey"]["user_handle_b64"]
     assert users["preview-invitee@example.com"]["passkey"]["private_key_pkcs8_b64"]
     assert users["preview-invitee@example.com"]["passkey"]["user_handle_b64"]

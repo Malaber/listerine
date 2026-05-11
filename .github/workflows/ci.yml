@@ -124,7 +124,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run Swift package tests with coverage gate
-        run: cd ios/ListerineIOS && ./Scripts/check_coverage.sh
+        run: cd ios/PlaniniIOS && ./Scripts/check_coverage.sh
 
   ios_native_ci:
     runs-on: macos-latest
@@ -213,7 +213,7 @@ jobs:
           file: ./Dockerfile
           platforms: ${{ matrix.platform }}
           build-args: |
-            LISTERINE_VERSION=${{ needs.version.outputs.release_version }}
+            PLANINI_VERSION=${{ needs.version.outputs.release_version }}
           outputs: type=image,name=${{ steps.image.outputs.image }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=docker-${{ matrix.artifact_suffix }}
           cache-to: type=gha,mode=max,scope=docker-${{ matrix.artifact_suffix }}
