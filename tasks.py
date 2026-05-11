@@ -817,6 +817,31 @@ def check_js(c) -> None:
     c.run(_node_command("npm run --silent test:js"), pty=False, shell="/bin/bash")
 
 
+@task(
+    help={
+        "source": "Source SVG used to render web icon PNG files.",
+        "output_dir": "Directory that receives generated PNG web icons.",
+    }
+)
+def generate_web_icons(
+    c,
+    source="app/web/static/img/planini.svg",
+    output_dir="app/web/static/img",
+) -> None:
+    script_path = ROOT / "scripts" / "generate_web_icons.py"
+    command = " ".join(
+        [
+            shlex.quote(_tool_path("python")),
+            shlex.quote(str(script_path)),
+            "--source",
+            shlex.quote(source),
+            "--output-dir",
+            shlex.quote(output_dir),
+        ]
+    )
+    c.run(command, env=_python_env(), pty=False, shell="/bin/bash")
+
+
 @task(help={"with_deps": "Use Playwright's system dependency install flow."})
 def install_browser(c, with_deps=False) -> None:
     playwright_install = "npx playwright install chromium"

@@ -1,4 +1,5 @@
 import importlib.util
+import shlex
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -194,6 +195,30 @@ def test_run_quiet_prints_captured_output_on_failure(capsys) -> None:
         raise AssertionError("expected quiet run failure")
 
     assert capsys.readouterr().out == "stdout noise\nstderr noise\n"
+
+
+def test_generate_web_icons_invokes_python_script() -> None:
+    calls: list[tuple[str, dict]] = []
+
+    class Context:
+        def run(self, command, **kwargs):
+            calls.append((command, kwargs))
+
+    tasks.generate_web_icons.body(Context(), source="source.svg", output_dir="out")
+
+    assert len(calls) == 1
+    command, kwargs = calls[0]
+    args = shlex.split(command)
+    assert args[1:] == [
+        str(tasks.ROOT / "scripts" / "generate_web_icons.py"),
+        "--source",
+        "source.svg",
+        "--output-dir",
+        "out",
+    ]
+    assert kwargs["env"]["PYTHONPATH"] == "."
+    assert kwargs["pty"] is False
+    assert kwargs["shell"] == "/bin/bash"
 
 
 def test_run_browser_e2e_for_device_uses_derived_database_and_artifact_paths(monkeypatch) -> None:
