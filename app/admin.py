@@ -116,7 +116,7 @@ class ListerineAdmin(Admin):
         return await self.templates.TemplateResponse(
             request,
             "listerine_admin/index.html",
-            {"listerine_version": get_application_version()},
+            {"planini_version": get_application_version()},
         )
 
 
@@ -124,7 +124,7 @@ def configure_admin(app: FastAPI) -> Admin:
     admin = ListerineAdmin(
         app=app,
         engine=engine,
-        title="Listerine Admin",
+        title="Planini Admin",
         templates_dir=str(PROJECT_ROOT / "app" / "admin_templates"),
         authentication_backend=SessionAdminAuth(),
     )

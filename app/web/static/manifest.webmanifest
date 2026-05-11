@@ -1,12 +1,12 @@
 {
-  "name": "Listerine",
-  "short_name": "Listerine",
+  "name": "Planini",
+  "short_name": "Planini",
   "description": "Shared household grocery lists.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#fffaf2",
-  "theme_color": "#142a57",
+  "theme_color": "#6b4f3b",
   "icons": [
     {
       "src": "/static/img/pwa-192.png",

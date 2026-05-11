@@ -38,14 +38,14 @@ class FriendlyEnvSettingsSource(EnvSettingsSource):
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    app_name: str = "Listerine"
+    app_name: str = "Planini"
     secret_key: str = "change-me"
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24 * 28
     session_max_age_seconds: int = 60 * 60 * 24 * 180
     session_idle_timeout_seconds: int = 60 * 60 * 24 * 28
     auth_flow_expire_seconds: int = 10 * 60
-    database_url: str = "sqlite+aiosqlite:///./listerine.db"
+    database_url: str = "sqlite+aiosqlite:///./planini.db"
     app_base_url: str | None = None
     secure_cookies: bool = False
     webauthn_rp_id: str | None = None
