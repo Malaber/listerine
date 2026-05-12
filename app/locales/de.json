@@ -65,8 +65,8 @@
     }
   },
   "dashboard": {
-    "kicker": "Gemeinsame Einkaufsplanung",
-    "title": "Haushalte und Listen",
+    "kicker": "Gemeinsame Gemischtwarenabteilung",
+    "title": "Guten Morgen Welt",
     "intro": "Lege zuerst einen Haushalt für die Menschen an, die gemeinsam einkaufen. Erstelle dann eine oder mehrere Listen in diesem Haushalt, zum Beispiel Wocheneinkauf, Großhandel oder Partybedarf.",
     "organized_title": "So sind die Daten organisiert",
     "organized_step_user": "Du meldest dich an und wirst zu einem Benutzerkonto.",
@@ -74,8 +74,8 @@
     "organized_step_list": "Eine Liste gehört zu genau einem Haushalt.",
     "organized_step_items": "Artikel und Kategorien leben innerhalb einer Liste.",
     "organized_note": "Wenn diese Seite leer ist, hast du wahrscheinlich noch keinen ersten Haushalt erstellt.",
-    "your_space": "Dein Bereich",
-    "your_households": "Deine Haushalte",
+    "your_space": "Dein Hund",
+    "your_households": "Deine Gartenzwerge",
     "no_households_title": "Noch keine Haushalte",
     "no_households_body": "Erstelle deinen ersten Haushalt, um loszulegen. Danach kannst du sofort Listen darin anlegen.",
     "open_add_options": "Optionen zum Hinzufügen öffnen",
