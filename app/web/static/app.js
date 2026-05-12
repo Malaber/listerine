@@ -1312,7 +1312,7 @@ function syncModalState(root) {
 function setItemPanelOpen(root, isOpen) {
   const panel = root.querySelector("[data-item-panel]");
   const overlay = root.querySelector("[data-item-panel-overlay]");
-  const toggle = root.querySelector("[data-item-form-toggle]");
+  const toggles = root.querySelectorAll("[data-item-form-toggle]");
   const nameInput = root.querySelector("[data-item-name-input]");
   const categorySearch = root.querySelector("[data-item-category-search]");
   const editPanel = root.querySelector("[data-item-edit-panel]");
@@ -1320,7 +1320,7 @@ function setItemPanelOpen(root, isOpen) {
   const settingsPanel = root.querySelector("[data-list-settings-panel]");
   const settingsOverlay = root.querySelector("[data-list-settings-overlay]");
 
-  if (!panel || !overlay || !toggle) {
+  if (!panel || !overlay || toggles.length === 0) {
     return;
   }
 
@@ -1345,7 +1345,9 @@ function setItemPanelOpen(root, isOpen) {
   if (isOpen && categorySearch instanceof HTMLInputElement) {
     categorySearch.value = "";
   }
-  toggle.setAttribute("aria-expanded", String(isOpen));
+  toggles.forEach((toggle) => {
+    toggle.setAttribute("aria-expanded", String(isOpen));
+  });
   syncModalState(root);
 
   if (isOpen && nameInput instanceof HTMLElement) {
@@ -2516,10 +2518,12 @@ async function initListDetail() {
     window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
   };
 
-  root.querySelector("[data-item-form-toggle]")?.addEventListener("click", () => {
-    const panel = root.querySelector("[data-item-panel]");
-    setItemPanelOpen(root, panel?.hidden ?? true);
-    renderItemSuggestions(root, state);
+  root.querySelectorAll("[data-item-form-toggle]").forEach((toggle) => {
+    toggle.addEventListener("click", () => {
+      const panel = root.querySelector("[data-item-panel]");
+      setItemPanelOpen(root, panel?.hidden ?? true);
+      renderItemSuggestions(root, state);
+    });
   });
 
   root.querySelectorAll("[data-item-form-close]").forEach((node) => {
