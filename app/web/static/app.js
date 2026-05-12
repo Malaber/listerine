@@ -538,11 +538,7 @@ function renderHouseholds(root, households, listsByHousehold) {
   container.innerHTML = "";
   const hasHouseholds = households.length > 0;
   emptyState.hidden = hasHouseholds;
-
-  if (!hasHouseholds) {
-    container.appendChild(emptyState);
-    return;
-  }
+  emptyState.style.display = hasHouseholds ? "none" : "";
 
   households.forEach((household) => {
     const lists = listsByHousehold.get(household.id) || [];
@@ -2015,9 +2011,8 @@ function renderItems(root, state) {
   container.innerHTML = "";
   const hasItems = decoratedItems.length > 0;
   emptyState.hidden = hasItems;
-
+  emptyState.style.display = hasItems ? "none" : "";
   if (!hasItems) {
-    container.appendChild(emptyState);
     return;
   }
 
