@@ -295,7 +295,7 @@ main {
   gap: 0.8rem;
   padding: 0.8rem 0.95rem;
   border: 0;
-  border-top: 1px solid rgba(167, 203, 223, 0.75);
+  border-top: 1px solid var(--border);
   border-radius: 0;
   background: transparent;
   cursor: pointer;
@@ -317,7 +317,7 @@ main {
 }
 
 .category-radio-card:hover {
-  background: rgba(223, 248, 253, 0.52);
+  background: rgba(241, 230, 220, 0.52);
 }
 
 .category-radio-option input:focus-visible + .category-radio-card {
@@ -577,7 +577,7 @@ main {
 
 .list-grid li a:hover,
 .dashboard-action-card:hover {
-  background: rgba(223, 248, 253, 0.7);
+  background: rgba(241, 230, 220, 0.7);
   border-color: var(--border-strong);
 }
 
@@ -971,7 +971,7 @@ main {
 
 .dashboard-add-action:hover {
   border-color: var(--brand-aqua);
-  background: rgba(223, 248, 253, 0.72);
+  background: rgba(241, 230, 220, 0.72);
 }
 
 .dashboard-add-action strong,
@@ -1007,7 +1007,7 @@ main {
   width: 100%;
   padding: 0.95rem 1rem;
   border: 0;
-  border-top: 1px solid rgba(167, 203, 223, 0.75);
+  border-top: 1px solid var(--border);
   background: transparent;
   color: var(--text);
   text-align: left;
@@ -1021,7 +1021,7 @@ main {
 }
 
 .dashboard-add-list-button:hover {
-  background: rgba(223, 248, 253, 0.52);
+  background: rgba(241, 230, 220, 0.52);
 }
 
 .dashboard-add-list-button small {
@@ -2195,7 +2195,7 @@ main {
     flex-direction: column;
     gap: 0.7rem;
     border: 0;
-    border-top: 1px solid rgba(167, 203, 223, 0.75);
+    border-top: 1px solid var(--border);
     border-radius: 0;
     padding: 0.8rem 0.85rem;
   }
