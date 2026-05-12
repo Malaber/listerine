@@ -539,6 +539,11 @@ function renderHouseholds(root, households, listsByHousehold) {
   const hasHouseholds = households.length > 0;
   emptyState.hidden = hasHouseholds;
 
+  if (!hasHouseholds) {
+    container.appendChild(emptyState);
+    return;
+  }
+
   households.forEach((household) => {
     const lists = listsByHousehold.get(household.id) || [];
     const card = document.createElement("article");
@@ -2008,7 +2013,13 @@ function renderItems(root, state) {
     .sort(compareCheckedItems);
 
   container.innerHTML = "";
-  emptyState.hidden = decoratedItems.length > 0;
+  const hasItems = decoratedItems.length > 0;
+  emptyState.hidden = hasItems;
+
+  if (!hasItems) {
+    container.appendChild(emptyState);
+    return;
+  }
 
   const groupedActiveItems = new Map();
   activeItems.forEach((item) => {
