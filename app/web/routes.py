@@ -71,9 +71,9 @@ def _capabilities_demo_payload() -> dict[str, object]:
             "name": "Saturday Groceries",
         },
         "categories": [
-            {"id": "produce", "name": "Produce", "color": "#6bbf59"},
-            {"id": "fridge", "name": "Fridge", "color": "#1db8d9"},
-            {"id": "pantry", "name": "Pantry", "color": "#f59e0b"},
+            {"id": "produce", "name": "Produce", "color": "#8f7a62"},
+            {"id": "fridge", "name": "Fridge", "color": "#b59676"},
+            {"id": "pantry", "name": "Pantry", "color": "#8b6b4f"},
         ],
         "category_order": [
             {"category_id": "produce", "sort_order": 0},

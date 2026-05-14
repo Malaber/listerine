@@ -61,14 +61,14 @@
   "categories": [
     {
       "name": "Konserven",
-      "color": "#94a3b8",
+      "color": "#8b6b4f",
       "aliases": [
         "Dose"
       ]
     },
     {
       "name": "Milch & Eier",
-      "color": "#d8b4e2",
+      "color": "#bda58e",
       "aliases": [
         "Molkerei"
       ]
@@ -82,28 +82,28 @@
     },
     {
       "name": "Reinigung",
-      "color": "#c026a3",
+      "color": "#7a4f3b",
       "aliases": [
         "Putzen"
       ]
     },
     {
       "name": "Tiefkuehlkost",
-      "color": "#4dd0e1",
+      "color": "#a98260",
       "aliases": [
         "TK"
       ]
     },
     {
       "name": "Vegan",
-      "color": "#00b512",
+      "color": "#6f5b46",
       "aliases": [
         "Plant based"
       ]
     },
     {
       "name": "Backwaren",
-      "color": "#fb923c",
+      "color": "#c08a5a",
       "aliases": [
         "Brot",
         "Broetchen",
@@ -112,35 +112,35 @@
     },
     {
       "name": "Backzutaten",
-      "color": "#ec4899",
+      "color": "#9c7358",
       "aliases": [
         "backen"
       ]
     },
     {
       "name": "Fleisch",
-      "color": "#ef4444",
+      "color": "#7d3f2d",
       "aliases": [
         "Metzger"
       ]
     },
     {
       "name": "Gemuese",
-      "color": "#7ed957",
+      "color": "#8f7a62",
       "aliases": [
         "Gruenzeug"
       ]
     },
     {
       "name": "Haushalt",
-      "color": "#64748b",
+      "color": "#6b4f3b",
       "aliases": [
         "Home"
       ]
     },
     {
       "name": "Weekend chores",
-      "color": "#8b5cf6",
+      "color": "#b59676",
       "aliases": [
         "Cabin"
       ]
