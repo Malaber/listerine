@@ -1158,7 +1158,7 @@ async function main() {
       .locator(".item-category-group")
       .filter({ has: page.locator(".item-category-header h3", { hasText: "Backwaren" }) })
       .first();
-    await backwarenGroup.getByRole("button", { name: "Add item to Backwaren" }).click();
+    await backwarenGroup.getByRole("button", { name: "Quick add to Backwaren" }).click();
     await expectVisible(page.locator("[data-item-panel]"), "Category quick add should open add modal");
     assert.equal(
       (await addForm

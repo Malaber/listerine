@@ -397,8 +397,8 @@ test("category quick add buttons open the add form with the category selected", 
     const checkedHeader = [...document.querySelectorAll(".item-category-header")]
       .find((header) => header.textContent.includes("Checked off"));
     assert.equal(quickAddButtons.length, 2);
-    assert.equal(quickAddButtons[0].getAttribute("aria-label"), "Add uncategorized item");
-    assert.equal(quickAddButtons[1].getAttribute("aria-label"), "Add item to Produce");
+    assert.equal(quickAddButtons[0].getAttribute("aria-label"), "Quick add uncategorized item");
+    assert.equal(quickAddButtons[1].getAttribute("aria-label"), "Quick add to Produce");
     assert.equal(checkedHeader.querySelector(".item-category-quick-add"), null);
 
     openItemPanelForCategory(root, state, "cat-1");

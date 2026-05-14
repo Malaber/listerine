@@ -2389,8 +2389,8 @@ function renderItems(root, state) {
     quickAddButton.type = "button";
     quickAddButton.dataset.itemQuickAddCategory = category?.id || "";
     const quickAddLabel = category
-      ? translate("list_detail.quick_add_category", { name: category.name }, "Add item to {name}")
-      : translate("list_detail.quick_add_uncategorized", {}, "Add uncategorized item");
+      ? translate("list_detail.quick_add_category", { name: category.name }, "Quick add to {name}")
+      : translate("list_detail.quick_add_uncategorized", {}, "Quick add uncategorized item");
     quickAddButton.setAttribute("aria-label", quickAddLabel);
     quickAddButton.title = quickAddLabel;
     const quickAddIcon = document.createElement("span");
