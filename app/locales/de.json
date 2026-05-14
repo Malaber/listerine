@@ -272,6 +272,8 @@
     "create_categories_admin": "Erstelle Kategorien im Admin-Bereich, um die Reihenfolge für diese Liste anzupassen.",
     "pinned_in_order": "In dieser Listenreihenfolge fixiert",
     "alphabetical_until_moved": "Alphabetisch, bis du es verschiebst",
+    "quick_add_category": "Schnell zu {name} hinzufügen",
+    "quick_add_uncategorized": "Artikel schnell ohne Kategorie hinzufügen",
     "move_category_up": "{name} nach oben verschieben",
     "move_category_down": "{name} nach unten verschieben",
     "item_count": {

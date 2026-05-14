@@ -1998,6 +1998,76 @@ function normalizeSearchText(value) {
     .toLowerCase();
 }
 
+function boundedEditDistance(left, right, maxDistance) {
+  if (Math.abs(left.length - right.length) > maxDistance) {
+    return maxDistance + 1;
+  }
+
+  let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    const current = [leftIndex];
+    let rowBest = current[0];
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+      const substitutionCost = left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1;
+      const value = Math.min(
+        previous[rightIndex] + 1,
+        current[rightIndex - 1] + 1,
+        previous[rightIndex - 1] + substitutionCost
+      );
+      current[rightIndex] = value;
+      rowBest = Math.min(rowBest, value);
+    }
+    if (rowBest > maxDistance) {
+      return maxDistance + 1;
+    }
+    previous = current;
+  }
+  return previous[right.length];
+}
+
+function fuzzyItemNameDistance(itemName, query) {
+  if (query.length < 3) {
+    return null;
+  }
+
+  const maxDistance = query.length <= 4 ? 1 : 2;
+  let bestDistance = boundedEditDistance(itemName, query, maxDistance);
+  const minWindowLength = Math.max(1, query.length - maxDistance);
+  const maxWindowLength = Math.min(itemName.length, query.length + maxDistance);
+
+  for (let startIndex = 0; startIndex < itemName.length; startIndex += 1) {
+    for (let windowLength = minWindowLength; windowLength <= maxWindowLength; windowLength += 1) {
+      const candidate = itemName.slice(startIndex, startIndex + windowLength);
+      if (candidate.length < minWindowLength) {
+        continue;
+      }
+      bestDistance = Math.min(bestDistance, boundedEditDistance(candidate, query, maxDistance));
+      if (bestDistance === 0) {
+        return bestDistance;
+      }
+    }
+  }
+
+  return bestDistance <= maxDistance ? bestDistance : null;
+}
+
+function itemSuggestionMatch(itemName, query) {
+  const normalizedName = normalizeSearchText(itemName);
+  const normalizedQuery = normalizeSearchText(query);
+  if (normalizedName === normalizedQuery) {
+    return { distance: 0, rank: 0 };
+  }
+  if (normalizedName.startsWith(normalizedQuery)) {
+    return { distance: 0, rank: 1 };
+  }
+  if (normalizedName.includes(normalizedQuery)) {
+    return { distance: 0, rank: 2 };
+  }
+
+  const distance = fuzzyItemNameDistance(normalizedName, normalizedQuery);
+  return distance === null ? null : { distance, rank: 3 };
+}
+
 function syncModalState(root) {
   const addOverlay = root.querySelector("[data-item-panel-overlay]");
   const editOverlay = root.querySelector("[data-item-edit-overlay]");
@@ -2057,6 +2127,18 @@ function setItemPanelOpen(root, isOpen) {
       nameInput.focus();
     }, 0);
   }
+}
+
+function openItemPanelForCategory(root, state, categoryId) {
+  const selectedCategoryId = categoryId && state.categories.has(categoryId) ? categoryId : "";
+  const categorySearch = root.querySelector("[data-item-category-search]");
+  if (categorySearch instanceof HTMLInputElement) {
+    categorySearch.value = "";
+  }
+  setItemPanelOpen(root, true);
+  syncCategoryRadioGroups(root, state);
+  setCategoryRadioValue(root, 'input[name="category_id"]', selectedCategoryId);
+  renderItemSuggestions(root, state);
 }
 
 function formatSuggestionMeta(state, item) {
@@ -2664,87 +2746,110 @@ function renderItemSuggestions(root, state) {
     return;
   }
 
-  const query = normalizeItemName(nameInput.value);
-  suggestionsNode.innerHTML = "";
+  const query = normalizeSearchText(nameInput.value);
   if (!query) {
+    suggestionsNode.innerHTML = "";
     suggestionsSlot.classList.remove("is-active");
     return;
   }
 
   const matches = [...state.items.values()]
-    .filter((item) => normalizeItemName(item.name).includes(query))
+    .map((item) => ({ item, match: itemSuggestionMatch(item.name, query) }))
+    .filter(({ match }) => match !== null)
     .sort((left, right) => {
-      const leftName = normalizeItemName(left.name);
-      const rightName = normalizeItemName(right.name);
-      const leftExact = Number(leftName === query);
-      const rightExact = Number(rightName === query);
-      if (leftExact !== rightExact) {
-        return rightExact - leftExact;
+      if (left.match.rank !== right.match.rank) {
+        return left.match.rank - right.match.rank;
       }
-      const leftStarts = Number(leftName.startsWith(query));
-      const rightStarts = Number(rightName.startsWith(query));
-      if (leftStarts !== rightStarts) {
-        return rightStarts - leftStarts;
+      if (left.match.distance !== right.match.distance) {
+        return left.match.distance - right.match.distance;
       }
-      if (left.checked !== right.checked) {
-        return Number(left.checked) - Number(right.checked);
+      if (left.item.checked !== right.item.checked) {
+        return Number(left.item.checked) - Number(right.item.checked);
       }
-      return left.name.localeCompare(right.name);
+      return left.item.name.localeCompare(right.item.name);
     })
+    .map(({ item }) => item)
     .slice(0, 4);
 
   if (matches.length === 0) {
+    suggestionsNode.innerHTML = "";
     suggestionsSlot.classList.remove("is-active");
     return;
   }
 
+  const previousMatchIds = [...suggestionsNode.querySelectorAll("[data-item-reuse]")]
+    .map((button) => button.dataset.itemReuse || "")
+    .join("\u001f");
+  const nextMatchIds = matches.map((item) => item.id).join("\u001f");
+  if (previousMatchIds === nextMatchIds) {
+    suggestionsSlot.classList.add("is-active");
+    return;
+  }
+
+  const reusableSuggestions = new Map();
+  suggestionsNode.querySelectorAll(".item-suggestion").forEach((suggestion) => {
+    const itemId = suggestion.querySelector("[data-item-reuse]").dataset.itemReuse;
+    reusableSuggestions.set(itemId, suggestion);
+  });
+  const staleSuggestions = new Set(reusableSuggestions.values());
+
   matches.forEach((item, index) => {
-    const wrapper = document.createElement("article");
-    wrapper.className = `item-card item-suggestion${item.checked ? " is-checked" : ""}`;
-    wrapper.style.setProperty("--suggestion-delay", `${index * 24}ms`);
-    const categoryColor = item.category_id ? state.categories.get(item.category_id)?.color || "" : "";
-    if (categoryColor) {
-      wrapper.classList.add("has-category");
-      wrapper.style.setProperty("--suggestion-category-color", categoryColor);
+    let wrapper = reusableSuggestions.get(item.id);
+    if (wrapper instanceof HTMLElement) {
+      staleSuggestions.delete(wrapper);
+    } else {
+      wrapper = document.createElement("article");
+      wrapper.className = `item-card item-suggestion${item.checked ? " is-checked" : ""}`;
+      wrapper.style.setProperty("--suggestion-delay", `${index * 24}ms`);
+      const categoryColor = item.category_id ? state.categories.get(item.category_id)?.color || "" : "";
+      if (categoryColor) {
+        wrapper.classList.add("has-category");
+        wrapper.style.setProperty("--suggestion-category-color", categoryColor);
+      }
+
+      const main = document.createElement("div");
+      main.className = "item-main";
+
+      const checkmark = document.createElement("span");
+      checkmark.className = `item-check item-suggestion-check${item.checked ? " is-checked" : ""}`;
+      checkmark.setAttribute("aria-hidden", "true");
+      main.appendChild(checkmark);
+
+      const copy = document.createElement("div");
+      copy.className = "item-copy item-suggestion-copy";
+
+      const title = document.createElement("strong");
+      title.className = "item-name";
+      title.textContent = item.name;
+      copy.appendChild(title);
+
+      const meta = document.createElement("span");
+      meta.textContent = formatSuggestionMeta(state, item);
+      copy.appendChild(meta);
+
+      main.appendChild(copy);
+      wrapper.appendChild(main);
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.itemReuse = item.id;
+      button.setAttribute(
+        "aria-label",
+        item.checked
+          ? translate("list_detail.suggestion_add_back", { name: item.name }, "Add {name} back to the list")
+          : translate("list_detail.suggestion_jump_to", { name: item.name }, "Jump to {name} in the list")
+      );
+      button.textContent = "+";
+
+      wrapper.appendChild(button);
     }
 
-    const main = document.createElement("div");
-    main.className = "item-main";
-
-    const checkmark = document.createElement("span");
-    checkmark.className = `item-check item-suggestion-check${item.checked ? " is-checked" : ""}`;
-    checkmark.setAttribute("aria-hidden", "true");
-    main.appendChild(checkmark);
-
-    const copy = document.createElement("div");
-    copy.className = "item-copy item-suggestion-copy";
-
-    const title = document.createElement("strong");
-    title.className = "item-name";
-    title.textContent = item.name;
-    copy.appendChild(title);
-
-    const meta = document.createElement("span");
-    meta.textContent = formatSuggestionMeta(state, item);
-    copy.appendChild(meta);
-
-    main.appendChild(copy);
-    wrapper.appendChild(main);
-
-    const button = document.createElement("button");
-    button.type = "button";
-    button.dataset.itemReuse = item.id;
-    button.setAttribute(
-      "aria-label",
-      item.checked
-        ? translate("list_detail.suggestion_add_back", { name: item.name }, "Add {name} back to the list")
-        : translate("list_detail.suggestion_jump_to", { name: item.name }, "Jump to {name} in the list")
-    );
-    button.textContent = "+";
-
-    wrapper.appendChild(button);
-    suggestionsNode.appendChild(wrapper);
+    const referenceNode = suggestionsNode.children[index] || null;
+    if (referenceNode !== wrapper) {
+      suggestionsNode.insertBefore(wrapper, referenceNode);
+    }
   });
+  staleSuggestions.forEach((suggestion) => suggestion.remove());
 
   suggestionsSlot.classList.add("is-active");
 }
@@ -2890,8 +2995,27 @@ function renderItems(root, state) {
     const headingMeta = document.createElement("p");
     headingMeta.className = "item-category-meta";
     headingMeta.textContent = translatePlural("list_detail.item_count", items.length, {}, { one: "{count} item", other: "{count} items" });
-    headingCopy.appendChild(headingMeta);
     heading.appendChild(headingCopy);
+
+    const headingActions = document.createElement("div");
+    headingActions.className = "item-category-actions";
+
+    const quickAddButton = document.createElement("button");
+    quickAddButton.className = "item-category-quick-add";
+    quickAddButton.type = "button";
+    quickAddButton.dataset.itemQuickAddCategory = category?.id || "";
+    const quickAddLabel = category
+      ? translate("list_detail.quick_add_category", { name: category.name }, "Quick add to {name}")
+      : translate("list_detail.quick_add_uncategorized", {}, "Quick add uncategorized item");
+    quickAddButton.setAttribute("aria-label", quickAddLabel);
+    quickAddButton.title = quickAddLabel;
+    const quickAddIcon = document.createElement("span");
+    quickAddIcon.setAttribute("aria-hidden", "true");
+    quickAddIcon.textContent = "+";
+    quickAddButton.appendChild(quickAddIcon);
+    headingActions.appendChild(quickAddButton);
+    headingActions.appendChild(headingMeta);
+    heading.appendChild(headingActions);
 
     section.appendChild(heading);
 
@@ -2970,8 +3094,11 @@ function renderItems(root, state) {
     const headingMeta = document.createElement("p");
     headingMeta.className = "item-category-meta";
     headingMeta.textContent = translatePlural("list_detail.item_count", checkedTotalCount, {}, { one: "{count} item", other: "{count} items" });
-    headingCopy.appendChild(headingMeta);
     heading.appendChild(headingCopy);
+    const headingActions = document.createElement("div");
+    headingActions.className = "item-category-actions";
+    headingActions.appendChild(headingMeta);
+    heading.appendChild(headingActions);
     section.appendChild(heading);
 
     checkedItems.forEach((item) => {
@@ -3633,7 +3760,14 @@ async function initListDetail() {
     const reuseItemId = target.dataset.itemReuse;
     const categoryMove = target.dataset.settingsCategoryMove;
     const categoryId = target.dataset.categoryId;
+    const quickAddButton = target.closest("[data-item-quick-add-category]");
     const editCard = target.closest("[data-item-edit]");
+
+    if (quickAddButton instanceof HTMLElement) {
+      event.preventDefault();
+      openItemPanelForCategory(root, state, quickAddButton.dataset.itemQuickAddCategory || "");
+      return;
+    }
 
     if (editCard && !target.closest("button")) {
       setItemEditPanelOpen(root, state, editCard.dataset.itemEdit || null);
@@ -4162,8 +4296,12 @@ export {
   showUndoToast,
   normalizeItemName,
   normalizeSearchText,
+  boundedEditDistance,
+  fuzzyItemNameDistance,
+  itemSuggestionMatch,
   syncModalState,
   setItemPanelOpen,
+  openItemPanelForCategory,
   formatSuggestionMeta,
   categorySortKey,
   decorateItem,

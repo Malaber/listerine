@@ -272,6 +272,8 @@
     "create_categories_admin": "Create categories in admin to customize the order for this list.",
     "pinned_in_order": "Pinned in this list order",
     "alphabetical_until_moved": "Alphabetical until you move it",
+    "quick_add_category": "Quick add to {name}",
+    "quick_add_uncategorized": "Quick add uncategorized item",
     "move_category_up": "Move {name} up",
     "move_category_down": "Move {name} down",
     "item_count": {
