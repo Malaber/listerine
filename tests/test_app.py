@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+from html import unescape
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
@@ -129,6 +130,14 @@ def _admin_user_edit_url(user_id: UUID) -> str:
 
 def _admin_user_passkey_add_link_url(user_id: UUID) -> str:
     return f"/admin/user/{user_id}/passkey-add-link"
+
+
+def _register_admin_session(client, monkeypatch, email: str = "admin@example.com") -> UUID:
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.settings.bootstrap_admin_email",
+        email,
+    )
+    return _register_session_user(client, monkeypatch, email)
 
 
 async def _get_auth_session(user_id: UUID) -> AuthSession | None:
@@ -2241,6 +2250,55 @@ def test_admin_can_generate_passkey_add_link_from_admin_frontend(client, monkeyp
         expires_at = expires_at.replace(tzinfo=UTC)
     assert expires_at > datetime.now(UTC) + timedelta(hours=23, minutes=59)
     assert expires_at < datetime.now(UTC) + timedelta(hours=24, minutes=1)
+
+
+def test_admin_list_defaults_to_fifty_items_and_sortable_headers(client, monkeypatch) -> None:
+    _register_admin_session(client, monkeypatch)
+    for index in range(60):
+        asyncio.run(_create_user(f"user-{index:02d}@example.com", with_passkey=False))
+
+    page = client.get("/admin/user/list")
+
+    assert page.status_code == 200
+    body = unescape(page.text)
+    assert body.count('class="form-check-input m-0 align-middle select-box"') == 50
+    assert "Showing <span>1</span> to\n                <span>50</span> of <span>61" in body
+    assert "50 / Page" in body
+    assert "100 / Page" in body
+    assert "200 / Page" in body
+    assert "10 / Page" not in body
+    assert "25 / Page" not in body
+    for sort_name in ["email", "display_name", "is_admin", "is_active", "created_at"]:
+        assert f"sortBy={sort_name}&sort=asc&page=1" in body
+    assert 'href="http://testserver/admin/user/list" class="btn btn-secondary"' in body
+    assert "Reset view" in body
+
+
+def test_admin_list_sorts_and_carries_page_size_between_models(client, monkeypatch) -> None:
+    _register_admin_session(client, monkeypatch)
+    asyncio.run(_create_user("zzz-sort@example.com", with_passkey=False))
+    asyncio.run(_create_user("aaa-sort@example.com", with_passkey=False))
+
+    ascending = client.get("/admin/user/list?pageSize=100&sortBy=email&sort=asc")
+    descending = client.get("/admin/user/list?pageSize=100&sortBy=email&sort=desc")
+    category_page = client.get("/admin/category/list?pageSize=100")
+
+    assert ascending.status_code == 200
+    assert descending.status_code == 200
+    assert category_page.status_code == 200
+    ascending_body = unescape(ascending.text)
+    descending_body = unescape(descending.text)
+    category_body = unescape(category_page.text)
+    assert ascending_body.index("aaa-sort@example.com") < ascending_body.index(
+        "zzz-sort@example.com"
+    )
+    assert descending_body.index("zzz-sort@example.com") < descending_body.index(
+        "aaa-sort@example.com"
+    )
+    assert 'href="http://testserver/admin/category/list?pageSize=100"' in ascending_body
+    assert "sortBy=name&sort=asc&page=1" in category_body
+    assert "sortBy=color&sort=asc&page=1" in category_body
+    assert "sortBy=aliases_text&sort=asc&page=1" in category_body
 
 
 def test_passkey_add_link_adds_passkey_and_clears_token(client, monkeypatch) -> None:

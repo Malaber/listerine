@@ -439,6 +439,30 @@ async function loginAsAdmin(page, user) {
   await expectVisible(page.getByText("Admin tools"), "Expected admin tools card after admin login");
 }
 
+async function runAdminTableControlsFlow(page) {
+  logStep("Checking admin table sorting, page size persistence, and reset controls");
+  await page.goto(new URL("/admin/user/list", baseUrl).toString(), { waitUntil: "networkidle" });
+  await expectVisible(page.getByRole("link", { name: "50 / Page" }), "Expected 50 row default");
+
+  await page.getByRole("link", { name: "50 / Page" }).click();
+  await page.locator(".dropdown-menu .dropdown-item", { hasText: "100 / Page" }).click();
+  await page.waitForURL(/\/admin\/user\/list\?pageSize=100/);
+
+  await page.getByRole("link", { name: "Email" }).click();
+  await page.waitForURL(/\/admin\/user\/list\?.*pageSize=100.*sortBy=email.*sort=asc/);
+
+  await page.getByRole("link", { name: "Categories" }).click();
+  await page.waitForURL(/\/admin\/category\/list\?pageSize=100/);
+  await expectVisible(page.getByRole("link", { name: "100 / Page" }), "Expected page size to persist");
+
+  await page.getByRole("link", { name: "Name" }).click();
+  await page.waitForURL(/\/admin\/category\/list\?.*pageSize=100.*sortBy=name.*sort=asc/);
+
+  await page.getByRole("link", { name: "Reset view" }).click();
+  await page.waitForURL(new URL("/admin/category/list", baseUrl).toString());
+  assert(!page.url().includes("?"), `Expected reset to clear admin table params, got ${page.url()}`);
+}
+
 async function runAdminPasskeyAddLinkFlow(page, seed, rpId) {
   const adminUser = fixtureUser(seed, "planini_admin@schaedler.rocks");
   const targetUser = fixtureAccount(seed, "review-neighbor@example.com");
@@ -468,6 +492,7 @@ async function runAdminPasskeyAddLinkFlow(page, seed, rpId) {
 
     logStep("Signing in as admin and generating an add-passkey link from the user edit page");
     await loginAsAdmin(adminPage, adminUser);
+    await runAdminTableControlsFlow(adminPage);
     await adminPage.goto(new URL("/admin/user/list", baseUrl).toString(), { waitUntil: "networkidle" });
     const targetUserRow = adminPage.locator("tr", { hasText: targetUser.email }).first();
     await expectVisible(
