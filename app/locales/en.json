@@ -113,7 +113,10 @@
     "create_invite_link": "Create invite link",
     "share_invite_hint": "Share this link within 24 hours:",
     "no_lists_yet": "No lists yet. Add the first list for this household.",
-    "open_list": "Open list",
+    "open_item_count": {
+      "one": "{count} open item",
+      "other": "{count} open items"
+    },
     "invite_link_created": "Invite link created. It stays valid for 24 hours.",
     "invite_link_create_failed": "Could not create the invite link.",
     "invite_link_copied": "Invite link copied.",
@@ -156,7 +159,10 @@
     "confirm_deletion": "Confirm deletion",
     "delete_this_passkey": "Delete this passkey?",
     "delete_help_generic": "You must authenticate with another passkey to confirm you still have a working Passkey after deleting one.",
-    "delete_help": "You must authenticate with another passkey to confirm you still have a working Passkey after deleting one.",
+    "delete_help": "To delete {name}, you must authenticate with another passkey to confirm you still have a working Passkey after deleting one.",
+    "delete_help_prefix": "To delete {name}, you must authenticate with ",
+    "delete_help_emphasis": "another",
+    "delete_help_suffix": " passkey to confirm you still have a working Passkey after deleting one.",
     "continue_to_verification": "Continue to verification",
     "added_on": "Added {date}",
     "last_used": "Last used {date}",
