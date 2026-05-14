@@ -890,6 +890,34 @@ async function runListQuickSwitchFlow(page, scenario, primaryListUrl) {
   await expectVisible(switcher, "Expected quick switch control when household has multiple lists");
   await expectVisible(page.getByRole("link", { name: "All lists" }), "Expected clear dashboard link label");
 
+  const headerLayout = await page.evaluate(() => {
+    const kicker = document.querySelector(".list-kicker-row .dashboard-kicker");
+    const actions = document.querySelector(".list-kicker-row .list-hero-actions");
+    const titleRow = document.querySelector(".list-title-row");
+    if (!(kicker instanceof HTMLElement) || !(actions instanceof HTMLElement) || !(titleRow instanceof HTMLElement)) {
+      throw new Error("Expected list kicker, header actions, and title row");
+    }
+
+    const kickerRect = kicker.getBoundingClientRect();
+    const actionsRect = actions.getBoundingClientRect();
+    const titleRect = titleRow.getBoundingClientRect();
+    return {
+      actionCenterOffset: Math.abs(
+        actionsRect.top + actionsRect.height / 2 - (kickerRect.top + kickerRect.height / 2),
+      ),
+      actionsBottom: actionsRect.bottom,
+      titleTop: titleRect.top,
+    };
+  });
+  assert(
+    headerLayout.actionCenterOffset <= 22,
+    "Expected list settings and all-lists controls to stay inline with the shopping-list kicker",
+  );
+  assert(
+    headerLayout.actionsBottom <= headerLayout.titleTop,
+    "Expected list header controls to sit above the title switcher, not below the hero gap",
+  );
+
   const select = switcher.locator("[data-list-switcher-select]");
   assert.equal(await select.inputValue(), scenario.listId);
   await select.selectOption(scenario.quickSwitchListId);
