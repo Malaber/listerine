@@ -622,21 +622,23 @@ main {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  flex: 1 1 24rem;
   gap: 0.45rem;
+  min-width: 0;
 }
 
 .list-title-row {
   display: flex;
   align-items: flex-start;
   gap: 0.55rem;
-  justify-content: space-between;
-  width: min(100%, 36rem);
+  width: min(100%, 40rem);
 }
 
 .list-title-heading {
   min-width: 0;
   margin: 0;
   position: relative;
+  width: 100%;
 }
 
 .list-title-heading.has-switcher [data-list-title] {
@@ -672,7 +674,7 @@ main {
 }
 
 .list-switcher {
-  max-width: min(100%, 36rem);
+  max-width: min(100%, 40rem);
 }
 
 .list-switcher[hidden] {
@@ -693,7 +695,7 @@ main {
 }
 
 .list-switcher select {
-  width: min(100%, 36rem);
+  width: min(100%, 40rem);
   min-height: 3.1rem;
   border: 1px solid transparent;
   border-radius: 8px;
@@ -1606,7 +1608,7 @@ main {
   }
 
   .list-switcher select {
-    width: min(100%, 21rem);
+    width: 100%;
     min-height: 2.8rem;
   }
 

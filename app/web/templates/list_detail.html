@@ -25,15 +25,15 @@
             ></select>
           </span>
         </h1>
-        <button class="list-settings-button" type="button" aria-label="{{ t("list_detail.open_settings") }}" data-list-settings-toggle>
-          {{ t("list_detail.list_settings") }}
-        </button>
       </div>
       {% if list_page_note is defined %}
       <p class="dashboard-helper">{{ list_page_note }}</p>
       {% endif %}
     </div>
     <div class="list-hero-actions">
+      <button class="list-settings-button" type="button" aria-label="{{ t("list_detail.open_settings") }}" data-list-settings-toggle>
+        {{ t("list_detail.list_settings") }}
+      </button>
       <a class="back-link" href="{{ list_back_href if list_back_href is defined else '/?dashboard=1' }}">
         {{ list_back_label if list_back_label is defined else t("list_detail.back_to_households") }}
       </a>
