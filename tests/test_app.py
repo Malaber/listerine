@@ -710,7 +710,10 @@ def test_item_window_limits_checked_items_and_pages_older_checked_items(client) 
     hidden_window = client.get(
         f"/api/v1/lists/{grocery_list['id']}/items/window", headers=headers
     ).json()
-    assert active_item["id"] not in {item["id"] for item in hidden_window["items"]}
+    hidden_window_item = next(
+        item for item in hidden_window["items"] if item["id"] == active_item["id"]
+    )
+    assert hidden_window_item["hidden_until"] is not None
     all_items = client.get(f"/api/v1/lists/{grocery_list['id']}/items", headers=headers).json()
     assert active_item["id"] in {item["id"] for item in all_items}
 

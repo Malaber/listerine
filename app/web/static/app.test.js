@@ -7,6 +7,7 @@ import {
   cloneDemoItem,
   createDemoItem,
   formatInviteExpiry,
+  formatHiddenUntilLabel,
   formatPasskeyDate,
   getDemoPayload,
   getPreferredLocale,
@@ -352,8 +353,16 @@ test("renderItems hides active items until their hidden_until time", () => {
     assert.equal(isItemHidden(hiddenItem, nowMs), true);
     assert.equal(isItemHidden(expiredHiddenItem, nowMs), false);
     assert.equal(isItemHidden(visibleItem, nowMs), false);
+    assert.equal(formatHiddenUntilLabel(hiddenItem, nowMs), "4h");
+    assert.equal(
+      formatHiddenUntilLabel({ ...hiddenItem, hidden_until: "2026-05-14T10:10:00.000Z" }, nowMs),
+      "10m",
+    );
+    assert.equal(formatHiddenUntilLabel(visibleItem, nowMs), "");
 
-    renderItems(root, createState([visibleItem, hiddenItem, expiredHiddenItem, createCheckedItem(0)]));
+    const state = createState([visibleItem, hiddenItem, expiredHiddenItem, createCheckedItem(0)]);
+    state.openItemMenuId = "visible-item";
+    renderItems(root, state);
   } finally {
     Date.now = originalDateNow;
   }
@@ -361,8 +370,12 @@ test("renderItems hides active items until their hidden_until time", () => {
   const cardNames = [...document.querySelectorAll(".item-card .item-name")].map(
     (node) => node.textContent,
   );
-  assert.deepEqual(cardNames, ["Visible item", "Expired hidden item", "Checked item 0"]);
-  assert.equal(document.querySelector('[data-item-hide="visible-item"]').textContent, "Later 4h");
+  assert.deepEqual(cardNames, ["Visible item", "Expired hidden item", "Hidden item", "Checked item 0"]);
+  assert.equal(document.querySelector(".item-hidden-group h3").textContent, "Hidden for 4h");
+  assert.equal(document.querySelector('[data-item-unhide="hidden-item"]').textContent, "4h");
+  assert.equal(document.querySelector('[data-item-menu-toggle="visible-item"]').textContent, "⋯");
+  assert.equal(document.querySelector('[data-item-hide="visible-item"]').textContent, "Hide item for 4h");
+  assert.equal(document.querySelector('[data-item-hide="visible-item"]').closest(".item-more-menu").hidden, false);
 });
 
 test("loadMoreCheckedItems fetches one hundred older checked items per page", async () => {
@@ -706,12 +719,15 @@ test("hideItemForLater hides for four hours and restoreHiddenItem clears it", as
   try {
     const hidden = await hideItemForLater(root, state, "item-1", Date.parse("2026-05-14T10:00:00.000Z"));
     assert.equal(hidden.hidden_until, "2026-05-14T14:00:00.000Z");
-    assert.equal(document.querySelectorAll(".item-card").length, 0);
+    assert.equal(document.querySelectorAll(".item-card").length, 1);
+    assert.equal(document.querySelector(".item-hidden-group h3").textContent, "Hidden for 4h");
+    assert.equal(document.querySelector('[data-item-unhide="item-1"]').textContent, "4h");
     assert.equal(document.querySelector("[data-list-toast-message]").textContent, "Milk hidden for 4 hours.");
 
     const restored = await restoreHiddenItem(root, state, "item-1");
     assert.equal(restored.hidden_until, null);
     assert.equal(document.querySelector(".item-card .item-name").textContent, "Milk");
+    assert.equal(document.querySelector(".item-hidden-group"), null);
   } finally {
     window.clearTimeout(state.undoTimerId);
     restoreDomGlobals(originals);

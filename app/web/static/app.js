@@ -18,6 +18,19 @@ function isItemHidden(item, nowMs = Date.now()) {
   return Number.isFinite(hiddenUntilMs) && hiddenUntilMs > nowMs;
 }
 
+function formatHiddenUntilLabel(item, nowMs = Date.now()) {
+  const hiddenUntilMs = Date.parse(item.hidden_until || "");
+  if (!Number.isFinite(hiddenUntilMs) || hiddenUntilMs <= nowMs) {
+    return "";
+  }
+
+  const remainingMinutes = Math.ceil((hiddenUntilMs - nowMs) / 60000);
+  if (remainingMinutes >= 60) {
+    return `${Math.ceil(remainingMinutes / 60)}h`;
+  }
+  return `${remainingMinutes}m`;
+}
+
 function base64UrlToBytes(value) {
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
   const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
@@ -2335,12 +2348,15 @@ function renderItems(root, state) {
   const activeItems = decoratedItems
     .filter((item) => !item.checked && !isItemHidden(item, renderNow))
     .sort((left, right) => compareActiveItems(state, left, right));
+  const hiddenItems = decoratedItems
+    .filter((item) => !item.checked && isItemHidden(item, renderNow))
+    .sort((left, right) => compareActiveItems(state, left, right));
   const checkedItems = decoratedItems
     .filter((item) => item.checked)
     .sort(compareCheckedItems);
 
   container.innerHTML = "";
-  const hasItems = activeItems.length > 0 || checkedItems.length > 0;
+  const hasItems = activeItems.length > 0 || hiddenItems.length > 0 || checkedItems.length > 0;
   emptyState.hidden = hasItems;
   emptyState.style.display = hasItems ? "none" : "";
   if (!hasItems) {
@@ -2444,24 +2460,117 @@ function renderItems(root, state) {
       const actions = document.createElement("div");
       actions.className = "item-actions";
 
-      const hideButton = document.createElement("button");
-      hideButton.type = "button";
-      hideButton.className = "item-later-button";
-      hideButton.dataset.itemHide = item.id;
-      hideButton.setAttribute(
+      const menuButton = document.createElement("button");
+      menuButton.type = "button";
+      menuButton.className = "item-more-button";
+      menuButton.dataset.itemMenuToggle = item.id;
+      menuButton.setAttribute(
         "aria-label",
-        translate("list_detail.hide_item_for_later", { name: item.name }, "Hide {name} for 4 hours")
+        translate("list_detail.more_item_actions", { name: item.name }, "More actions for {name}")
       );
-      hideButton.textContent = translate("list_detail.hide_for_later_short", {}, "Later 4h");
-      actions.appendChild(hideButton);
+      menuButton.setAttribute("aria-expanded", String(state.openItemMenuId === item.id));
+      menuButton.textContent = "⋯";
+      actions.appendChild(menuButton);
       cardContent.appendChild(actions);
 
       article.appendChild(cardContent);
+
+      const menu = document.createElement("div");
+      menu.className = "item-more-menu";
+      menu.hidden = state.openItemMenuId !== item.id;
+
+      const hideButton = document.createElement("button");
+      hideButton.type = "button";
+      hideButton.dataset.itemHide = item.id;
+      hideButton.textContent = translate("list_detail.hide_item_for_later_menu", {}, "Hide item for 4h");
+      menu.appendChild(hideButton);
+      article.appendChild(menu);
       section.appendChild(article);
     });
 
     container.appendChild(section);
   });
+
+  if (hiddenItems.length > 0) {
+    const section = document.createElement("section");
+    section.className = "item-category-group item-hidden-group";
+
+    const heading = document.createElement("div");
+    heading.className = "item-category-header";
+
+    const swatch = document.createElement("span");
+    swatch.className = "item-category-swatch";
+    swatch.style.background = CATEGORY_SWATCH_FALLBACK_COLOR;
+    heading.appendChild(swatch);
+
+    const headingCopy = document.createElement("div");
+    headingCopy.className = "item-category-copy";
+    const headingTitle = document.createElement("h3");
+    headingTitle.textContent = translate("list_detail.hidden_for_later", {}, "Hidden for 4h");
+    headingCopy.appendChild(headingTitle);
+
+    const headingMeta = document.createElement("p");
+    headingMeta.className = "item-category-meta";
+    headingMeta.textContent = translatePlural("list_detail.item_count", hiddenItems.length, {}, { one: "{count} item", other: "{count} items" });
+    headingCopy.appendChild(headingMeta);
+    heading.appendChild(headingCopy);
+    section.appendChild(heading);
+
+    hiddenItems.forEach((item) => {
+      const article = document.createElement("article");
+      article.className = `item-card is-hidden${
+        state.highlightedItemId === item.id ? " is-highlighted" : ""
+      }`;
+      article.dataset.itemCard = item.id;
+      article.dataset.itemEdit = item.id;
+
+      const cardContent = document.createElement("div");
+      cardContent.className = "item-card-content";
+
+      const main = document.createElement("div");
+      main.className = "item-main";
+
+      const unhideButton = document.createElement("button");
+      unhideButton.className = "item-check item-hidden-clock";
+      unhideButton.type = "button";
+      unhideButton.dataset.itemUnhide = item.id;
+      unhideButton.setAttribute(
+        "aria-label",
+        translate("list_detail.show_hidden_item", { name: item.name }, "Show {name} now")
+      );
+      unhideButton.textContent = formatHiddenUntilLabel(item, renderNow);
+      main.appendChild(unhideButton);
+
+      const copy = document.createElement("div");
+      copy.className = "item-copy";
+
+      const title = document.createElement("h3");
+      title.className = "item-name";
+      title.textContent = item.name;
+      copy.appendChild(title);
+
+      if (item.quantity_text) {
+        const quantity = document.createElement("p");
+        quantity.className = "item-meta";
+        quantity.textContent = translate("list_detail.quantity_prefix", { quantity: item.quantity_text }, "Qty: {quantity}");
+        copy.appendChild(quantity);
+      }
+
+      if (item.note) {
+        const note = document.createElement("p");
+        note.className = "item-meta";
+        note.textContent = item.note;
+        copy.appendChild(note);
+      }
+
+      main.appendChild(copy);
+      cardContent.appendChild(main);
+      article.appendChild(cardContent);
+      section.appendChild(article);
+    });
+
+    container.appendChild(section);
+  }
 
   if (checkedItems.length > 0) {
     const checkedTotalCount = checkedItems.length + (state.checkedRemainingCount || 0);
@@ -2933,6 +3042,7 @@ async function initListDetail() {
     highlightTimers: new Map(),
     items: new Map(),
     nextDemoId: 1,
+    openItemMenuId: null,
     socket: null,
     suppressNextClick: false,
     swipeGesture: null,
@@ -3071,7 +3181,11 @@ async function initListDetail() {
     }
 
     const card = event.target.closest("[data-item-card]");
-    if (!(card instanceof HTMLElement) || card.classList.contains("is-checked")) {
+    if (
+      !(card instanceof HTMLElement) ||
+      card.classList.contains("is-checked") ||
+      card.classList.contains("is-hidden")
+    ) {
       return;
     }
 
@@ -3081,6 +3195,7 @@ async function initListDetail() {
       startX: event.clientX,
       startY: event.clientY,
       offsetX: 0,
+      locked: false,
     };
     try {
       card.setPointerCapture?.(event.pointerId);
@@ -3097,7 +3212,7 @@ async function initListDetail() {
 
     const deltaX = Math.max(0, event.clientX - gesture.startX);
     const deltaY = Math.abs(event.clientY - gesture.startY);
-    if (deltaY > 42 && deltaX < 24) {
+    if (!gesture.locked && deltaY > 64 && deltaY > deltaX * 1.5) {
       gesture.card.style.removeProperty("--item-swipe-x");
       gesture.card.classList.remove("is-swiping", "is-swipe-ready");
       state.swipeGesture = null;
@@ -3108,6 +3223,9 @@ async function initListDetail() {
       return;
     }
 
+    if (deltaX > 16) {
+      gesture.locked = true;
+    }
     gesture.offsetX = Math.min(deltaX, ITEM_SWIPE_LIMIT_PX);
     gesture.card.style.setProperty("--item-swipe-x", `${gesture.offsetX}px`);
     gesture.card.classList.add("is-swiping");
@@ -3247,6 +3365,8 @@ async function initListDetail() {
 
     const toggleId = target.dataset.itemToggle;
     const hideId = target.dataset.itemHide;
+    const unhideId = target.dataset.itemUnhide;
+    const menuToggleId = target.dataset.itemMenuToggle;
     const reuseItemId = target.dataset.itemReuse;
     const categoryMove = target.dataset.settingsCategoryMove;
     const categoryId = target.dataset.categoryId;
@@ -3262,7 +3382,7 @@ async function initListDetail() {
       return;
     }
 
-    if (!toggleId && !hideId && !reuseItemId && !categoryMove) {
+    if (!toggleId && !hideId && !unhideId && !menuToggleId && !reuseItemId && !categoryMove) {
       return;
     }
 
@@ -3291,8 +3411,21 @@ async function initListDetail() {
         return;
       }
 
+      if (menuToggleId) {
+        state.openItemMenuId = state.openItemMenuId === menuToggleId ? null : menuToggleId;
+        renderItems(root, state);
+        return;
+      }
+
       if (hideId) {
+        state.openItemMenuId = null;
         await hideItemForLater(root, state, hideId);
+        return;
+      }
+
+      if (unhideId) {
+        const restoredItem = await restoreHiddenItem(root, state, unhideId);
+        highlightItem(root, state, restoredItem.id);
         return;
       }
 
@@ -3682,6 +3815,7 @@ export {
   translate,
   translatePlural,
   isItemHidden,
+  formatHiddenUntilLabel,
   publicKeyFromJSON,
   credentialToJSON,
   normalizeLanguagePreference,

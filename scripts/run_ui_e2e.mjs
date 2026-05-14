@@ -1044,7 +1044,8 @@ async function main() {
 
     const spaghettiCard = itemCard(page, "Spaghetti");
     if (deviceName === "desktop") {
-      await spaghettiCard.getByRole("button", { name: "Hide Spaghetti for 4 hours" }).click();
+      await spaghettiCard.getByRole("button", { name: "More actions for Spaghetti" }).click();
+      await spaghettiCard.getByRole("button", { name: "Hide item for 4h" }).click();
     } else {
       await swipeItemRight(spaghettiCard);
     }
@@ -1052,19 +1053,33 @@ async function main() {
       page.locator("[data-list-toast]", { hasText: "Spaghetti hidden for 4 hours." }),
       "Expected hide-for-later toast",
     );
-    await expectHidden(itemCard(page, "Spaghetti"), "Hidden item should leave the active list");
+    const hiddenGroup = page.locator(".item-hidden-group");
+    const hiddenSpaghetti = hiddenGroup.locator(".item-card", { hasText: "Spaghetti" });
+    await expectVisible(hiddenSpaghetti, "Hidden item should move into the hidden section");
+    await expectVisible(
+      hiddenSpaghetti.getByRole("button", { name: "Show Spaghetti now" }),
+      "Hidden item should expose a time button for unhiding",
+    );
     await pageTwo.waitForFunction(
-      () => ![...document.querySelectorAll(".item-card")].some((node) =>
-        node.textContent?.includes("Spaghetti"),
-      ),
+      () => {
+        const hiddenGroup = document.querySelector(".item-hidden-group");
+        return Boolean(hiddenGroup?.textContent?.includes("Spaghetti"));
+      },
       { timeout: 5000 },
     );
-    await page.locator("[data-list-toast-undo]").click();
-    await expectVisible(itemCard(page, "Spaghetti"), "Undo should restore hidden item");
+    await hiddenSpaghetti.getByRole("button", { name: "Show Spaghetti now" }).click();
+    await expectHidden(hiddenGroup.locator(".item-card", { hasText: "Spaghetti" }), "Time button should unhide item");
+    await expectVisible(itemCard(page, "Spaghetti"), "Unhidden item should return to normal categories");
     await pageTwo.waitForFunction(
-      () => [...document.querySelectorAll(".item-card")].some((node) =>
-        node.textContent?.includes("Spaghetti"),
-      ),
+      () => {
+        const hiddenGroup = document.querySelector(".item-hidden-group");
+        if (hiddenGroup?.textContent?.includes("Spaghetti")) {
+          return false;
+        }
+        return [...document.querySelectorAll(".item-card")].some((node) =>
+          node.textContent?.includes("Spaghetti"),
+        );
+      },
       { timeout: 5000 },
     );
 
