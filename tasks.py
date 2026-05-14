@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import platform
 import re
 import shlex
 import shutil
@@ -220,7 +221,127 @@ def _write_ios_ui_e2e_summary(artifact_dir: str) -> None:
     (artifact_path / "summary.md").write_text("\n".join(summary_lines) + "\n", encoding="utf-8")
 
 
+def _dedupe_lines(lines: list[str]) -> list[str]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for line in lines:
+        normalized = " ".join(line.split())
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(normalized)
+    return deduped
+
+
+def _string_field(payload: dict[str, object], *keys: str) -> str:
+    for key in keys:
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def _collect_xcresult_failure_summaries(payload: object, current_test: str = "") -> list[str]:
+    if isinstance(payload, list):
+        summaries: list[str] = []
+        for item in payload:
+            summaries.extend(_collect_xcresult_failure_summaries(item, current_test))
+        return summaries
+
+    if not isinstance(payload, dict):
+        return []
+
+    test_name = (
+        _string_field(
+            payload,
+            "testName",
+            "name",
+            "identifier",
+            "displayName",
+        )
+        or current_test
+    )
+    status = _string_field(
+        payload,
+        "testStatus",
+        "status",
+        "result",
+    ).lower()
+    message = _string_field(
+        payload,
+        "message",
+        "failureText",
+        "detailedDescription",
+        "compactDescription",
+    )
+
+    skipped_keys = {
+        "testName",
+        "name",
+        "identifier",
+        "displayName",
+        "testStatus",
+        "status",
+        "result",
+        "message",
+        "failureText",
+        "detailedDescription",
+        "compactDescription",
+    }
+    child_summaries: list[str] = []
+    for key, value in payload.items():
+        if key in skipped_keys:
+            continue
+        child_summaries.extend(_collect_xcresult_failure_summaries(value, test_name))
+
+    summaries: list[str] = []
+    if message and ("fail" in status or "error" in status or current_test or test_name):
+        label = test_name or "iOS UI test"
+        summaries.append(f"{label}: {message}")
+    elif "fail" in status and test_name and not child_summaries:
+        summaries.append(f"{test_name}: failed")
+    summaries.extend(child_summaries)
+    return _dedupe_lines(summaries)
+
+
+def _ios_ui_e2e_failure_summaries_from_xcresulttool(result_bundle_path: Path) -> list[str]:
+    if result_bundle_path.exists() is False:
+        return []
+
+    try:
+        result = subprocess.run(
+            [
+                "xcrun",
+                "xcresulttool",
+                "get",
+                "test-results",
+                "summary",
+                "--path",
+                str(result_bundle_path),
+                "--format",
+                "json",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return []
+    if result.returncode != 0 or not result.stdout.strip():
+        return []
+
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return []
+    return _collect_xcresult_failure_summaries(payload)
+
+
 def _ios_ui_e2e_failure_summaries(result_bundle_path: Path) -> list[str]:
+    xcresulttool_summaries = _ios_ui_e2e_failure_summaries_from_xcresulttool(result_bundle_path)
+    if xcresulttool_summaries:
+        return xcresulttool_summaries
+
     database_path = result_bundle_path / "database.sqlite3"
     if database_path.exists() is False:
         return []
@@ -245,6 +366,17 @@ def _ios_ui_e2e_failure_summaries(result_bundle_path: Path) -> list[str]:
         message = detailed_description or compact_description or "No failure details recorded."
         summaries.append(f"{test_name} [{result}]: {message}")
     return summaries
+
+
+def _ios_simulator_destination(device_name: str) -> str:
+    destination_parts = [
+        "platform=iOS Simulator",
+        f"name={device_name}",
+        "OS=latest",
+    ]
+    if platform.machine().lower() == "arm64":
+        destination_parts.append("arch=arm64")
+    return ",".join(destination_parts)
 
 
 def _bootstrap_ios_ui_test_session(*, base_url: str, user_email: str) -> dict[str, str]:
@@ -1383,6 +1515,7 @@ def run_ios_ui_e2e(
     initial_list_name=DEFAULT_IOS_UI_E2E_INITIAL_LIST,
     access_token="",
     display_name="",
+    attempts=3,
 ) -> None:
     artifact_path = ROOT / artifact_dir
     artifact_path.mkdir(parents=True, exist_ok=True)
@@ -1406,15 +1539,19 @@ def run_ios_ui_e2e(
             "xcodebuild",
             "-project PlaniniApp.xcodeproj",
             "-scheme Planini",
-            f"-destination {shlex.quote(f'platform=iOS Simulator,name={device_name}')}",
+            f"-destination {shlex.quote(_ios_simulator_destination(device_name))}",
+            "-destination-timeout 120",
             f"-resultBundlePath {shlex.quote(str(result_bundle_path.resolve()))}",
             "-quiet",
+            "-parallel-testing-enabled NO",
+            "-maximum-parallel-testing-workers 1",
             "-only-testing:PlaniniUITests",
             "test",
         ]
     )
     result = None
-    for attempt in range(2):
+    max_attempts = max(1, int(attempts))
+    for attempt in range(max_attempts):
         shutil.rmtree(result_bundle_path, ignore_errors=True)
         result = c.run(
             command,
@@ -1425,8 +1562,11 @@ def run_ios_ui_e2e(
         )
         if result.exited == 0:
             break
-        if attempt == 0:
-            print("Retrying iOS UI e2e after an initial xcodebuild failure...")
+        if attempt < max_attempts - 1:
+            print(
+                "Retrying iOS UI e2e after xcodebuild failure "
+                f"(attempt {attempt + 1}/{max_attempts})..."
+            )
 
     _write_ios_ui_e2e_summary(artifact_dir)
     assert result is not None

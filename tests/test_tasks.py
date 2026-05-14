@@ -110,6 +110,49 @@ def test_ios_ui_e2e_failure_summaries_reads_failed_test_messages(tmp_path: Path)
     ]
 
 
+def test_ios_ui_e2e_failure_summaries_reads_xcresulttool_json(tmp_path: Path, monkeypatch) -> None:
+    bundle_path = tmp_path / "PlaniniUITests.xcresult"
+    bundle_path.mkdir()
+
+    class Result:
+        returncode = 0
+        stdout = """
+        {
+          "tests": [
+            {
+              "name": "PlaniniUITests.testListReceivesLiveUpdates()",
+              "testStatus": "Failure",
+              "failureSummaries": [
+                {"message": "XCTAssertTrue failed while waiting for UI Live item"}
+              ]
+            }
+          ]
+        }
+        """
+
+    def fake_run(command, **kwargs):
+        assert command[:5] == ["xcrun", "xcresulttool", "get", "test-results", "summary"]
+        assert kwargs == {"capture_output": True, "text": True, "check": False}
+        return Result()
+
+    monkeypatch.setattr(tasks.subprocess, "run", fake_run)
+
+    assert tasks._ios_ui_e2e_failure_summaries(bundle_path) == [
+        "PlaniniUITests.testListReceivesLiveUpdates(): "
+        "XCTAssertTrue failed while waiting for UI Live item"
+    ]
+
+
+def test_ios_simulator_destination_pins_latest_os_and_arm64_on_apple_silicon(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(tasks.platform, "machine", lambda: "arm64")
+
+    assert tasks._ios_simulator_destination("iPhone 17 Pro") == (
+        "platform=iOS Simulator,name=iPhone 17 Pro,OS=latest,arch=arm64"
+    )
+
+
 def test_stop_app_waits_for_exit_before_removing_pid_file(tmp_path: Path, monkeypatch) -> None:
     pid_path = tmp_path / "ui-e2e-server.pid"
     pid_path.write_text("4321\n", encoding="utf-8")
@@ -678,6 +721,11 @@ def test_run_ios_ui_e2e_invokes_xcodebuild_with_expected_env(monkeypatch, tmp_pa
             return RunResult(exited=0)
 
     monkeypatch.setattr(tasks, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        tasks,
+        "_ios_simulator_destination",
+        lambda device_name: f"platform=iOS Simulator,name={device_name},OS=latest",
+    )
     artifact_path = tmp_path / "e2e-artifacts" / "ios-ui-e2e"
     result_bundle_path = artifact_path / tasks.DEFAULT_IOS_UI_E2E_RESULT_BUNDLE
     result_bundle_path.mkdir(parents=True)
@@ -714,8 +762,10 @@ def test_run_ios_ui_e2e_invokes_xcodebuild_with_expected_env(monkeypatch, tmp_pa
     assert calls == [
         (
             "cd ios/PlaniniIOS && xcodebuild -project PlaniniApp.xcodeproj "
-            "-scheme Planini -destination 'platform=iOS Simulator,name=iPhone 17' "
+            "-scheme Planini -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' "
+            "-destination-timeout 120 "
             f"-resultBundlePath {str(result_bundle_path.resolve())} -quiet "
+            "-parallel-testing-enabled NO -maximum-parallel-testing-workers 1 "
             "-only-testing:PlaniniUITests test",
             {
                 "env": {
@@ -753,10 +803,7 @@ def test_run_ios_ui_e2e_retries_once_before_succeeding(monkeypatch, tmp_path: Pa
     tasks.run_ios_ui_e2e.body(Context(), artifact_dir="e2e-artifacts/ios-ui-e2e")
 
     assert len(calls) == 2
-    assert (
-        capsys.readouterr().out.count("Retrying iOS UI e2e after an initial xcodebuild failure...")
-        == 1
-    )
+    assert capsys.readouterr().out.count("Retrying iOS UI e2e after xcodebuild failure") == 1
 
 
 def test_run_ios_ui_e2e_prints_failure_summary_before_exiting(
@@ -783,7 +830,7 @@ def test_run_ios_ui_e2e_prints_failure_summary_before_exiting(
         raise AssertionError("expected run_ios_ui_e2e to fail")
 
     captured = capsys.readouterr()
-    assert captured.out.count("Retrying iOS UI e2e after an initial xcodebuild failure...") == 1
+    assert captured.out.count("Retrying iOS UI e2e after xcodebuild failure") == 2
     assert "iOS UI e2e failure summary:" in captured.out
     assert "testListViewFlow() [Failure]: Timed out waiting for response" in captured.out
 
