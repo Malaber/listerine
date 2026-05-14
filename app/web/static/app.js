@@ -1308,6 +1308,36 @@ function listTitleText(root) {
   return root.querySelector("[data-list-title]")?.textContent?.trim() || "";
 }
 
+function setListName(root, state, name) {
+  state.listName = name;
+  root.querySelector("[data-list-title]").textContent = name;
+  root.querySelector("[data-list-name-input]").value = name;
+}
+
+async function saveListName(root, state, name) {
+  const trimmedName = name.trim();
+  if (!trimmedName) {
+    throw new Error(translate("list_detail.list_name_required", {}, "Please enter a list name."));
+  }
+
+  if (isDemoList(root)) {
+    state.demoPayload.list.name = trimmedName;
+    root.dataset.demoPayload = JSON.stringify(state.demoPayload);
+    setListName(root, state, trimmedName);
+    return state.demoPayload.list;
+  }
+
+  const listId = root.dataset.listId;
+  const groceryList = await fetchJson(`/api/v1/lists/${listId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: trimmedName }),
+  });
+  setListName(root, state, groceryList.name);
+  persistOfflineListState(root, state);
+  return groceryList;
+}
+
 function persistOfflineListState(root, state) {
   if (typeof window === "undefined" || isDemoList(root)) {
     return;
@@ -1329,21 +1359,20 @@ function persistOfflineListState(root, state) {
         category_id,
         sort_order,
       })),
+      disabledCategoryIds: getDisabledCategoryIds(state),
       pendingMutations: state.pendingMutations || [],
     }),
   );
 }
 
 function applyOfflineListState(root, state, cachedState) {
-  const title = root.querySelector("[data-list-title]");
-  if (title && cachedState.title) {
-    title.textContent = cachedState.title;
-  }
+  setListName(root, state, cachedState.title || listTitleText(root));
 
   state.categories = new Map((cachedState.categories || []).map((category) => [category.id, category]));
   state.categoryOrder = new Map(
     (cachedState.categoryOrder || []).map((entry) => [entry.category_id, entry.sort_order]),
   );
+  setDisabledCategoryIds(state, cachedState.disabledCategoryIds || []);
   replaceItems(state, cachedState.items || []);
   state.checkedRemainingCount = cachedState.checkedRemainingCount || 0;
   state.pendingMutations = cachedState.pendingMutations || [];
@@ -1732,12 +1761,31 @@ function categoryMatchesQuery(category, query) {
   return haystacks.some((value) => value.includes(query));
 }
 
+function setDisabledCategoryIds(state, categoryIds) {
+  state.disabledCategoryIds = new Set(categoryIds || []);
+}
+
+function getDisabledCategoryIds(state) {
+  return [...(state.disabledCategoryIds || new Set())]
+    .filter((categoryId) => state.categories.has(categoryId))
+    .sort((leftId, rightId) => {
+      const leftName = state.categories.get(leftId)?.name || "";
+      const rightName = state.categories.get(rightId)?.name || "";
+      return leftName.localeCompare(rightName);
+    });
+}
+
+function isCategoryDisabled(state, categoryId) {
+  return Boolean(categoryId && state.disabledCategoryIds?.has(categoryId));
+}
+
 function syncCategoryRadioGroup(container, groupName, currentValue, state, searchQuery) {
   if (!(container instanceof HTMLElement)) {
     return;
   }
 
   container.innerHTML = "";
+  const effectiveCurrentValue = isCategoryDisabled(state, currentValue) ? "" : currentValue;
   const categories = [...state.categories.values()].sort((left, right) => left.name.localeCompare(right.name));
   const options = [
     {
@@ -1749,7 +1797,9 @@ function syncCategoryRadioGroup(container, groupName, currentValue, state, searc
     ...categories,
   ].filter(
     (category, index) =>
-      index === 0 || category.id === (currentValue || "") || categoryMatchesQuery(category, searchQuery)
+      index === 0 ||
+      (!isCategoryDisabled(state, category.id) &&
+        (category.id === (effectiveCurrentValue || "") || categoryMatchesQuery(category, searchQuery)))
   );
 
   options.forEach((category, index) => {
@@ -1760,7 +1810,7 @@ function syncCategoryRadioGroup(container, groupName, currentValue, state, searc
     input.type = "radio";
     input.name = groupName;
     input.value = category.id;
-    input.checked = (currentValue || "") === category.id;
+    input.checked = (effectiveCurrentValue || "") === category.id;
     option.appendChild(input);
 
     const card = document.createElement("span");
@@ -1872,6 +1922,18 @@ function deriveManualCategoryIds(state, orderedCategoryIds) {
 
 function setCategoryOrder(state, categoryIds) {
   state.categoryOrder = new Map(categoryIds.map((categoryId, index) => [categoryId, index]));
+}
+
+function reorderCategoryIds(categoryIds, categoryId, nextIndex) {
+  const currentIndex = categoryIds.indexOf(categoryId);
+  if (currentIndex === -1 || nextIndex < 0 || nextIndex >= categoryIds.length) {
+    return categoryIds;
+  }
+
+  const nextCategoryIds = [...categoryIds];
+  const [movedCategoryId] = nextCategoryIds.splice(currentIndex, 1);
+  nextCategoryIds.splice(nextIndex, 0, movedCategoryId);
+  return nextCategoryIds;
 }
 
 function isDemoList(root) {
@@ -2098,6 +2160,133 @@ async function saveCategoryOrder(root, state) {
   state.categoryOrder = new Map(response.map((entry) => [entry.category_id, entry.sort_order]));
 }
 
+async function saveDisabledCategories(root, state) {
+  if (isDemoList(root)) {
+    setDisabledCategoryIds(state, getDisabledCategoryIds(state));
+    return;
+  }
+
+  const listId = root.dataset.listId;
+  const response = await fetchJson(`/api/v1/lists/${listId}/disabled-categories`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ category_ids: getDisabledCategoryIds(state) }),
+  });
+  setDisabledCategoryIds(state, response.category_ids || []);
+}
+
+function itemCountForCategory(state, categoryId) {
+  return [...state.items.values()].filter((item) => item.category_id === categoryId).length;
+}
+
+function unassignCategoryItems(state, categoryId) {
+  const previousCategoryIds = [];
+  state.items.forEach((item) => {
+    if (item.category_id !== categoryId) {
+      return;
+    }
+    previousCategoryIds.push([item.id, item.category_id]);
+    item.category_id = null;
+  });
+  return previousCategoryIds;
+}
+
+function restoreItemCategoryIds(state, previousCategoryIds) {
+  previousCategoryIds.forEach(([itemId, categoryId]) => {
+    const item = state.items.get(itemId);
+    if (item) {
+      item.category_id = categoryId;
+    }
+  });
+}
+
+async function setCategoryDisabled(root, state, categoryId, disabled) {
+  const category = state.categories.get(categoryId);
+  if (!category || isCategoryDisabled(state, categoryId) === disabled) {
+    return false;
+  }
+
+  const affectedCount = itemCountForCategory(state, categoryId);
+  if (disabled && affectedCount > 0) {
+    const confirmed = window.confirm(
+      translatePlural(
+        "list_detail.disable_category_confirm",
+        affectedCount,
+        { name: category.name },
+        {
+          one: "Disable {name}? 1 item in this category will lose its category.",
+          other: "Disable {name}? {count} items in this category will lose their category.",
+        },
+      ),
+    );
+    if (!confirmed) {
+      return false;
+    }
+  }
+
+  const previousDisabledCategoryIds = new Set(state.disabledCategoryIds || []);
+  const previousItemCategories = disabled ? unassignCategoryItems(state, categoryId) : [];
+  if (!state.disabledCategoryIds) {
+    state.disabledCategoryIds = new Set();
+  }
+  if (disabled) {
+    state.disabledCategoryIds.add(categoryId);
+  } else {
+    state.disabledCategoryIds.delete(categoryId);
+  }
+
+  try {
+    await saveDisabledCategories(root, state);
+  } catch (error) {
+    setDisabledCategoryIds(state, [...previousDisabledCategoryIds]);
+    restoreItemCategoryIds(state, previousItemCategories);
+    throw error;
+  }
+
+  syncCategoryRadioGroups(root, state);
+  renderItems(root, state);
+  renderCategoryOrderSettings(root, state);
+  persistOfflineListState(root, state);
+  return true;
+}
+
+function createCategoryVisibilityIcon(disabled) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("focusable", "false");
+
+  const paths = disabled
+    ? [
+        "M3 3l18 18",
+        "M10.6 10.6a2 2 0 0 0 2.8 2.8",
+        "M9.5 5.6A10.8 10.8 0 0 1 12 5c5 0 9 5 9 7a9.8 9.8 0 0 1-2.4 3.6",
+        "M6.4 6.4C4.3 7.8 3 10.2 3 12c0 2 4 7 9 7a10.3 10.3 0 0 0 4.1-.9",
+      ]
+    : [
+        "M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z",
+        "M12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z",
+      ];
+
+  paths.forEach((pathValue) => {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", pathValue);
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", "currentColor");
+    path.setAttribute("stroke-width", "2");
+    path.setAttribute("stroke-linecap", "round");
+    path.setAttribute("stroke-linejoin", "round");
+    svg.appendChild(path);
+  });
+  return svg;
+}
+
+function clearCategoryDragState(root) {
+  root.querySelectorAll(".settings-category-row").forEach((row) => {
+    row.classList.remove("is-dragging", "is-drag-over");
+  });
+}
+
 function setItemEditPanelOpen(root, state, itemId) {
   const panel = root.querySelector("[data-item-edit-panel]");
   const overlay = root.querySelector("[data-item-edit-overlay]");
@@ -2173,8 +2362,22 @@ function renderCategoryOrderSettings(root, state) {
   }
 
   orderedCategories.forEach((category, index) => {
+    const disabled = isCategoryDisabled(state, category.id);
     const row = document.createElement("div");
-    row.className = "settings-category-row";
+    row.className = `settings-category-row${disabled ? " is-disabled" : ""}`;
+    row.dataset.categoryId = category.id;
+    row.draggable = true;
+
+    const grabber = document.createElement("button");
+    grabber.type = "button";
+    grabber.className = "settings-category-grabber";
+    grabber.dataset.settingsCategoryGrabber = category.id;
+    grabber.draggable = true;
+    grabber.setAttribute(
+      "aria-label",
+      translate("list_detail.drag_category", { name: category.name }, "Drag {name} to reorder")
+    );
+    row.appendChild(grabber);
 
     const swatch = document.createElement("span");
     swatch.className = "item-category-swatch";
@@ -2189,14 +2392,19 @@ function renderCategoryOrderSettings(root, state) {
     copy.appendChild(title);
 
     const meta = document.createElement("span");
-    meta.textContent = state.categoryOrder.has(category.id)
-      ? translate("list_detail.pinned_in_order", {}, "Pinned in this list order")
-      : translate("list_detail.alphabetical_until_moved", {}, "Alphabetical until you move it");
+    meta.textContent = disabled
+      ? translate("list_detail.disabled_for_list", {}, "Disabled for this list")
+      : state.categoryOrder.has(category.id)
+        ? translate("list_detail.pinned_in_order", {}, "Pinned in this list order")
+        : translate("list_detail.alphabetical_until_moved", {}, "Alphabetical until you move it");
     copy.appendChild(meta);
     row.appendChild(copy);
 
     const actions = document.createElement("div");
     actions.className = "settings-category-actions";
+
+    const moveGroup = document.createElement("div");
+    moveGroup.className = "settings-category-move-group";
 
     const moveUp = document.createElement("button");
     moveUp.type = "button";
@@ -2208,7 +2416,7 @@ function renderCategoryOrderSettings(root, state) {
     );
     moveUp.disabled = index === 0;
     moveUp.textContent = "↑";
-    actions.appendChild(moveUp);
+    moveGroup.appendChild(moveUp);
 
     const moveDown = document.createElement("button");
     moveDown.type = "button";
@@ -2220,7 +2428,22 @@ function renderCategoryOrderSettings(root, state) {
     );
     moveDown.disabled = index === orderedCategories.length - 1;
     moveDown.textContent = "↓";
-    actions.appendChild(moveDown);
+    moveGroup.appendChild(moveDown);
+    actions.appendChild(moveGroup);
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "settings-category-toggle";
+    toggle.dataset.settingsCategoryToggle = category.id;
+    toggle.setAttribute(
+      "aria-label",
+      disabled
+        ? translate("list_detail.enable_category", { name: category.name }, "Enable {name}")
+        : translate("list_detail.disable_category", { name: category.name }, "Disable {name}")
+    );
+    toggle.title = toggle.getAttribute("aria-label") || "";
+    toggle.appendChild(createCategoryVisibilityIcon(disabled));
+    actions.appendChild(toggle);
 
     row.appendChild(actions);
     container.appendChild(row);
@@ -2240,6 +2463,7 @@ function setListSettingsOpen(root, state, isOpen) {
   if (isOpen) {
     setItemPanelOpen(root, false);
     setItemEditPanelOpen(root, state, null);
+    setListName(root, state, state.listName || listTitleText(root));
     renderCategoryOrderSettings(root, state);
   }
 
@@ -2999,19 +3223,20 @@ async function loadListDetail(root, state) {
       throw new Error(translate("list_detail.load_failed", {}, "Could not load the list."));
     }
 
-    const title = root.querySelector("[data-list-title]");
-    if (title) {
-      title.textContent = payload.list.name;
-    }
+    setListName(root, state, payload.list.name);
 
     const categories = Array.isArray(payload.categories) ? payload.categories : [];
     const categoryOrder = Array.isArray(payload.category_order) ? payload.category_order : [];
+    const disabledCategoryIds = Array.isArray(payload.disabled_category_ids)
+      ? payload.disabled_category_ids
+      : [];
     const items = Array.isArray(payload.item_window.items) ? payload.item_window.items : [];
 
     state.demoPayload = payload;
     state.nextDemoId = items.length + 1;
     state.categories = new Map(categories.map((category) => [category.id, category]));
     state.categoryOrder = new Map(categoryOrder.map((entry) => [entry.category_id, entry.sort_order]));
+    setDisabledCategoryIds(state, disabledCategoryIds);
     replaceItems(state, items.map(cloneDemoItem));
     state.checkedRemainingCount = payload.item_window.checked_remaining_count || 0;
     syncCategoryRadioGroups(root, state);
@@ -3024,13 +3249,15 @@ async function loadListDetail(root, state) {
   let itemWindow;
   let categories;
   let categoryOrder;
+  let disabledCategories;
 
   try {
-    [groceryList, itemWindow, categories, categoryOrder] = await Promise.all([
+    [groceryList, itemWindow, categories, categoryOrder, disabledCategories] = await Promise.all([
       fetchJson(`/api/v1/lists/${listId}`),
       fetchJson(`/api/v1/lists/${listId}/items/window`),
       fetchJson(`/api/v1/lists/${listId}/categories`),
       fetchJson(`/api/v1/lists/${listId}/category-order`),
+      fetchJson(`/api/v1/lists/${listId}/disabled-categories`),
     ]);
   } catch (error) {
     const cachedState = loadOfflineListState(listId);
@@ -3050,15 +3277,13 @@ async function loadListDetail(root, state) {
     throw error;
   }
 
-  const title = root.querySelector("[data-list-title]");
-  if (title) {
-    title.textContent = groceryList.name;
-  }
+  setListName(root, state, groceryList.name);
 
   state.categories = new Map(categories.map((category) => [category.id, category]));
   state.categoryOrder = new Map(
     categoryOrder.map((entry) => [entry.category_id, entry.sort_order])
   );
+  setDisabledCategoryIds(state, disabledCategories.category_ids || []);
   state.pendingMutations = [];
   const cachedState = loadOfflineListState(listId);
   if (cachedState?.pendingMutations?.length > 0 && Array.isArray(cachedState.items)) {
@@ -3120,6 +3345,8 @@ function connectListSocket(root, state) {
         state.categoryOrder = new Map(
           (message.payload.category_order || []).map((entry) => [entry.category_id, entry.sort_order])
         );
+        setDisabledCategoryIds(state, message.payload.disabled_category_ids || []);
+        syncCategoryRadioGroups(root, state);
         renderItems(root, state);
         return;
       }
@@ -3129,6 +3356,16 @@ function connectListSocket(root, state) {
           (message.payload?.category_order || []).map((entry) => [entry.category_id, entry.sort_order])
         );
         renderItems(root, state);
+        renderCategoryOrderSettings(root, state);
+        return;
+      }
+
+      if (message.type === "category_disabled_categories_updated") {
+        setDisabledCategoryIds(state, message.payload?.category_ids || []);
+        syncCategoryRadioGroups(root, state);
+        renderItems(root, state);
+        renderCategoryOrderSettings(root, state);
+        persistOfflineListState(root, state);
         return;
       }
 
@@ -3177,10 +3414,12 @@ async function initListDetail() {
     categories: new Map(),
     checkedRemainingCount: 0,
     demoPayload: getDemoPayload(root),
+    disabledCategoryIds: new Set(),
     editingItemId: null,
     highlightedItemId: null,
     highlightTimers: new Map(),
     items: new Map(),
+    listName: "",
     nextDemoId: 1,
     openItemMenuId: null,
     socket: null,
@@ -3235,6 +3474,31 @@ async function initListDetail() {
     node.addEventListener("click", () => {
       setListSettingsOpen(root, state, false);
     });
+  });
+
+  root.querySelector("[data-list-name-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const input = root.querySelector("[data-list-name-input]");
+    const submitButton = root.querySelector("[data-list-name-submit]");
+    submitButton.disabled = true;
+    try {
+      await saveListName(root, state, input.value);
+      setListMessage(
+        root,
+        "success",
+        translate("list_detail.list_name_saved", {}, "List name saved."),
+      );
+    } catch (error) {
+      setListMessage(
+        root,
+        "error",
+        error instanceof Error
+          ? error.message
+          : translate("list_detail.list_name_save_failed", {}, "Could not save list name."),
+      );
+    } finally {
+      submitButton.disabled = false;
+    }
   });
 
   nameInput?.addEventListener("input", () => {
@@ -3498,20 +3762,12 @@ async function initListDetail() {
   });
 
   root.addEventListener("click", async (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLElement)) {
+    const eventTarget = event.target;
+    if (!(eventTarget instanceof Element)) {
       return;
     }
 
-    const toggleId = target.dataset.itemToggle;
-    const hideId = target.dataset.itemHide;
-    const unhideId = target.dataset.itemUnhide;
-    const menuToggleId = target.dataset.itemMenuToggle;
-    const reuseItemId = target.dataset.itemReuse;
-    const categoryMove = target.dataset.settingsCategoryMove;
-    const categoryId = target.dataset.categoryId;
-    const quickAddButton = target.closest("[data-item-quick-add-category]");
-    const editCard = target.closest("[data-item-edit]");
+    const quickAddButton = eventTarget.closest("[data-item-quick-add-category]");
 
     if (state.suppressNextClick) {
       state.suppressNextClick = false;
@@ -3524,16 +3780,51 @@ async function initListDetail() {
       return;
     }
 
-    if (editCard && !target.closest("button")) {
+    const actionTarget = eventTarget.closest(
+      "[data-item-toggle], [data-item-hide], [data-item-unhide], [data-item-menu-toggle], [data-item-reuse], [data-settings-category-move], [data-settings-category-toggle]"
+    );
+    const target = actionTarget instanceof HTMLElement ? actionTarget : null;
+    const toggleId = target?.dataset.itemToggle;
+    const hideId = target?.dataset.itemHide;
+    const unhideId = target?.dataset.itemUnhide;
+    const menuToggleId = target?.dataset.itemMenuToggle;
+    const reuseItemId = target?.dataset.itemReuse;
+    const categoryMove = target?.dataset.settingsCategoryMove;
+    const categoryToggleId = target?.dataset.settingsCategoryToggle;
+    const categoryId = target?.dataset.categoryId;
+    const editCard = eventTarget.closest("[data-item-edit]");
+
+    if (editCard && !eventTarget.closest("button")) {
       setItemEditPanelOpen(root, state, editCard.dataset.itemEdit || null);
       return;
     }
 
-    if (!toggleId && !hideId && !unhideId && !menuToggleId && !reuseItemId && !categoryMove) {
+    if (
+      !toggleId &&
+      !hideId &&
+      !unhideId &&
+      !menuToggleId &&
+      !reuseItemId &&
+      !categoryMove &&
+      !categoryToggleId
+    ) {
       return;
     }
 
     try {
+      if (categoryToggleId) {
+        const didChange = await setCategoryDisabled(
+          root,
+          state,
+          categoryToggleId,
+          !isCategoryDisabled(state, categoryToggleId),
+        );
+        if (didChange) {
+          setListMessage(root, "success", translate("list_detail.category_settings_saved", {}, "Category settings saved."));
+        }
+        return;
+      }
+
       if (categoryMove && categoryId) {
         const orderedCategoryIds = getOrderedCategoryIds(state);
         const currentIndex = orderedCategoryIds.indexOf(categoryId);
@@ -3546,15 +3837,13 @@ async function initListDetail() {
           return;
         }
 
-        const nextOrderedCategoryIds = [...orderedCategoryIds];
-        [nextOrderedCategoryIds[currentIndex], nextOrderedCategoryIds[nextIndex]] = [
-          nextOrderedCategoryIds[nextIndex],
-          nextOrderedCategoryIds[currentIndex],
-        ];
+        const nextOrderedCategoryIds = reorderCategoryIds(orderedCategoryIds, categoryId, nextIndex);
 
         setCategoryOrder(state, deriveManualCategoryIds(state, nextOrderedCategoryIds));
         await saveCategoryOrder(root, state);
         renderItems(root, state);
+        renderCategoryOrderSettings(root, state);
+        persistOfflineListState(root, state);
         return;
       }
 
@@ -3631,6 +3920,101 @@ async function initListDetail() {
     } catch (error) {
       setListMessage(root, "error", error instanceof Error ? error.message : translate("list_detail.list_action_failed", {}, "List action failed."));
     }
+  });
+
+  root.addEventListener("dragstart", (event) => {
+    const eventTarget = event.target;
+    if (!(eventTarget instanceof Element)) {
+      return;
+    }
+    const row = eventTarget.closest(".settings-category-row");
+    if (!(row instanceof HTMLElement) || !row.dataset.categoryId) {
+      return;
+    }
+
+    state.draggingCategoryId = row.dataset.categoryId;
+    row.classList.add("is-dragging");
+    event.dataTransfer?.setData("text/plain", row.dataset.categoryId);
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = "move";
+    }
+  });
+
+  root.addEventListener("dragover", (event) => {
+    if (!state.draggingCategoryId) {
+      return;
+    }
+    const eventTarget = event.target;
+    if (!(eventTarget instanceof Element)) {
+      return;
+    }
+    const row = eventTarget.closest(".settings-category-row");
+    if (!(row instanceof HTMLElement) || row.dataset.categoryId === state.draggingCategoryId) {
+      return;
+    }
+
+    event.preventDefault();
+    clearCategoryDragState(root);
+    row.classList.add("is-drag-over");
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = "move";
+    }
+  });
+
+  root.addEventListener("drop", async (event) => {
+    const eventTarget = event.target;
+    if (!(eventTarget instanceof Element)) {
+      return;
+    }
+    const row = eventTarget.closest(".settings-category-row");
+    const draggedCategoryId =
+      state.draggingCategoryId || event.dataTransfer?.getData("text/plain") || "";
+    if (!(row instanceof HTMLElement) || !row.dataset.categoryId || !draggedCategoryId) {
+      clearCategoryDragState(root);
+      return;
+    }
+
+    event.preventDefault();
+    const orderedCategoryIds = getOrderedCategoryIds(state);
+    const currentIndex = orderedCategoryIds.indexOf(draggedCategoryId);
+    const targetIndex = orderedCategoryIds.indexOf(row.dataset.categoryId);
+    if (currentIndex === -1 || targetIndex === -1 || currentIndex === targetIndex) {
+      clearCategoryDragState(root);
+      return;
+    }
+
+    const rect = row.getBoundingClientRect();
+    const dropAfterTarget = event.clientY > rect.top + rect.height / 2;
+    let nextIndex = targetIndex + (dropAfterTarget ? 1 : 0);
+    if (currentIndex < nextIndex) {
+      nextIndex -= 1;
+    }
+
+    const nextOrderedCategoryIds = reorderCategoryIds(orderedCategoryIds, draggedCategoryId, nextIndex);
+    if (nextOrderedCategoryIds.every((categoryId, index) => categoryId === orderedCategoryIds[index])) {
+      clearCategoryDragState(root);
+      return;
+    }
+
+    const previousOrder = new Map(state.categoryOrder);
+    try {
+      setCategoryOrder(state, deriveManualCategoryIds(state, nextOrderedCategoryIds));
+      await saveCategoryOrder(root, state);
+      renderItems(root, state);
+      renderCategoryOrderSettings(root, state);
+      persistOfflineListState(root, state);
+    } catch (error) {
+      state.categoryOrder = previousOrder;
+      setListMessage(root, "error", error instanceof Error ? error.message : translate("list_detail.list_action_failed", {}, "List action failed."));
+    } finally {
+      state.draggingCategoryId = null;
+      clearCategoryDragState(root);
+    }
+  });
+
+  root.addEventListener("dragend", () => {
+    state.draggingCategoryId = null;
+    clearCategoryDragState(root);
   });
 
   root.querySelector("[data-item-edit-delete]")?.addEventListener("click", async () => {
@@ -4032,6 +4416,8 @@ export {
   setListSyncStatus,
   offlineListStorageKey,
   loadOfflineListState,
+  setListName,
+  saveListName,
   createOfflineId,
   isBrowserOffline,
   isOfflineRequestError,
@@ -4057,6 +4443,9 @@ export {
   decorateItem,
   setCategoryRadioValue,
   categoryMatchesQuery,
+  setDisabledCategoryIds,
+  getDisabledCategoryIds,
+  isCategoryDisabled,
   syncCategoryRadioGroup,
   syncCategoryRadioGroups,
   getManualCategoryIds,
@@ -4065,6 +4454,7 @@ export {
   getDisplayedCategoryIds,
   deriveManualCategoryIds,
   setCategoryOrder,
+  reorderCategoryIds,
   isDemoList,
   getDemoPayload,
   cloneDemoItem,
@@ -4077,6 +4467,13 @@ export {
   updateItemWithOfflineFallback,
   setItemCheckedWithOfflineFallback,
   saveCategoryOrder,
+  saveDisabledCategories,
+  itemCountForCategory,
+  unassignCategoryItems,
+  restoreItemCategoryIds,
+  setCategoryDisabled,
+  createCategoryVisibilityIcon,
+  clearCategoryDragState,
   setItemEditPanelOpen,
   renderCategoryOrderSettings,
   setListSettingsOpen,

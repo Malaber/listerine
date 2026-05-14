@@ -1514,10 +1514,28 @@ main {
   flex-wrap: wrap;
 }
 
-.settings-category-list {
-  display: grid;
-  gap: 0.75rem;
+.settings-list-name-form {
   margin-top: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-list-name-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.settings-subsection-heading {
+  margin-top: 1.25rem;
+}
+
+.settings-category-list {
+  display: block;
+  margin-top: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
 }
 
 .settings-category-row {
@@ -1525,9 +1543,51 @@ main {
   align-items: center;
   gap: 0.85rem;
   padding: 0.9rem 1rem;
-  border: 1px solid var(--border);
-  border-radius: 18px;
+  border-bottom: 1px solid var(--border);
   background: #fff;
+}
+
+.settings-category-row:last-child {
+  border-bottom: 0;
+}
+
+.settings-category-row.is-disabled {
+  color: var(--text-muted);
+}
+
+.settings-category-row.is-disabled .item-category-swatch {
+  opacity: 0.75;
+}
+
+.settings-category-row.is-dragging {
+  opacity: 0.55;
+}
+
+.settings-category-row.is-drag-over {
+  box-shadow: inset 0 0 0 2px var(--brand-aqua);
+}
+
+.settings-category-grabber {
+  position: relative;
+  width: 1.6rem;
+  height: 2.4rem;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: grab;
+  flex: 0 0 auto;
+}
+
+.settings-category-grabber:active {
+  cursor: grabbing;
+}
+
+.settings-category-grabber::before {
+  content: "";
+  position: absolute;
+  inset: 0.35rem 0.45rem;
+  background-image: radial-gradient(circle, currentColor 2px, transparent 2.25px);
+  background-size: 0.45rem 0.45rem;
 }
 
 .settings-category-copy {
@@ -1552,16 +1612,52 @@ main {
   margin-left: auto;
 }
 
+.settings-category-move-group {
+  display: inline-flex;
+}
+
 .settings-category-actions button {
   width: 2.4rem;
   height: 2.4rem;
   border: 1px solid var(--border);
-  border-radius: 999px;
   background: #fff;
   color: var(--text);
   cursor: pointer;
   font: inherit;
   font-weight: 800;
+}
+
+.settings-category-move-group button {
+  border-radius: 0;
+}
+
+.settings-category-move-group button:first-child {
+  border-radius: 8px 0 0 8px;
+}
+
+.settings-category-move-group button + button {
+  margin-left: -1px;
+}
+
+.settings-category-move-group button:last-child {
+  border-radius: 0 8px 8px 0;
+}
+
+.settings-category-toggle {
+  border-radius: 8px;
+}
+
+.settings-category-toggle svg {
+  display: block;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: auto;
+}
+
+.settings-category-actions button:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .danger-button {
