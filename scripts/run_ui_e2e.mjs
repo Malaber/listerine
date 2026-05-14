@@ -1176,6 +1176,60 @@ async function main() {
       "New item should land in the Backwaren section",
     );
 
+    await page.getByRole("button", { name: "Open list settings" }).click();
+    await expectVisible(page.getByRole("heading", { name: "Category order" }), "Expected settings modal");
+    const settingsPanel = page.locator("[data-list-settings-panel]");
+    const backwarenDisableRow = settingsPanel.locator(".settings-category-row", { hasText: "Backwaren" });
+    if (deviceName === "desktop") {
+      const nudelnRow = settingsPanel.locator(".settings-category-row", { hasText: "Nudeln" });
+      await backwarenDisableRow
+        .locator("[data-settings-category-grabber]")
+        .dragTo(nudelnRow.locator("[data-settings-category-grabber]"));
+      await page.waitForTimeout(150);
+    }
+    page.once("dialog", async (dialog) => {
+      assert.match(dialog.message(), /Disable Backwaren\?/);
+      await dialog.accept();
+    });
+    await backwarenDisableRow.getByRole("button", { name: /Disable Backwaren/i }).click();
+    await expectVisible(
+      backwarenDisableRow.locator(".settings-category-copy", { hasText: "Disabled for this list" }),
+      "Disabled category should be visibly marked",
+    );
+    await page.locator("[data-list-settings-panel] .add-item-close").click();
+    await page.waitForFunction(
+      (name) => {
+        const uncategorized = [...document.querySelectorAll(".item-category-group")].find((group) =>
+          group.querySelector(".item-category-header h3")?.textContent?.includes("Uncategorized"),
+        );
+        return Boolean(
+          uncategorized &&
+            [...uncategorized.querySelectorAll(".item-card")].some((card) =>
+              card.textContent?.includes(name),
+            ),
+        );
+      },
+      freshThingName,
+      { timeout: 5000 },
+    );
+    await page.getByRole("button", { name: "Add item" }).click();
+    const addMoreFields = addForm.locator(".item-more-fields");
+    if (!(await addMoreFields.evaluate((node) => node.open))) {
+      await addMoreFields.locator("summary").click();
+    }
+    await addForm.locator("[data-item-category-search]").fill("brot");
+    await expectHidden(
+      addForm.locator(".category-radio-option", { hasText: "Backwaren" }),
+      "Disabled category should not be selectable when adding items",
+    );
+    await page.locator("[data-item-panel] .add-item-close").click();
+    await page.getByRole("button", { name: "Open list settings" }).click();
+    await settingsPanel
+      .locator(".settings-category-row", { hasText: "Backwaren" })
+      .getByRole("button", { name: /Enable Backwaren/i })
+      .click();
+    await page.locator("[data-list-settings-panel] .add-item-close").click();
+
     const toast = page.locator("[data-list-toast]");
     await freshThingCard.getByRole("button").first().click();
     await expectVisible(toast, "Expected temporary undo toast");
@@ -1202,7 +1256,7 @@ async function main() {
   const summary = [
     "## UI E2E",
     "",
-    `Browser UI flow passed for ${deviceName} using seeded real database data and passkey auth for route rendering, login gating, multi-passkey enrollment and deletion, add/edit flows, duplicate suggestions, undo toasts, category alias search, admin navigation, websocket updates, and household invite acceptance.`,
+    `Browser UI flow passed for ${deviceName} using seeded real database data and passkey auth for route rendering, login gating, multi-passkey enrollment and deletion, add/edit flows, duplicate suggestions, undo toasts, category alias search, category disabling, admin navigation, websocket updates, and household invite acceptance.`,
     "",
   ].join("\n");
   await fs.writeFile(path.join(artifactDir, "summary.md"), summary);

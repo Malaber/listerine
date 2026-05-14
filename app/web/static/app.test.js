@@ -37,6 +37,16 @@ import {
   persistOfflineListState,
   applyOfflineListState,
   showOfflineSavedMessage,
+  clearCategoryDragState,
+  getDisabledCategoryIds,
+  itemCountForCategory,
+  isCategoryDisabled,
+  reorderCategoryIds,
+  restoreItemCategoryIds,
+  saveDisabledCategories,
+  setCategoryDisabled,
+  setDisabledCategoryIds,
+  unassignCategoryItems,
   isBrowserOffline,
   isOfflineRequestError,
   shouldQueueItemMutation,
@@ -148,6 +158,7 @@ function createListRoot() {
       <div data-item-edit-category-radios></div>
       <div data-item-empty></div>
       <div data-item-list></div>
+      <div data-list-settings-category-list></div>
     </section>
   `, { url: "https://example.test/lists/list-1" });
   return {
@@ -231,6 +242,7 @@ function createDemoListRoot() {
           <div data-item-edit-category-radios></div>
           <div data-item-empty></div>
           <div data-item-list></div>
+          <div data-list-settings-category-list></div>
         </section>
       </body>
     </html>
@@ -248,6 +260,7 @@ function createState(items) {
     categoryOrder: new Map(),
     categories: new Map(),
     checkedRemainingCount: 0,
+    disabledCategoryIds: new Set(),
     editingItemId: null,
     highlightedItemId: null,
     highlightTimers: new Map(),
@@ -376,6 +389,7 @@ test("offline list cache helpers persist local state and merge sync results", ()
   ]);
   state.categories.set("cat-1", { id: "cat-1", name: "Produce", color: "#22c55e" });
   state.categoryOrder.set("cat-1", 0);
+  state.disabledCategoryIds.add("cat-1");
   state.pendingMutations.push({ mutation_id: "m1", type: "create" });
 
   assert.equal(loadOfflineListState("no-window"), null);
@@ -399,11 +413,13 @@ test("offline list cache helpers persist local state and merge sync results", ()
     assert.equal(cached.title, "Weekly");
     assert.equal(cached.items.length, 2);
     assert.equal(cached.categories[0].name, "Produce");
+    assert.deepEqual(cached.disabledCategoryIds, ["cat-1"]);
     assert.equal(cached.pendingMutations[0].mutation_id, "m1");
 
     const nextState = createState([]);
     applyOfflineListState(root, nextState, cached);
     assert.equal(nextState.items.get("local-item-1").name, "Offline apples");
+    assert.equal(isCategoryDisabled(nextState, "cat-1"), true);
     assert.equal(document.querySelectorAll(".item-card").length, 2);
     applyOfflineListState(root, nextState, { items: [], pendingMutations: [] });
     assert.equal(document.querySelector("[data-list-title]").textContent, "Weekly");
@@ -776,6 +792,7 @@ test("demo list helpers reuse the real list page with local data", async () => {
       categoryOrder: new Map(),
       categories: new Map(),
       checkedRemainingCount: 0,
+      disabledCategoryIds: new Set(),
       demoPayload: getDemoPayload(root),
       editingItemId: null,
       highlightedItemId: null,
@@ -832,6 +849,141 @@ test("demo list helpers reuse the real list page with local data", async () => {
   } finally {
     restoreDomGlobals(originals);
     setGlobalProperty("document", originals.document);
+    setGlobalProperty("window", originals.window);
+  }
+});
+
+test("category disabling hides choices and unassigns local items", async () => {
+  const { document, root, window } = createDemoListRoot();
+  const originals = {
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    document: globalThis.document,
+    window: globalThis.window,
+  };
+  const confirms = [];
+  window.confirm = (message) => {
+    confirms.push(message);
+    return true;
+  };
+
+  setDomGlobals({ window });
+  setGlobalProperty("document", document);
+  setGlobalProperty("window", window);
+
+  try {
+    const state = {
+      categoryOrder: new Map(),
+      categories: new Map(),
+      checkedRemainingCount: 0,
+      disabledCategoryIds: new Set(),
+      demoPayload: getDemoPayload(root),
+      editingItemId: null,
+      highlightedItemId: null,
+      highlightTimers: new Map(),
+      items: new Map(),
+      nextDemoId: 1,
+      socket: null,
+      undoAction: null,
+      undoTimerId: null,
+    };
+
+    await loadListDetail(root, state);
+    assert.deepEqual(reorderCategoryIds(["produce", "pantry"], "produce", 1), ["pantry", "produce"]);
+    assert.deepEqual(reorderCategoryIds(["produce"], "missing", 0), ["produce"]);
+    assert.equal(itemCountForCategory(state, "produce"), 1);
+    const previousPantryCategories = unassignCategoryItems(state, "pantry");
+    assert.equal(itemCountForCategory(state, "pantry"), 0);
+    restoreItemCategoryIds(state, previousPantryCategories);
+    assert.equal(itemCountForCategory(state, "pantry"), 1);
+
+    const didDisable = await setCategoryDisabled(root, state, "produce", true);
+    assert.equal(didDisable, true);
+    assert.equal(isCategoryDisabled(state, "produce"), true);
+    assert.deepEqual(getDisabledCategoryIds(state), ["produce"]);
+    assert.equal(state.items.get("demo-item-1").category_id, null);
+    assert.match(confirms[0], /Disable Produce/);
+    assert.equal(document.querySelector(".settings-category-row.is-disabled strong").textContent, "Produce");
+    assert.equal(document.querySelector(".settings-category-toggle svg").getAttribute("viewBox"), "0 0 24 24");
+    document.querySelector(".settings-category-row").classList.add("is-dragging", "is-drag-over");
+    clearCategoryDragState(root);
+    assert.equal(document.querySelector(".settings-category-row").classList.contains("is-dragging"), false);
+    assert.equal(document.querySelectorAll("[data-item-category-radios] .category-radio-option").length, 2);
+    assert.equal(document.querySelector("[data-item-category-radios]").textContent.includes("Produce"), false);
+
+    await saveDisabledCategories(root, state);
+    const didEnable = await setCategoryDisabled(root, state, "produce", false);
+    assert.equal(didEnable, true);
+    assert.equal(isCategoryDisabled(state, "produce"), false);
+    assert.equal(await setCategoryDisabled(root, state, "produce", false), false);
+    assert.equal(await setCategoryDisabled(root, state, "missing", true), false);
+    window.confirm = () => false;
+    assert.equal(await setCategoryDisabled(root, state, "pantry", true), false);
+    assert.equal(isCategoryDisabled(state, "pantry"), false);
+
+    setDisabledCategoryIds(state, ["pantry", "missing"]);
+    assert.deepEqual(getDisabledCategoryIds(state), ["pantry"]);
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("window", originals.window);
+  }
+});
+
+test("category disabling restores local state when save fails", async () => {
+  const { document, root, window } = createListRoot();
+  const originals = {
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    document: globalThis.document,
+    fetch: globalThis.fetch,
+    window: globalThis.window,
+  };
+  window.confirm = () => true;
+
+  setDomGlobals({ window });
+  setGlobalProperty("document", document);
+  setGlobalProperty("window", window);
+  setGlobalProperty("fetch", async () => {
+    throw new TypeError("offline");
+  });
+
+  try {
+    const state = createState([
+      {
+        id: "item-1",
+        list_id: "list-1",
+        name: "Bananas",
+        checked: false,
+        checked_at: null,
+        category_id: "produce",
+        note: null,
+        quantity_text: null,
+        sort_order: 0,
+      },
+    ]);
+    state.categories.set("produce", { id: "produce", name: "Produce", color: "#22c55e" });
+
+    await assert.rejects(() => setCategoryDisabled(root, state, "produce", true), /offline/);
+    assert.equal(isCategoryDisabled(state, "produce"), false);
+    assert.equal(state.items.get("item-1").category_id, "produce");
+
+    setGlobalProperty("fetch", async (url, options) => {
+      assert.equal(url, "/api/v1/lists/list-1/disabled-categories");
+      assert.equal(options.method, "PUT");
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ category_ids: ["produce"] }),
+      };
+    });
+    assert.equal(await setCategoryDisabled(root, state, "produce", true), true);
+    assert.equal(isCategoryDisabled(state, "produce"), true);
+    assert.equal(state.items.get("item-1").category_id, null);
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("fetch", originals.fetch);
     setGlobalProperty("window", originals.window);
   }
 });
