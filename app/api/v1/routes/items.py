@@ -234,6 +234,7 @@ async def check_item(
     recorded_at = datetime.now(UTC)
     item.checked_at = recorded_at
     item.checked_state_recorded_at = recorded_at
+    item.hidden_until = None
     item.checked_by = user.id
     item.updated_by = user.id
     await db.commit()
@@ -252,6 +253,7 @@ async def uncheck_item(
     item.checked = False
     item.checked_at = None
     item.checked_state_recorded_at = datetime.now(UTC)
+    item.hidden_until = None
     item.checked_by = None
     item.updated_by = user.id
     await db.commit()
@@ -346,6 +348,7 @@ async def sync_offline_items(
                     item.checked = mutation.checked
                     item.checked_at = recorded_at if mutation.checked else None
                     item.checked_state_recorded_at = recorded_at
+                    item.hidden_until = None
                     item.checked_by = user.id if mutation.checked else None
                     item.updated_by = user.id
                     event_type = "item_checked" if mutation.checked else "item_unchecked"
