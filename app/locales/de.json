@@ -278,6 +278,19 @@
     "quick_add_uncategorized": "Artikel schnell ohne Kategorie hinzufügen",
     "move_category_up": "{name} nach oben verschieben",
     "move_category_down": "{name} nach unten verschieben",
+    "drag_category": "{name} per Ziehen verschieben",
+    "disable_category": "{name} deaktivieren",
+    "enable_category": "{name} aktivieren",
+    "disabled_for_list": "Für diese Liste deaktiviert",
+    "category_settings_saved": "Kategorieeinstellungen gespeichert.",
+    "category_order_saving": "Kategorienreihenfolge wird gespeichert...",
+    "category_order_save_failed": "Kategorienreihenfolge konnte nicht gespeichert werden.",
+    "disable_category_confirm_title": "{name} deaktivieren?",
+    "disable_category_confirm_action": "Kategorie deaktivieren",
+    "disable_category_confirm": {
+      "one": "{name} deaktivieren? 1 Artikel in dieser Kategorie verliert seine Kategorie.",
+      "other": "{name} deaktivieren? {count} Artikel in dieser Kategorie verlieren ihre Kategorie."
+    },
     "item_count": {
       "one": "{count} Artikel",
       "other": "{count} Artikel"
