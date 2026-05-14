@@ -12,6 +12,8 @@ const SUPPORTED_LANGUAGE_OPTIONS = [
 ];
 const CATEGORY_SWATCH_FALLBACK_COLOR = "#d9c5b3";
 const CHECKED_CATEGORY_SWATCH_COLOR = "#b59676";
+const ITEM_EDIT_LIVE_SAVE_DELAY_MS = 900;
+const ITEM_EDIT_HISTORY_LIMIT = 5;
 
 function isItemHidden(item, nowMs = Date.now()) {
   const hiddenUntilMs = Date.parse(item.hidden_until || "");
@@ -1268,6 +1270,508 @@ function setListSyncStatus(root, message) {
   if (statusNode) {
     statusNode.textContent = message;
   }
+}
+
+function itemEditHistoryStorageKey(listId) {
+  return `planini:item-edit-history:${listId}`;
+}
+
+function itemEditRedoHistoryStorageKey(listId) {
+  return `planini:item-edit-redo-history:${listId}`;
+}
+
+function normalizeNullableItemEditValue(value) {
+  const normalized = String(value || "").trim();
+  return normalized || null;
+}
+
+function normalizeItemEditPayload(payload) {
+  return {
+    name: String(payload?.name || "").trim(),
+    quantity_text: normalizeNullableItemEditValue(payload?.quantity_text),
+    note: normalizeNullableItemEditValue(payload?.note),
+    category_id: normalizeNullableItemEditValue(payload?.category_id),
+  };
+}
+
+function itemEditPayloadFromItem(item) {
+  return normalizeItemEditPayload({
+    name: item?.name,
+    quantity_text: item?.quantity_text,
+    note: item?.note,
+    category_id: item?.category_id,
+  });
+}
+
+function itemEditPayloadsEqual(left, right) {
+  const normalizedLeft = normalizeItemEditPayload(left);
+  const normalizedRight = normalizeItemEditPayload(right);
+  return (
+    normalizedLeft.name === normalizedRight.name &&
+    normalizedLeft.quantity_text === normalizedRight.quantity_text &&
+    normalizedLeft.note === normalizedRight.note &&
+    normalizedLeft.category_id === normalizedRight.category_id
+  );
+}
+
+function cloneItemEditHistoryItem(item) {
+  return item ? { ...item } : null;
+}
+
+function loadItemEditHistory(listId) {
+  if (typeof window === "undefined" || !listId) {
+    return new Map();
+  }
+
+  const raw = window.localStorage?.getItem(itemEditHistoryStorageKey(listId));
+  if (!raw) {
+    return new Map();
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return new Map();
+    }
+    return new Map(
+      Object.entries(parsed).map(([itemId, snapshots]) => [
+        itemId,
+        Array.isArray(snapshots) ? snapshots.slice(0, ITEM_EDIT_HISTORY_LIMIT) : [],
+      ]),
+    );
+  } catch {
+    return new Map();
+  }
+}
+
+function loadItemEditRedoHistory(listId) {
+  if (typeof window === "undefined" || !listId) {
+    return new Map();
+  }
+
+  const raw = window.localStorage?.getItem(itemEditRedoHistoryStorageKey(listId));
+  if (!raw) {
+    return new Map();
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return new Map();
+    }
+    return new Map(
+      Object.entries(parsed).map(([itemId, snapshots]) => [
+        itemId,
+        Array.isArray(snapshots) ? snapshots.slice(0, ITEM_EDIT_HISTORY_LIMIT) : [],
+      ]),
+    );
+  } catch {
+    return new Map();
+  }
+}
+
+function ensureItemEditHistory(root, state) {
+  if (!(state.itemEditHistory instanceof Map)) {
+    state.itemEditHistory = loadItemEditHistory(root.dataset.listId || "");
+  }
+  return state.itemEditHistory;
+}
+
+function ensureItemEditRedoHistory(root, state) {
+  if (!(state.itemEditRedoHistory instanceof Map)) {
+    state.itemEditRedoHistory = loadItemEditRedoHistory(root.dataset.listId || "");
+  }
+  return state.itemEditRedoHistory;
+}
+
+function persistItemEditHistory(root, state) {
+  if (typeof window === "undefined" || isDemoList(root)) {
+    return;
+  }
+
+  const listId = root.dataset.listId;
+  if (!listId) {
+    return;
+  }
+
+  const history = ensureItemEditHistory(root, state);
+  const serialized = {};
+  history.forEach((snapshots, itemId) => {
+    if (snapshots.length > 0) {
+      serialized[itemId] = snapshots.slice(0, ITEM_EDIT_HISTORY_LIMIT);
+    }
+  });
+  window.localStorage?.setItem(itemEditHistoryStorageKey(listId), JSON.stringify(serialized));
+}
+
+function persistItemEditRedoHistory(root, state) {
+  if (typeof window === "undefined" || isDemoList(root)) {
+    return;
+  }
+
+  const listId = root.dataset.listId;
+  if (!listId) {
+    return;
+  }
+
+  const history = ensureItemEditRedoHistory(root, state);
+  const serialized = {};
+  history.forEach((snapshots, itemId) => {
+    if (snapshots.length > 0) {
+      serialized[itemId] = snapshots.slice(0, ITEM_EDIT_HISTORY_LIMIT);
+    }
+  });
+  window.localStorage?.setItem(itemEditRedoHistoryStorageKey(listId), JSON.stringify(serialized));
+}
+
+function pushItemEditHistory(root, state, itemId, item) {
+  const snapshot = cloneItemEditHistoryItem(item);
+  if (!itemId || !snapshot) {
+    return;
+  }
+
+  const history = ensureItemEditHistory(root, state);
+  const snapshots = history.get(itemId) || [];
+  if (snapshots[0] && itemEditPayloadsEqual(itemEditPayloadFromItem(snapshots[0]), itemEditPayloadFromItem(snapshot))) {
+    return;
+  }
+
+  history.set(itemId, [snapshot, ...snapshots].slice(0, ITEM_EDIT_HISTORY_LIMIT));
+  persistItemEditHistory(root, state);
+}
+
+function pushItemEditRedoHistory(root, state, itemId, item) {
+  const snapshot = cloneItemEditHistoryItem(item);
+  if (!itemId || !snapshot) {
+    return;
+  }
+
+  const history = ensureItemEditRedoHistory(root, state);
+  const snapshots = history.get(itemId) || [];
+  if (snapshots[0] && itemEditPayloadsEqual(itemEditPayloadFromItem(snapshots[0]), itemEditPayloadFromItem(snapshot))) {
+    return;
+  }
+
+  history.set(itemId, [snapshot, ...snapshots].slice(0, ITEM_EDIT_HISTORY_LIMIT));
+  persistItemEditRedoHistory(root, state);
+}
+
+function popItemEditHistory(root, state, itemId) {
+  const history = ensureItemEditHistory(root, state);
+  const snapshots = history.get(itemId) || [];
+  const snapshot = snapshots.shift() || null;
+  if (snapshots.length > 0) {
+    history.set(itemId, snapshots);
+  } else {
+    history.delete(itemId);
+  }
+  persistItemEditHistory(root, state);
+  return snapshot;
+}
+
+function popItemEditRedoHistory(root, state, itemId) {
+  const history = ensureItemEditRedoHistory(root, state);
+  const snapshots = history.get(itemId) || [];
+  const snapshot = snapshots.shift() || null;
+  if (snapshots.length > 0) {
+    history.set(itemId, snapshots);
+  } else {
+    history.delete(itemId);
+  }
+  persistItemEditRedoHistory(root, state);
+  return snapshot;
+}
+
+function clearItemEditRedoHistory(root, state, itemId) {
+  if (!itemId) {
+    return;
+  }
+  const history = ensureItemEditRedoHistory(root, state);
+  history.delete(itemId);
+  persistItemEditRedoHistory(root, state);
+}
+
+function readItemEditFormPayload(root) {
+  const form = root.querySelector("[data-item-edit-form]");
+  if (!(form instanceof HTMLFormElement)) {
+    return null;
+  }
+
+  const formData = new FormData(form);
+  return normalizeItemEditPayload({
+    name: formData.get("name"),
+    quantity_text: formData.get("quantity_text"),
+    note: formData.get("note"),
+    category_id: formData.get("edit_category_id"),
+  });
+}
+
+function setItemEditFormValues(root, state, item) {
+  const form = root.querySelector("[data-item-edit-form]");
+  if (!(form instanceof HTMLFormElement)) {
+    return;
+  }
+
+  const normalized = itemEditPayloadFromItem(item);
+  form.elements.namedItem("name").value = normalized.name;
+  form.elements.namedItem("quantity_text").value = normalized.quantity_text || "";
+  form.elements.namedItem("note").value = normalized.note || "";
+  setCategoryRadioValue(root, 'input[name="edit_category_id"]', normalized.category_id || "");
+  syncCategoryRadioGroups(root, state);
+}
+
+function setItemEditStatus(root, status, message) {
+  const statusNode = root.querySelector("[data-item-edit-status]");
+  const textNode = root.querySelector("[data-item-edit-status-text]");
+  const spinner = root.querySelector("[data-item-edit-spinner]");
+  if (!statusNode || !textNode) {
+    return;
+  }
+
+  statusNode.hidden = !message;
+  statusNode.dataset.status = status || "";
+  statusNode.classList.toggle("is-saving", status === "saving");
+  statusNode.classList.toggle("is-error", status === "error");
+  statusNode.classList.toggle("is-saved", status === "saved");
+  textNode.textContent = message || "";
+  if (spinner instanceof HTMLElement) {
+    spinner.hidden = status !== "saving";
+  }
+}
+
+function isItemEditDraftDirty(root, state) {
+  const payload = readItemEditFormPayload(root);
+  if (!payload || !state.itemEditLastSavedPayload) {
+    return false;
+  }
+  return !itemEditPayloadsEqual(payload, state.itemEditLastSavedPayload);
+}
+
+function updateItemEditUndoButton(root, state) {
+  const undoButton = root.querySelector("[data-item-edit-undo]");
+  const redoButton = root.querySelector("[data-item-edit-redo]");
+  if (!undoButton && !redoButton) {
+    return;
+  }
+
+  const itemId = state.editingItemId;
+  const history = itemId ? ensureItemEditHistory(root, state).get(itemId) || [] : [];
+  const redoHistory = itemId ? ensureItemEditRedoHistory(root, state).get(itemId) || [] : [];
+  if (undoButton) {
+    undoButton.disabled = Boolean(state.itemEditSaveInFlight) || (!isItemEditDraftDirty(root, state) && history.length === 0);
+  }
+  if (redoButton) {
+    redoButton.disabled = Boolean(state.itemEditSaveInFlight) || redoHistory.length === 0;
+  }
+}
+
+function cancelItemEditSaveTimer(state) {
+  if (state.itemEditSaveTimerId && typeof window !== "undefined") {
+    window.clearTimeout(state.itemEditSaveTimerId);
+  }
+  state.itemEditSaveTimerId = null;
+}
+
+async function applyItemEditPayload(root, state, itemId, payload, { recordHistory = true } = {}) {
+  const normalized = normalizeItemEditPayload(payload);
+  if (!normalized.name) {
+    setItemEditStatus(root, "error", translate("list_detail.item_name_required", {}, "Please enter an item name."));
+    setListMessage(root, "error", translate("list_detail.item_name_required", {}, "Please enter an item name."));
+    updateItemEditUndoButton(root, state);
+    return false;
+  }
+
+  const previousItem = state.items.get(itemId);
+  if (!previousItem) {
+    const message = translate("list_detail.item_not_found", {}, "Could not find that item.");
+    setItemEditStatus(root, "error", message);
+    setListMessage(root, "error", message);
+    updateItemEditUndoButton(root, state);
+    return false;
+  }
+
+  if (itemEditPayloadsEqual(itemEditPayloadFromItem(previousItem), normalized)) {
+    state.itemEditLastSavedPayload = itemEditPayloadFromItem(previousItem);
+    updateItemEditUndoButton(root, state);
+    return true;
+  }
+
+  setItemEditStatus(root, "saving", translate("list_detail.item_saving", {}, "Saving..."));
+  try {
+    const updatedItem = await updateItemWithOfflineFallback(root, state, itemId, normalized);
+    if (recordHistory) {
+      pushItemEditHistory(root, state, itemId, previousItem);
+      clearItemEditRedoHistory(root, state, itemId);
+    }
+    upsertItem(state, updatedItem);
+    state.itemEditLastSavedPayload = itemEditPayloadFromItem(updatedItem);
+    renderItems(root, state);
+    persistOfflineListState(root, state);
+    if (state.pendingMutations.length > 0) {
+      showOfflineSavedMessage(root);
+    }
+    setItemEditStatus(root, "saved", translate("list_detail.item_saved", {}, "Saved."));
+    updateItemEditUndoButton(root, state);
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : translate("list_detail.item_update_failed", {}, "Could not save item.");
+    setItemEditStatus(root, "error", message);
+    setListMessage(root, "error", message);
+    updateItemEditUndoButton(root, state);
+    return false;
+  }
+}
+
+async function saveItemEditDraft(root, state) {
+  cancelItemEditSaveTimer(state);
+  if (state.itemEditSaveInFlight) {
+    state.itemEditNeedsSave = true;
+    return state.itemEditSaveInFlight;
+  }
+
+  state.itemEditNeedsSave = false;
+  state.itemEditSaveInFlight = (async () => {
+    let saved = true;
+    do {
+      state.itemEditNeedsSave = false;
+      const itemId = state.editingItemId;
+      const payload = readItemEditFormPayload(root);
+      if (!itemId || !payload) {
+        return saved;
+      }
+      saved = (await applyItemEditPayload(root, state, itemId, payload)) && saved;
+    } while (state.itemEditNeedsSave);
+    return saved;
+  })();
+
+  try {
+    return await state.itemEditSaveInFlight;
+  } finally {
+    state.itemEditSaveInFlight = null;
+    updateItemEditUndoButton(root, state);
+  }
+}
+
+function scheduleItemEditSave(root, state, delayMs = ITEM_EDIT_LIVE_SAVE_DELAY_MS) {
+  if (!state.editingItemId) {
+    return;
+  }
+
+  cancelItemEditSaveTimer(state);
+  state.itemEditSaveTimerId = window.setTimeout(() => {
+    state.itemEditSaveTimerId = null;
+    void saveItemEditDraft(root, state);
+  }, delayMs);
+  updateItemEditUndoButton(root, state);
+}
+
+async function flushItemEditSave(root, state) {
+  cancelItemEditSaveTimer(state);
+  return saveItemEditDraft(root, state);
+}
+
+async function closeItemEditPanel(root, state) {
+  const saved = await flushItemEditSave(root, state);
+  if (!saved) {
+    return false;
+  }
+  setItemEditPanelOpen(root, state, null);
+  return true;
+}
+
+async function undoItemEdit(root, state) {
+  const itemId = state.editingItemId;
+  if (!itemId) {
+    return false;
+  }
+
+  cancelItemEditSaveTimer(state);
+  if (state.itemEditSaveInFlight) {
+    await state.itemEditSaveInFlight;
+  }
+
+  const currentItem = state.items.get(itemId);
+  const currentPayload = currentItem ? itemEditPayloadFromItem(currentItem) : null;
+  const draftPayload = readItemEditFormPayload(root);
+  if (currentPayload && draftPayload && !itemEditPayloadsEqual(currentPayload, draftPayload)) {
+    pushItemEditRedoHistory(root, state, itemId, { ...currentItem, ...draftPayload });
+    setItemEditFormValues(root, state, currentItem);
+    state.itemEditLastSavedPayload = currentPayload;
+    setItemEditStatus(root, "saved", translate("list_detail.item_saved", {}, "Saved."));
+    updateItemEditUndoButton(root, state);
+    return true;
+  }
+
+  const previousItem = popItemEditHistory(root, state, itemId);
+  if (!previousItem) {
+    setItemEditStatus(root, "error", translate("list_detail.item_edit_undo_empty", {}, "No edits to undo."));
+    updateItemEditUndoButton(root, state);
+    return false;
+  }
+
+  const restored = await applyItemEditPayload(
+    root,
+    state,
+    itemId,
+    itemEditPayloadFromItem(previousItem),
+    { recordHistory: false },
+  );
+  if (restored) {
+    const nextItem = state.items.get(itemId);
+    if (nextItem) {
+      setItemEditFormValues(root, state, nextItem);
+    }
+    if (currentItem) {
+      pushItemEditRedoHistory(root, state, itemId, currentItem);
+    }
+    setListMessage(root, "success", translate("list_detail.item_edit_undone", {}, "Edit undone."));
+  } else {
+    pushItemEditHistory(root, state, itemId, previousItem);
+  }
+  updateItemEditUndoButton(root, state);
+  return restored;
+}
+
+async function redoItemEdit(root, state) {
+  const itemId = state.editingItemId;
+  if (!itemId) {
+    return false;
+  }
+
+  cancelItemEditSaveTimer(state);
+  if (state.itemEditSaveInFlight) {
+    await state.itemEditSaveInFlight;
+  }
+
+  const nextItem = popItemEditRedoHistory(root, state, itemId);
+  if (!nextItem) {
+    setItemEditStatus(root, "error", translate("list_detail.item_edit_redo_empty", {}, "No edits to redo."));
+    updateItemEditUndoButton(root, state);
+    return false;
+  }
+
+  const currentItem = state.items.get(itemId);
+  const restored = await applyItemEditPayload(
+    root,
+    state,
+    itemId,
+    itemEditPayloadFromItem(nextItem),
+    { recordHistory: false },
+  );
+  if (restored) {
+    const updatedItem = state.items.get(itemId);
+    if (updatedItem) {
+      setItemEditFormValues(root, state, updatedItem);
+    }
+    if (currentItem) {
+      pushItemEditHistory(root, state, itemId, currentItem);
+    }
+    setListMessage(root, "success", translate("list_detail.item_edit_redone", {}, "Edit redone."));
+  } else {
+    pushItemEditRedoHistory(root, state, itemId, nextItem);
+  }
+  updateItemEditUndoButton(root, state);
+  return restored;
 }
 
 function offlineListStorageKey(listId) {
@@ -2672,8 +3176,12 @@ function setItemEditPanelOpen(root, state, itemId) {
     return;
   }
 
+  const previousEditingItemId = state.editingItemId;
   state.editingItemId = itemId;
   if (!itemId) {
+    cancelItemEditSaveTimer(state);
+    state.itemEditLastSavedPayload = null;
+    state.itemEditNeedsSave = false;
     overlay.hidden = true;
     panel.hidden = true;
     form.reset();
@@ -2681,6 +3189,8 @@ function setItemEditPanelOpen(root, state, itemId) {
     if (editSearch instanceof HTMLInputElement) {
       editSearch.value = "";
     }
+    setItemEditStatus(root, "", "");
+    updateItemEditUndoButton(root, state);
     syncModalState(root);
     return;
   }
@@ -2699,16 +3209,17 @@ function setItemEditPanelOpen(root, state, itemId) {
   syncModalState(root);
   title.textContent = item.name;
 
-  form.elements.namedItem("name").value = item.name;
-  form.elements.namedItem("quantity_text").value = item.quantity_text || "";
-  form.elements.namedItem("note").value = item.note || "";
   const editSearch = root.querySelector("[data-item-edit-category-search]");
   if (editSearch instanceof HTMLInputElement) {
     editSearch.value = "";
   }
+  setItemEditFormValues(root, state, item);
+  state.itemEditLastSavedPayload = itemEditPayloadFromItem(item);
+  if (previousEditingItemId !== itemId) {
+    setItemEditStatus(root, "", "");
+  }
 
-  setCategoryRadioValue(root, 'input[name="edit_category_id"]', item.category_id || "");
-  syncCategoryRadioGroups(root, state);
+  updateItemEditUndoButton(root, state);
 }
 
 function renderCategoryOrderSettings(root, state) {
@@ -3418,8 +3929,10 @@ function renderItems(root, state) {
 
   renderItemSuggestions(root, state);
   renderCategoryOrderSettings(root, state);
-  if (state.editingItemId) {
+  if (state.editingItemId && !isItemEditDraftDirty(root, state)) {
     setItemEditPanelOpen(root, state, state.editingItemId);
+  } else if (state.editingItemId) {
+    updateItemEditUndoButton(root, state);
   }
 }
 
@@ -3790,10 +4303,18 @@ async function initListDetail() {
     editingItemId: null,
     highlightedItemId: null,
     highlightTimers: new Map(),
+    itemEditHistory: loadItemEditHistory(listId),
+    itemEditLastSavedPayload: null,
+    itemEditNeedsSave: false,
+    itemEditRedoHistory: loadItemEditRedoHistory(listId),
+    itemEditSaveInFlight: null,
+    itemEditSaveTimerId: null,
     items: new Map(),
     listName: "",
     nextDemoId: 1,
+    offlineSyncInFlight: null,
     openItemMenuId: null,
+    pendingMutations: [],
     socket: null,
     suppressNextClick: false,
     swipeGesture: null,
@@ -3833,7 +4354,7 @@ async function initListDetail() {
 
   root.querySelectorAll("[data-item-edit-close]").forEach((node) => {
     node.addEventListener("click", () => {
-      setItemEditPanelOpen(root, state, null);
+      void closeItemEditPanel(root, state);
     });
   });
 
@@ -3897,7 +4418,7 @@ async function initListDetail() {
     }
 
     if (state.editingItemId) {
-      setItemEditPanelOpen(root, state, null);
+      void closeItemEditPanel(root, state);
       return;
     }
 
@@ -3943,6 +4464,53 @@ async function initListDetail() {
     hideUndoToast(root, state);
 
     await runUndoAction(root, state, undoAction);
+  });
+
+  itemEditForm?.addEventListener("input", (event) => {
+    const target = event.target;
+    if (
+      target instanceof HTMLInputElement &&
+      ["name", "quantity_text", "note"].includes(target.name)
+    ) {
+      scheduleItemEditSave(root, state);
+    }
+  });
+
+  itemEditForm?.addEventListener("focusout", (event) => {
+    const target = event.target;
+    const relatedTarget = event.relatedTarget;
+    if (
+      relatedTarget instanceof HTMLElement &&
+      relatedTarget.closest("[data-item-edit-close], [data-item-edit-delete], [data-item-edit-redo], [data-item-edit-undo]")
+    ) {
+      return;
+    }
+    if (
+      target instanceof HTMLInputElement &&
+      ["name", "quantity_text", "note"].includes(target.name)
+    ) {
+      void flushItemEditSave(root, state);
+    }
+  });
+
+  itemEditForm?.addEventListener("change", (event) => {
+    const target = event.target;
+    if (target instanceof HTMLInputElement && target.name === "edit_category_id") {
+      void flushItemEditSave(root, state);
+    }
+  });
+
+  itemEditForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void flushItemEditSave(root, state);
+  });
+
+  root.querySelector("[data-item-edit-undo]")?.addEventListener("click", () => {
+    void undoItemEdit(root, state);
+  });
+
+  root.querySelector("[data-item-edit-redo]")?.addEventListener("click", () => {
+    void redoItemEdit(root, state);
   });
 
   if (typeof window !== "undefined") {
@@ -4095,41 +4663,6 @@ async function initListDetail() {
       }
     } catch (error) {
       setListMessage(root, "error", error instanceof Error ? error.message : translate("list_detail.item_add_failed", {}, "Could not add item."));
-    }
-  });
-
-  itemEditForm?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    if (!state.editingItemId) {
-      return;
-    }
-
-    const formData = new FormData(itemEditForm);
-    const payload = {
-      name: String(formData.get("name") || "").trim(),
-      quantity_text: String(formData.get("quantity_text") || "").trim() || null,
-      note: String(formData.get("note") || "").trim() || null,
-      category_id: String(formData.get("edit_category_id") || "").trim() || null,
-    };
-
-    if (!payload.name) {
-      setListMessage(root, "error", translate("list_detail.item_name_required", {}, "Please enter an item name."));
-      return;
-    }
-
-    try {
-      const updatedItem = await updateItemWithOfflineFallback(root, state, state.editingItemId, payload);
-      upsertItem(state, updatedItem);
-      renderItems(root, state);
-      persistOfflineListState(root, state);
-      setItemEditPanelOpen(root, state, updatedItem.id);
-      if (state.pendingMutations.length > 0) {
-        showOfflineSavedMessage(root);
-      } else {
-        setListMessage(root, "success", translate("list_detail.item_updated", {}, "Item updated."));
-      }
-    } catch (error) {
-      setListMessage(root, "error", error instanceof Error ? error.message : translate("list_detail.item_update_failed", {}, "Could not save item."));
     }
   });
 
@@ -4459,6 +4992,7 @@ async function initListDetail() {
     }
 
     try {
+      cancelItemEditSaveTimer(state);
       await deleteItem(root, state, listId, state.editingItemId);
     } catch (error) {
       setListMessage(root, "error", error instanceof Error ? error.message : translate("list_detail.item_delete_failed", {}, "Could not delete item."));
@@ -4850,6 +5384,30 @@ export {
   initDashboard,
   setListMessage,
   setListSyncStatus,
+  itemEditHistoryStorageKey,
+  itemEditRedoHistoryStorageKey,
+  normalizeItemEditPayload,
+  itemEditPayloadFromItem,
+  itemEditPayloadsEqual,
+  loadItemEditHistory,
+  loadItemEditRedoHistory,
+  pushItemEditHistory,
+  pushItemEditRedoHistory,
+  popItemEditHistory,
+  popItemEditRedoHistory,
+  readItemEditFormPayload,
+  setItemEditFormValues,
+  setItemEditStatus,
+  isItemEditDraftDirty,
+  updateItemEditUndoButton,
+  cancelItemEditSaveTimer,
+  applyItemEditPayload,
+  saveItemEditDraft,
+  scheduleItemEditSave,
+  flushItemEditSave,
+  closeItemEditPanel,
+  undoItemEdit,
+  redoItemEdit,
   offlineListStorageKey,
   loadOfflineListState,
   setListName,
