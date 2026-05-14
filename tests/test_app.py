@@ -471,6 +471,9 @@ def test_capabilities_live_demo_page_uses_real_list_ui(client) -> None:
     assert "Saturday Groceries" in page.text
     assert "Interactive demo running locally." in page.text
     assert "real list UI with local demo data" in page.text
+    assert "#6bbf59" in page.text
+    assert "#1db8d9" in page.text
+    assert "#f59e0b" in page.text
     assert 'href="/capabilities"' in page.text
 
 

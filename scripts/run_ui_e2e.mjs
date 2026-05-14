@@ -17,6 +17,16 @@ const staleBlueAccentTokens = [
   "223, 248, 253",
   "245, 251, 253",
 ];
+const seedMainCategoryColors = new Map([
+  ["Milch & Eier", "rgb(216, 180, 226)"],
+  ["Tiefkuehlkost", "rgb(77, 208, 225)"],
+  ["Gemuese", "rgb(126, 217, 87)"],
+]);
+const seedSettingsCategoryColors = new Map([
+  ["Backwaren", "rgb(251, 146, 60)"],
+  ["Backzutaten", "rgb(236, 72, 153)"],
+  ["Fleisch", "rgb(239, 68, 68)"],
+]);
 
 function logStep(message) {
   console.log(`[ui-e2e] ${message}`);
@@ -189,6 +199,47 @@ async function assertBrownWhiteAccentChrome(page) {
   }, staleBlueAccentTokens);
 
   assert.deepEqual(matches, [], "Expected list chrome to avoid stale blue accent colors");
+}
+
+async function assertCategorySwatchColors(page, rowSelector, labelSelector, expectedColors) {
+  const colors = await page.evaluate(
+    ({ rowSelector, labelSelector }) => {
+      const values = {};
+      for (const row of [...document.querySelectorAll(rowSelector)]) {
+        const label = row.querySelector(labelSelector)?.textContent?.trim();
+        const swatch = row.querySelector(".item-category-swatch");
+        if (label && swatch instanceof HTMLElement) {
+          values[label] = getComputedStyle(swatch).backgroundColor;
+        }
+      }
+      return values;
+    },
+    { rowSelector, labelSelector },
+  );
+
+  for (const [name, expectedColor] of expectedColors.entries()) {
+    assert.equal(colors[name], expectedColor, `Expected ${name} swatch to keep its category color`);
+  }
+}
+
+async function assertSeedMainCategoryColors(page) {
+  logStep("Checking seeded category colors in main list");
+  await assertCategorySwatchColors(
+    page,
+    ".item-category-group",
+    ".item-category-header h3",
+    seedMainCategoryColors,
+  );
+}
+
+async function assertSeedSettingsCategoryColors(page) {
+  logStep("Checking seeded category colors in list settings");
+  await assertCategorySwatchColors(
+    page,
+    ".settings-category-row",
+    ".settings-category-copy strong",
+    seedSettingsCategoryColors,
+  );
 }
 
 async function assertHeaderActionsFitTranslatedLabels(page) {
@@ -1025,6 +1076,7 @@ async function main() {
     logStep("Running main list interaction flow");
     await expectVisible(page.getByRole("button", { name: "Add item" }), "Expected floating add button");
     await expectVisible(page.locator(".item-card", { hasText: "Spaghetti" }), "Expected seeded items to load");
+    await assertSeedMainCategoryColors(page);
     await assertBrownWhiteAccentChrome(page);
 
     if (deviceName === "desktop") {
@@ -1163,6 +1215,7 @@ async function main() {
 
     await page.getByRole("button", { name: "Open list settings" }).click();
     await expectVisible(page.getByRole("heading", { name: "Category order" }), "Expected settings modal");
+    await assertSeedSettingsCategoryColors(page);
     const topCategoryBefore = (
       await textList(page.locator(".item-category-group > .item-category-header h3"))
     ).slice(0, 3);
