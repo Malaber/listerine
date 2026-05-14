@@ -545,6 +545,12 @@ async function scenarioFromSeed(seed, requestContext) {
   };
 }
 
+async function openItemCountLabel(requestContext, listId) {
+  const items = await apiJson(requestContext, `/api/v1/lists/${listId}/items`);
+  const openItemCount = items.filter((item) => !item.checked).length;
+  return openItemCount === 1 ? "1 open item" : `${openItemCount} open items`;
+}
+
 async function resetFixtureItems(requestContext, listId, expectedChecked) {
   const items = await apiJson(requestContext, `/api/v1/lists/${listId}/items`);
   for (const item of items) {
@@ -641,6 +647,10 @@ function extractInviteToken(inviteUrl) {
 
 async function runInviteFlow(ownerPage, browser, scenario, seed, rpId) {
   logStep("Creating and accepting a household invite");
+  const expectedOpenItemLabel = await openItemCountLabel(
+    ownerPage.context().request,
+    scenario.listId,
+  );
   await ownerPage.goto(new URL("/?dashboard=1", baseUrl).toString(), { waitUntil: "networkidle" });
   await expectVisible(
     ownerPage.getByRole("heading", { name: "Households and Lists" }),
@@ -651,6 +661,11 @@ async function runInviteFlow(ownerPage, browser, scenario, seed, rpId) {
     .locator(".household-card", { hasText: scenario.householdName })
     .first();
   await expectVisible(ownerHouseholdCard, "Expected seeded household card on dashboard");
+  const ownerListLink = ownerHouseholdCard.locator(`a[href="/lists/${scenario.listId}"]`);
+  await expectVisible(
+    ownerListLink.filter({ hasText: expectedOpenItemLabel }),
+    "Expected dashboard list link to show open item count",
+  );
 
   await ownerHouseholdCard.getByRole("button", { name: "Create invite link" }).click();
   const inviteInput = ownerHouseholdCard.locator(
@@ -707,8 +722,10 @@ async function runInviteFlow(ownerPage, browser, scenario, seed, rpId) {
       "Invitee should see the seeded list after accepting the invite",
     );
     await expectVisible(
-      acceptedHouseholdCard.getByRole("link", { name: "Open list" }).first(),
-      "Invitee should be able to reach the seeded list after accepting the invite",
+      acceptedHouseholdCard
+        .locator(`a[href="/lists/${scenario.listId}"]`)
+        .filter({ hasText: expectedOpenItemLabel }),
+      "Invitee should see the seeded list open item count after accepting the invite",
     );
     await screenshot(inviteePage, "invite-accepted");
   } finally {

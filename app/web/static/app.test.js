@@ -17,6 +17,7 @@ import {
   loadMoreCheckedItems,
   normalizeLanguagePreference,
   registerServiceWorker,
+  renderHouseholds,
   renderItems,
   renderItemSuggestions,
   restoreCheckedSuggestion,
@@ -128,6 +129,19 @@ function createListRoot() {
   return {
     document: dom.window.document,
     root: dom.window.document.querySelector("[data-list-detail]"),
+  };
+}
+
+function createDashboardRoot() {
+  const dom = new JSDOM(`
+    <section data-dashboard>
+      <div data-dashboard-empty></div>
+      <div data-household-list></div>
+    </section>
+  `);
+  return {
+    document: dom.window.document,
+    root: dom.window.document.querySelector("[data-dashboard]"),
   };
 }
 
@@ -257,6 +271,28 @@ test("renderItems only shows loaded checked items before loading more", () => {
   assert.equal(document.querySelector(".item-category-header .item-category-meta").textContent, "120 items");
   assert.equal(document.querySelector(".checked-items-load-more button").textContent, "Load 100 more");
   assert.equal(document.querySelector(".checked-items-load-more .item-category-meta").textContent, "110 older items not loaded");
+});
+
+test("renderHouseholds shows open item counts on list links", () => {
+  const { document, root } = createDashboardRoot();
+
+  renderHouseholds(
+    root,
+    [{ id: "household-1", name: "Home" }],
+    new Map([
+      [
+        "household-1",
+        [
+          { id: "list-1", name: "Weekly", open_item_count: 1 },
+          { id: "list-2", name: "Hardware", open_item_count: 3 },
+        ],
+      ],
+    ]),
+  );
+
+  assert.equal(document.querySelector('[href="/lists/list-1"] small').textContent, "1 open item");
+  assert.equal(document.querySelector('[href="/lists/list-2"] small').textContent, "3 open items");
+  assert.equal(document.body.textContent.includes("Open list"), false);
 });
 
 test("loadMoreCheckedItems fetches one hundred older checked items per page", async () => {

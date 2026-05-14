@@ -113,7 +113,10 @@
     "create_invite_link": "Einladungslink erstellen",
     "share_invite_hint": "Diesen Link innerhalb von 24 Stunden teilen:",
     "no_lists_yet": "Noch keine Listen. Füge die erste Liste für diesen Haushalt hinzu.",
-    "open_list": "Liste öffnen",
+    "open_item_count": {
+      "one": "{count} offener Artikel",
+      "other": "{count} offene Artikel"
+    },
     "invite_link_created": "Einladungslink erstellt. Er bleibt 24 Stunden gültig.",
     "invite_link_create_failed": "Der Einladungslink konnte nicht erstellt werden.",
     "invite_link_copied": "Einladungslink kopiert.",

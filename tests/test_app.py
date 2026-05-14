@@ -691,6 +691,55 @@ def test_item_window_limits_checked_items_and_pages_older_checked_items(client) 
     assert active_item["id"] in {item["id"] for item in item_window["items"]}
 
 
+def test_lists_include_open_item_count(client) -> None:
+    headers = _auth_headers(client, f"{uuid4()}@example.com")
+    household = client.post("/api/v1/households", json={"name": "Home"}, headers=headers).json()
+    assert client.get(f"/api/v1/households/{household['id']}/lists", headers=headers).json() == []
+    weekly = client.post(
+        f"/api/v1/households/{household['id']}/lists",
+        json={"name": "Weekly"},
+        headers=headers,
+    ).json()
+    empty = client.post(
+        f"/api/v1/households/{household['id']}/lists",
+        json={"name": "Empty"},
+        headers=headers,
+    ).json()
+    assert weekly["open_item_count"] == 0
+    assert empty["open_item_count"] == 0
+
+    client.post(
+        f"/api/v1/lists/{weekly['id']}/items",
+        json={"name": "Milk"},
+        headers=headers,
+    )
+    checked_item = client.post(
+        f"/api/v1/lists/{weekly['id']}/items",
+        json={"name": "Bread"},
+        headers=headers,
+    ).json()
+    client.post(f"/api/v1/items/{checked_item['id']}/check", headers=headers)
+
+    lists = {
+        grocery_list["name"]: grocery_list
+        for grocery_list in client.get(
+            f"/api/v1/households/{household['id']}/lists", headers=headers
+        ).json()
+    }
+    assert lists["Weekly"]["open_item_count"] == 1
+    assert lists["Empty"]["open_item_count"] == 0
+
+    detail = client.get(f"/api/v1/lists/{weekly['id']}", headers=headers).json()
+    assert detail["open_item_count"] == 1
+
+    renamed = client.patch(
+        f"/api/v1/lists/{weekly['id']}",
+        json={"name": "Renamed"},
+        headers=headers,
+    ).json()
+    assert renamed["open_item_count"] == 1
+
+
 def test_cross_household_forbidden(client) -> None:
     h1 = _auth_headers(client, f"{uuid4()}@example.com")
     h2 = _auth_headers(client, f"{uuid4()}@example.com")

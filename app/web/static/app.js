@@ -580,11 +580,12 @@ function renderHouseholds(root, households, listsByHousehold) {
       card.appendChild(listGrid);
     } else {
       lists.forEach((list) => {
+        const openItemCount = Number.isInteger(list.open_item_count) ? list.open_item_count : 0;
         const item = document.createElement("li");
         item.innerHTML = `
           <a href="/lists/${list.id}">
             <strong>${list.name}</strong>
-            <small>${translate("dashboard.open_list", {}, "Open list")}</small>
+            <small>${translatePlural("dashboard.open_item_count", openItemCount, {}, { one: "{count} open item", other: "{count} open items" })}</small>
           </a>
         `;
         listGrid.appendChild(item);
