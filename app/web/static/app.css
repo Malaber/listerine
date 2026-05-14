@@ -1094,11 +1094,11 @@ main {
   position: sticky;
   top: 0;
   z-index: 2;
-  margin: -0.1rem -0.1rem 0.85rem;
-  padding: 0.1rem 0.1rem 0.65rem;
-  background: linear-gradient(180deg, rgba(255, 250, 242, 0.98), rgba(255, 250, 242, 0.92));
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  margin: 0 0 0.95rem;
+  padding: 0.55rem 0 0.85rem;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .item-edit-header-actions,
@@ -1114,21 +1114,21 @@ main {
 
 .item-edit-history-actions {
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 2px solid var(--border);
   border-radius: 999px;
   background: var(--surface-strong);
 }
 
 .item-edit-history-button {
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 3.2rem;
+  height: 2.85rem;
   border: 0;
-  border-right: 1px solid var(--border);
+  border-right: 2px solid var(--border);
   background: transparent;
   color: var(--text);
   cursor: pointer;
   font: inherit;
-  font-size: 1.25rem;
+  font-size: 1.9rem;
   font-weight: 900;
   line-height: 1;
 }
@@ -1873,6 +1873,14 @@ main {
     background: linear-gradient(180deg, rgba(255, 250, 242, 0.98), rgba(255, 250, 242, 0.92));
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
+  }
+
+  .item-edit-panel .add-item-panel-header {
+    margin: 0 0 1.05rem;
+    padding: 1.1rem 0 0.85rem;
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   .add-item-panel .add-item-panel-header > div:first-child {
