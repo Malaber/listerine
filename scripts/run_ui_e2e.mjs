@@ -9,6 +9,14 @@ const videoDir = path.join(artifactDir, "videos");
 const seedPath = process.env.E2E_SEED_PATH ?? "app/fixtures/review_seed_e2e.json";
 const deviceName = process.env.E2E_DEVICE ?? "desktop";
 const knownDevices = new Map([["iphone", "iPhone 13"]]);
+const staleBlueAccentTokens = [
+  "20, 42, 87",
+  "29, 184, 217",
+  "79, 105, 129",
+  "167, 203, 223",
+  "223, 248, 253",
+  "245, 251, 253",
+];
 
 function logStep(message) {
   console.log(`[ui-e2e] ${message}`);
@@ -121,6 +129,66 @@ async function expectInViewport(locator, message) {
     return isFullyVisible();
   });
   assert(isInViewport, message);
+}
+
+async function assertBrownWhiteAccentChrome(page) {
+  logStep("Checking brown-white accent chrome");
+  const matches = await page.evaluate((tokens) => {
+    const staleMatches = [];
+    for (const sheet of [...document.styleSheets]) {
+      let rules = [];
+      try {
+        rules = [...sheet.cssRules];
+      } catch {
+        continue;
+      }
+
+      for (const rule of rules) {
+        const cssText = rule.cssText || "";
+        const token = tokens.find((entry) => cssText.includes(entry));
+        if (token) {
+          staleMatches.push(`stylesheet:${token}:${cssText.slice(0, 160)}`);
+        }
+      }
+    }
+
+    const selectors = [
+      ".item-category-header",
+      ".item-card",
+      ".checked-items-load-more",
+      ".item-suggestion",
+      ".item-more-fields",
+      ".floating-add-button",
+      ".list-toast",
+      ".category-radio-card",
+    ];
+    const properties = [
+      "backgroundColor",
+      "backgroundImage",
+      "borderTopColor",
+      "borderRightColor",
+      "borderBottomColor",
+      "borderLeftColor",
+      "boxShadow",
+    ];
+
+    for (const selector of selectors) {
+      for (const node of [...document.querySelectorAll(selector)]) {
+        const styles = getComputedStyle(node);
+        for (const property of properties) {
+          const value = styles[property];
+          const token = tokens.find((entry) => value.includes(entry));
+          if (token) {
+            staleMatches.push(`${selector}:${property}:${value}`);
+          }
+        }
+      }
+    }
+
+    return staleMatches;
+  }, staleBlueAccentTokens);
+
+  assert.deepEqual(matches, [], "Expected list chrome to avoid stale blue accent colors");
 }
 
 async function assertHeaderActionsFitTranslatedLabels(page) {
@@ -277,6 +345,14 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
 
   const originalPasskeys = await passkeysFromSession(context.request);
   assert.equal(originalPasskeys.length, 1, "Expected one seeded passkey before adding another");
+  await expectHidden(
+    page.locator("[data-passkey-empty]"),
+    "Expected passkey empty state to stay hidden when passkeys are rendered",
+  );
+  await expectVisible(
+    page.locator(".passkey-row").first(),
+    "Expected seeded passkey row in settings",
+  );
 
   const seededCredential = (await authenticatorCredentials(authenticator))[0];
   assert(seededCredential, "Expected seeded credential in the virtual authenticator");
@@ -439,6 +515,30 @@ async function loginAsAdmin(page, user) {
   await expectVisible(page.getByText("Admin tools"), "Expected admin tools card after admin login");
 }
 
+async function runAdminTableControlsFlow(page) {
+  logStep("Checking admin table sorting, page size persistence, and reset controls");
+  await page.goto(new URL("/admin/user/list", baseUrl).toString(), { waitUntil: "networkidle" });
+  await expectVisible(page.getByRole("link", { name: "50 / Page" }), "Expected 50 row default");
+
+  await page.getByRole("link", { name: "50 / Page" }).click();
+  await page.locator(".dropdown-menu .dropdown-item", { hasText: "100 / Page" }).click();
+  await page.waitForURL(/\/admin\/user\/list\?pageSize=100/);
+
+  await page.getByRole("link", { name: "Email" }).click();
+  await page.waitForURL(/\/admin\/user\/list\?.*pageSize=100.*sortBy=email.*sort=asc/);
+
+  await page.getByRole("link", { name: "Categories" }).click();
+  await page.waitForURL(/\/admin\/category\/list\?pageSize=100/);
+  await expectVisible(page.getByRole("link", { name: "100 / Page" }), "Expected page size to persist");
+
+  await page.getByRole("link", { name: "Name" }).click();
+  await page.waitForURL(/\/admin\/category\/list\?.*pageSize=100.*sortBy=name.*sort=asc/);
+
+  await page.getByRole("link", { name: "Reset view" }).click();
+  await page.waitForURL(new URL("/admin/category/list", baseUrl).toString());
+  assert(!page.url().includes("?"), `Expected reset to clear admin table params, got ${page.url()}`);
+}
+
 async function runAdminPasskeyAddLinkFlow(page, seed, rpId) {
   const adminUser = fixtureUser(seed, "planini_admin@schaedler.rocks");
   const targetUser = fixtureAccount(seed, "review-neighbor@example.com");
@@ -468,6 +568,7 @@ async function runAdminPasskeyAddLinkFlow(page, seed, rpId) {
 
     logStep("Signing in as admin and generating an add-passkey link from the user edit page");
     await loginAsAdmin(adminPage, adminUser);
+    await runAdminTableControlsFlow(adminPage);
     await adminPage.goto(new URL("/admin/user/list", baseUrl).toString(), { waitUntil: "networkidle" });
     const targetUserRow = adminPage.locator("tr", { hasText: targetUser.email }).first();
     await expectVisible(
@@ -621,6 +722,7 @@ async function runCheckedStressListFlow(page, stressListUrl) {
   assert.equal(await headingMeta.textContent(), "258 items");
   assert.equal(await loadMoreButton.textContent(), "Load 100 more");
   assert.equal(await loadMoreMeta.textContent(), "248 older items not loaded");
+  await assertBrownWhiteAccentChrome(page);
 
   await loadMoreButton.click();
   await expectCheckedCardCount(checkedGroup, 110);
@@ -638,6 +740,42 @@ async function runCheckedStressListFlow(page, stressListUrl) {
   await expectCheckedCardCount(checkedGroup, 258);
   assert.equal(await headingMeta.textContent(), "258 items");
   assert.equal(await checkedGroup.locator(".checked-items-load-more").count(), 0);
+}
+
+async function runOfflineSyncFlow(page, requestContext, listId) {
+  logStep("Checking offline list item save and resync");
+  const offlineName = `Fresh thing offline ${Date.now()}`;
+  const addForm = page.locator("[data-item-form]");
+
+  await page.context().setOffline(true);
+  try {
+    await page.getByRole("button", { name: "Add item" }).click();
+    await addForm.getByLabel("Item name").fill(offlineName);
+    await page.locator(".add-item-save-button").click();
+    await expectVisible(
+      page.locator("[data-list-error]", { hasText: "Offline. Changes saved locally" }),
+      "Offline add should show local-only error",
+    );
+    const offlineCard = itemCard(page, offlineName);
+    await expectVisible(offlineCard, "Offline-created item should render immediately");
+    await offlineCard.getByRole("button").first().click();
+    await expectVisible(
+      page.locator("[data-list-error]", { hasText: "Offline. Changes saved locally" }),
+      "Offline check should keep local-only error",
+    );
+  } finally {
+    await page.context().setOffline(false);
+  }
+
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expectVisible(
+    page.locator("[data-list-success]", { hasText: "Saved offline changes synced." }),
+    "Offline changes should sync after reconnect",
+  );
+  const items = await apiJson(requestContext, `/api/v1/lists/${listId}/items`);
+  const syncedItem = items.find((item) => item.name === offlineName);
+  assert(syncedItem, "Expected offline-created item to exist after sync");
+  assert.equal(syncedItem.checked, true, "Expected offline checked state to sync");
 }
 
 function extractInviteToken(inviteUrl) {
@@ -864,6 +1002,7 @@ async function main() {
     logStep("Running main list interaction flow");
     await expectVisible(page.getByRole("button", { name: "Add item" }), "Expected floating add button");
     await expectVisible(page.locator(".item-card", { hasText: "Spaghetti" }), "Expected seeded items to load");
+    await assertBrownWhiteAccentChrome(page);
 
     if (deviceName === "desktop") {
       await page.keyboard.press("Enter");
@@ -987,6 +1126,10 @@ async function main() {
     await editForm.locator('input[name="quantity_text"]').fill("4 loaves");
     await editForm.locator('input[name="note"]').fill("for the weekend");
     await editForm.getByRole("button", { name: "Save changes" }).click();
+    await expectVisible(
+      page.locator("[data-list-success]", { hasText: "Item updated." }),
+      "Expected item update success before closing the edit modal",
+    );
     await page.locator("[data-item-edit-panel] .add-item-close[data-item-edit-close]").click();
     await expectHidden(page.locator("[data-item-edit-overlay]"), "Edit modal should close before opening settings");
     await expectVisible(itemCard(page, "Tomaten"), "Updated item should remain visible");
@@ -1055,6 +1198,8 @@ async function main() {
     await expectVisible(toast, "Expected temporary undo toast");
     await page.waitForTimeout(10500);
     await expectHidden(toast, "Undo toast should disappear after timeout");
+
+    await runOfflineSyncFlow(page, context.request, scenario.listId);
 
     await runCheckedStressListFlow(page, checkedStressListUrl);
 

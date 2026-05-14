@@ -1,9 +1,14 @@
 const LANGUAGE_COOKIE_NAME = "planini_locale";
+const OFFLINE_LIST_STORAGE_PREFIX = "planini:list-offline:";
+const OFFLINE_ITEM_ID_PREFIX = "local-item-";
+const OFFLINE_MUTATION_ID_PREFIX = "local-mutation-";
 const SUPPORTED_LANGUAGE_OPTIONS = [
   { value: "", label: "Browser default" },
   { value: "en", label: "English" },
   { value: "de", label: "Deutsch" },
 ];
+const CATEGORY_SWATCH_FALLBACK_COLOR = "#d9c5b3";
+const CHECKED_CATEGORY_SWATCH_COLOR = "#b59676";
 
 function base64UrlToBytes(value) {
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
@@ -616,7 +621,9 @@ function renderPasskeys(root, passkeys) {
   }
 
   container.innerHTML = "";
-  emptyState.hidden = passkeys.length > 0;
+  const hasPasskeys = passkeys.length > 0;
+  emptyState.hidden = hasPasskeys;
+  emptyState.style.display = hasPasskeys ? "none" : "";
 
   passkeys.forEach((passkey, index) => {
     const row = document.createElement("article");
@@ -1231,6 +1238,185 @@ function setListSyncStatus(root, message) {
   }
 }
 
+function offlineListStorageKey(listId) {
+  return `${OFFLINE_LIST_STORAGE_PREFIX}${listId}`;
+}
+
+function loadOfflineListState(listId) {
+  if (typeof window === "undefined" || !listId) {
+    return null;
+  }
+
+  const raw = window.localStorage?.getItem(offlineListStorageKey(listId));
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function createOfflineId(prefix) {
+  return `${prefix}${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function isBrowserOffline() {
+  return typeof navigator !== "undefined" && navigator.onLine === false;
+}
+
+function isOfflineRequestError(error) {
+  return isBrowserOffline() || error instanceof TypeError;
+}
+
+function listTitleText(root) {
+  return root.querySelector("[data-list-title]")?.textContent?.trim() || "";
+}
+
+function persistOfflineListState(root, state) {
+  if (typeof window === "undefined" || isDemoList(root)) {
+    return;
+  }
+
+  const listId = root.dataset.listId;
+  if (!listId) {
+    return;
+  }
+
+  window.localStorage?.setItem(
+    offlineListStorageKey(listId),
+    JSON.stringify({
+      title: listTitleText(root),
+      items: [...state.items.values()],
+      checkedRemainingCount: state.checkedRemainingCount || 0,
+      categories: [...state.categories.values()],
+      categoryOrder: [...state.categoryOrder.entries()].map(([category_id, sort_order]) => ({
+        category_id,
+        sort_order,
+      })),
+      pendingMutations: state.pendingMutations || [],
+    }),
+  );
+}
+
+function applyOfflineListState(root, state, cachedState) {
+  const title = root.querySelector("[data-list-title]");
+  if (title && cachedState.title) {
+    title.textContent = cachedState.title;
+  }
+
+  state.categories = new Map((cachedState.categories || []).map((category) => [category.id, category]));
+  state.categoryOrder = new Map(
+    (cachedState.categoryOrder || []).map((entry) => [entry.category_id, entry.sort_order]),
+  );
+  replaceItems(state, cachedState.items || []);
+  state.checkedRemainingCount = cachedState.checkedRemainingCount || 0;
+  state.pendingMutations = cachedState.pendingMutations || [];
+  syncCategoryRadioGroups(root, state);
+  renderItems(root, state);
+}
+
+function showOfflineSavedMessage(root) {
+  setListMessage(
+    root,
+    "error",
+    translate(
+      "list_detail.offline_saved_local",
+      {},
+      "Offline. Changes saved locally and will sync when connection returns.",
+    ),
+  );
+  setListSyncStatus(
+    root,
+    translate("list_detail.offline_sync_pending", {}, "Changes saved locally."),
+  );
+}
+
+function queueOfflineMutation(root, state, mutation, applyLocalChange) {
+  const result = applyLocalChange();
+  state.pendingMutations.push(mutation);
+  persistOfflineListState(root, state);
+  showOfflineSavedMessage(root);
+  return result;
+}
+
+function shouldQueueItemMutation(state, itemId = "") {
+  return Boolean(
+    state.pendingMutations.length > 0 ||
+      isBrowserOffline() ||
+      String(itemId).startsWith(OFFLINE_ITEM_ID_PREFIX),
+  );
+}
+
+function applyOfflineSyncResult(state, result) {
+  Object.entries(result.client_item_ids || {}).forEach(([localId, serverId]) => {
+    const localItem = state.items.get(localId);
+    if (localItem) {
+      state.items.delete(localId);
+      state.items.set(serverId, { ...localItem, id: serverId });
+    }
+  });
+
+  (result.deleted_item_ids || []).forEach((itemId) => {
+    removeItem(state, itemId);
+  });
+
+  (result.items || []).forEach((item) => {
+    upsertItem(state, item);
+  });
+
+  const appliedMutationIds = new Set(result.applied_mutation_ids || []);
+  state.pendingMutations = state.pendingMutations.filter(
+    (mutation) => !appliedMutationIds.has(mutation.mutation_id),
+  );
+}
+
+async function flushOfflineMutations(root, state) {
+  if (isDemoList(root) || state.pendingMutations.length === 0) {
+    return null;
+  }
+
+  if (state.offlineSyncInFlight) {
+    return state.offlineSyncInFlight;
+  }
+
+  const listId = root.dataset.listId;
+  const mutations = [...state.pendingMutations];
+  setListSyncStatus(root, translate("list_detail.offline_syncing", {}, "Syncing saved changes..."));
+  state.offlineSyncInFlight = postJson(`/api/v1/lists/${listId}/items/sync`, { mutations })
+    .then((result) => {
+      applyOfflineSyncResult(state, result);
+      persistOfflineListState(root, state);
+      renderItems(root, state);
+      if (state.pendingMutations.length === 0) {
+        setListMessage(
+          root,
+          "success",
+          translate("list_detail.offline_synced", {}, "Saved offline changes synced."),
+        );
+        setListSyncStatus(root, translate("list_detail.sync_on", {}, "Live updates on."));
+      } else {
+        showOfflineSavedMessage(root);
+      }
+      return result;
+    })
+    .catch((error) => {
+      if (isOfflineRequestError(error)) {
+        showOfflineSavedMessage(root);
+        return null;
+      }
+      setListMessage(root, "error", error instanceof Error ? error.message : translate("list_detail.list_action_failed", {}, "List action failed."));
+      return null;
+    })
+    .finally(() => {
+      state.offlineSyncInFlight = null;
+    });
+  return state.offlineSyncInFlight;
+}
+
 function hideUndoToast(root, state) {
   const toast = root.querySelector("[data-list-toast]");
   const message = root.querySelector("[data-list-toast-message]");
@@ -1468,7 +1654,7 @@ function syncCategoryRadioGroup(container, groupName, currentValue, state, searc
 
     const swatch = document.createElement("span");
     swatch.className = "category-radio-swatch";
-    swatch.style.background = category.color || "#cbd5e1";
+    swatch.style.background = category.color || CATEGORY_SWATCH_FALLBACK_COLOR;
     card.appendChild(swatch);
 
     const copy = document.createElement("span");
@@ -1599,6 +1785,7 @@ function cloneDemoItem(item) {
     note: item.note || null,
     checked: Boolean(item.checked),
     checked_at: item.checked_at || null,
+    checked_state_recorded_at: item.checked_state_recorded_at || item.checked_at || null,
     sort_order: Number(item.sort_order || 0),
   };
 }
@@ -1645,6 +1832,136 @@ function setDemoItemChecked(state, itemId, checked) {
     checked,
     checked_at: checked ? new Date().toISOString() : null,
   });
+}
+
+function createOfflineItem(state, listId, clientItemId, payload, recordedAt) {
+  return {
+    id: clientItemId,
+    list_id: listId,
+    name: payload.name,
+    category_id: payload.category_id || null,
+    quantity_text: payload.quantity_text || null,
+    note: payload.note || null,
+    checked: false,
+    checked_at: null,
+    checked_state_recorded_at: recordedAt,
+    sort_order: payload.sort_order ?? getNextDemoSortOrder(state),
+  };
+}
+
+function applyLocalCheckedState(item, checked, recordedAt) {
+  return {
+    ...item,
+    checked,
+    checked_at: checked ? recordedAt : null,
+    checked_state_recorded_at: recordedAt,
+  };
+}
+
+async function createItemWithOfflineFallback(root, state, listId, payload) {
+  if (isDemoList(root)) {
+    return createDemoItem(state, payload);
+  }
+
+  const recordedAt = new Date().toISOString();
+  const clientItemId = createOfflineId(OFFLINE_ITEM_ID_PREFIX);
+  const mutation = {
+    mutation_id: createOfflineId(OFFLINE_MUTATION_ID_PREFIX),
+    type: "create",
+    client_item_id: clientItemId,
+    recorded_at: recordedAt,
+    payload,
+  };
+  const applyLocalChange = () => {
+    const localItem = createOfflineItem(state, listId, clientItemId, payload, recordedAt);
+    upsertItem(state, localItem);
+    return localItem;
+  };
+
+  if (shouldQueueItemMutation(state)) {
+    return queueOfflineMutation(root, state, mutation, applyLocalChange);
+  }
+
+  try {
+    return await postJson(`/api/v1/lists/${listId}/items`, payload);
+  } catch (error) {
+    if (!isOfflineRequestError(error)) {
+      throw error;
+    }
+    return queueOfflineMutation(root, state, mutation, applyLocalChange);
+  }
+}
+
+async function updateItemWithOfflineFallback(root, state, itemId, payload) {
+  if (isDemoList(root)) {
+    return updateDemoItem(state, itemId, payload);
+  }
+
+  const existingItem = state.items.get(itemId);
+  const recordedAt = new Date().toISOString();
+  const mutation = {
+    mutation_id: createOfflineId(OFFLINE_MUTATION_ID_PREFIX),
+    type: "update",
+    item_id: itemId,
+    recorded_at: recordedAt,
+    payload,
+  };
+  const applyLocalChange = () => {
+    const localItem = { ...existingItem, ...payload };
+    upsertItem(state, localItem);
+    return localItem;
+  };
+
+  if (shouldQueueItemMutation(state, itemId)) {
+    return queueOfflineMutation(root, state, mutation, applyLocalChange);
+  }
+
+  try {
+    return await fetchJson(`/api/v1/items/${itemId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    if (!isOfflineRequestError(error)) {
+      throw error;
+    }
+    return queueOfflineMutation(root, state, mutation, applyLocalChange);
+  }
+}
+
+async function setItemCheckedWithOfflineFallback(root, state, itemId, checked) {
+  if (isDemoList(root)) {
+    return setDemoItemChecked(state, itemId, checked);
+  }
+
+  const existingItem = state.items.get(itemId);
+  const recordedAt = new Date().toISOString();
+  const mutation = {
+    mutation_id: createOfflineId(OFFLINE_MUTATION_ID_PREFIX),
+    type: "set_checked",
+    item_id: itemId,
+    recorded_at: recordedAt,
+    checked,
+  };
+  const applyLocalChange = () => {
+    const localItem = applyLocalCheckedState(existingItem, checked, recordedAt);
+    upsertItem(state, localItem);
+    return localItem;
+  };
+
+  if (shouldQueueItemMutation(state, itemId)) {
+    return queueOfflineMutation(root, state, mutation, applyLocalChange);
+  }
+
+  try {
+    return await postJson(`/api/v1/items/${itemId}/${checked ? "check" : "uncheck"}`, {});
+  } catch (error) {
+    if (!isOfflineRequestError(error)) {
+      throw error;
+    }
+    return queueOfflineMutation(root, state, mutation, applyLocalChange);
+  }
 }
 
 async function saveCategoryOrder(root, state) {
@@ -1744,7 +2061,7 @@ function renderCategoryOrderSettings(root, state) {
 
     const swatch = document.createElement("span");
     swatch.className = "item-category-swatch";
-    swatch.style.background = category.color || "#cbd5e1";
+    swatch.style.background = category.color || CATEGORY_SWATCH_FALLBACK_COLOR;
     row.appendChild(swatch);
 
     const copy = document.createElement("div");
@@ -2039,7 +2356,7 @@ function renderItems(root, state) {
 
     const swatch = document.createElement("span");
     swatch.className = "item-category-swatch";
-    swatch.style.background = category?.color || "#cbd5e1";
+    swatch.style.background = category?.color || CATEGORY_SWATCH_FALLBACK_COLOR;
     heading.appendChild(swatch);
 
     const headingCopy = document.createElement("div");
@@ -2119,7 +2436,7 @@ function renderItems(root, state) {
 
     const swatch = document.createElement("span");
     swatch.className = "item-category-swatch";
-    swatch.style.background = "#94a3b8";
+    swatch.style.background = CHECKED_CATEGORY_SWATCH_COLOR;
     heading.appendChild(swatch);
 
     const headingCopy = document.createElement("div");
@@ -2251,26 +2568,14 @@ async function loadMoreCheckedItems(root, state) {
 }
 
 async function restoreCheckedSuggestion(root, state, reuseItemId) {
-  if (isDemoList(root)) {
-    const revertedItem = setDemoItemChecked(state, reuseItemId, true);
-    upsertItem(state, revertedItem);
-    renderItems(root, state);
-    return;
-  }
-
-  const revertedItem = await postJson(`/api/v1/items/${reuseItemId}/check`, {});
+  const revertedItem = await setItemCheckedWithOfflineFallback(root, state, reuseItemId, true);
   upsertItem(state, revertedItem);
   renderItems(root, state);
+  persistOfflineListState(root, state);
 }
 
 async function restoreDeletedItem(root, state, listId, deletedItem) {
-  if (isDemoList(root)) {
-    upsertItem(state, cloneDemoItem(deletedItem));
-    renderItems(root, state);
-    return;
-  }
-
-  const restoredItem = await postJson(`/api/v1/lists/${listId}/items`, {
+  const restoredItem = await createItemWithOfflineFallback(root, state, listId, {
     name: deletedItem.name,
     quantity_text: deletedItem.quantity_text,
     note: deletedItem.note,
@@ -2279,10 +2584,11 @@ async function restoreDeletedItem(root, state, listId, deletedItem) {
   });
   let nextItem = restoredItem;
   if (deletedItem.checked) {
-    nextItem = await postJson(`/api/v1/items/${restoredItem.id}/check`, {});
+    nextItem = await setItemCheckedWithOfflineFallback(root, state, restoredItem.id, true);
   }
   upsertItem(state, nextItem);
   renderItems(root, state);
+  persistOfflineListState(root, state);
 }
 
 async function deleteItem(root, state, listId, itemId) {
@@ -2291,19 +2597,46 @@ async function deleteItem(root, state, listId, itemId) {
     throw new Error(translate("list_detail.item_not_found", {}, "Could not find that item."));
   }
 
-  if (!isDemoList(root)) {
-    const response = await fetch(`/api/v1/items/${itemId}`, { method: "DELETE" });
-    if (response.status === 401) {
-      navigateTo("/login");
-      throw new Error(translate("common.errors.unauthorized", {}, "Unauthorized"));
-    }
-    if (!response.ok) {
-      throw new Error(translate("list_detail.item_delete_failed", {}, "Could not delete item."));
+  const queueDelete = () => {
+    queueOfflineMutation(
+      root,
+      state,
+      {
+        mutation_id: createOfflineId(OFFLINE_MUTATION_ID_PREFIX),
+        type: "delete",
+        item_id: itemId,
+        recorded_at: new Date().toISOString(),
+      },
+      () => {
+        removeItem(state, itemId);
+        return null;
+      },
+    );
+  };
+
+  if (!isDemoList(root) && shouldQueueItemMutation(state, itemId)) {
+    queueDelete();
+  } else if (!isDemoList(root)) {
+    try {
+      const response = await fetch(`/api/v1/items/${itemId}`, { method: "DELETE" });
+      if (response.status === 401) {
+        navigateTo("/login");
+        throw new Error(translate("common.errors.unauthorized", {}, "Unauthorized"));
+      }
+      if (!response.ok) {
+        throw new Error(translate("list_detail.item_delete_failed", {}, "Could not delete item."));
+      }
+    } catch (error) {
+      if (!isOfflineRequestError(error)) {
+        throw error;
+      }
+      queueDelete();
     }
   }
 
   removeItem(state, itemId);
   renderItems(root, state);
+  persistOfflineListState(root, state);
   showUndoToast(
     root,
     state,
@@ -2313,21 +2646,18 @@ async function deleteItem(root, state, listId, itemId) {
   if (state.editingItemId === itemId) {
     setItemEditPanelOpen(root, state, null);
   }
-  setListMessage(root, "success", translate("list_detail.item_deleted", {}, "Item deleted."));
+  if (state.pendingMutations.length > 0) {
+    showOfflineSavedMessage(root);
+  } else {
+    setListMessage(root, "success", translate("list_detail.item_deleted", {}, "Item deleted."));
+  }
 }
 
 async function restoreToggledItem(root, state, toggleId, action) {
-  if (isDemoList(root)) {
-    const revertedItem = setDemoItemChecked(state, toggleId, action !== "check");
-    upsertItem(state, revertedItem);
-    renderItems(root, state);
-    return;
-  }
-
-  const revertedAction = action === "check" ? "uncheck" : "check";
-  const revertedItem = await postJson(`/api/v1/items/${toggleId}/${revertedAction}`, {});
+  const revertedItem = await setItemCheckedWithOfflineFallback(root, state, toggleId, action !== "check");
   upsertItem(state, revertedItem);
   renderItems(root, state);
+  persistOfflineListState(root, state);
 }
 
 function handleSocketClose(root, state, reconnect, isDisposed) {
@@ -2374,12 +2704,35 @@ async function loadListDetail(root, state) {
   }
 
   const listId = root.dataset.listId;
-  const [groceryList, itemWindow, categories, categoryOrder] = await Promise.all([
-    fetchJson(`/api/v1/lists/${listId}`),
-    fetchJson(`/api/v1/lists/${listId}/items/window`),
-    fetchJson(`/api/v1/lists/${listId}/categories`),
-    fetchJson(`/api/v1/lists/${listId}/category-order`),
-  ]);
+  let groceryList;
+  let itemWindow;
+  let categories;
+  let categoryOrder;
+
+  try {
+    [groceryList, itemWindow, categories, categoryOrder] = await Promise.all([
+      fetchJson(`/api/v1/lists/${listId}`),
+      fetchJson(`/api/v1/lists/${listId}/items/window`),
+      fetchJson(`/api/v1/lists/${listId}/categories`),
+      fetchJson(`/api/v1/lists/${listId}/category-order`),
+    ]);
+  } catch (error) {
+    const cachedState = loadOfflineListState(listId);
+    if (cachedState) {
+      applyOfflineListState(root, state, cachedState);
+      setListMessage(
+        root,
+        "error",
+        translate("list_detail.offline_showing_saved", {}, "Offline. Showing saved list."),
+      );
+      setListSyncStatus(
+        root,
+        translate("list_detail.offline_sync_pending", {}, "Changes saved locally."),
+      );
+      return;
+    }
+    throw error;
+  }
 
   const title = root.querySelector("[data-list-title]");
   if (title) {
@@ -2390,10 +2743,20 @@ async function loadListDetail(root, state) {
   state.categoryOrder = new Map(
     categoryOrder.map((entry) => [entry.category_id, entry.sort_order])
   );
-  replaceItems(state, itemWindow.items || []);
-  state.checkedRemainingCount = itemWindow.checked_remaining_count || 0;
+  state.pendingMutations = [];
+  const cachedState = loadOfflineListState(listId);
+  if (cachedState?.pendingMutations?.length > 0 && Array.isArray(cachedState.items)) {
+    state.pendingMutations = cachedState.pendingMutations;
+    replaceItems(state, cachedState.items);
+    state.checkedRemainingCount = cachedState.checkedRemainingCount || 0;
+  } else {
+    replaceItems(state, itemWindow.items || []);
+    state.checkedRemainingCount = itemWindow.checked_remaining_count || 0;
+  }
   syncCategoryRadioGroups(root, state);
   renderItems(root, state);
+  persistOfflineListState(root, state);
+  await flushOfflineMutations(root, state);
 }
 
 function connectListSocket(root, state) {
@@ -2426,9 +2789,14 @@ function connectListSocket(root, state) {
 
     state.socket.addEventListener("open", () => {
       setListSyncStatus(root, translate("list_detail.sync_on", {}, "Live updates on."));
+      flushOfflineMutations(root, state);
     });
 
     state.socket.addEventListener("message", (event) => {
+      if (state.pendingMutations.length > 0) {
+        return;
+      }
+
       const message = JSON.parse(event.data);
       if (message.type === "list_snapshot") {
         replaceItems(state, message.payload.items || []);
@@ -2622,6 +2990,12 @@ async function initListDetail() {
     await runUndoAction(root, state, undoAction);
   });
 
+  if (typeof window !== "undefined") {
+    window.addEventListener("online", () => {
+      flushOfflineMutations(root, state);
+    });
+  }
+
   itemForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const formData = new FormData(itemForm);
@@ -2646,9 +3020,7 @@ async function initListDetail() {
     }
 
     try {
-      const createdItem = isDemoList(root)
-        ? createDemoItem(state, payload)
-        : await postJson(`/api/v1/lists/${listId}/items`, payload);
+      const createdItem = await createItemWithOfflineFallback(root, state, listId, payload);
       upsertItem(state, createdItem);
       itemForm.reset();
       const addSearch = root.querySelector("[data-item-category-search]");
@@ -2658,10 +3030,15 @@ async function initListDetail() {
       setCategoryRadioValue(root, 'input[name="category_id"]', "");
       syncCategoryRadioGroups(root, state);
       renderItems(root, state);
+      persistOfflineListState(root, state);
       setItemPanelOpen(root, false);
       highlightItem(root, state, createdItem.id);
       hideUndoToast(root, state);
-      setListMessage(root, "success", translate("list_detail.item_added", {}, "Item added."));
+      if (state.pendingMutations.length > 0) {
+        showOfflineSavedMessage(root);
+      } else {
+        setListMessage(root, "success", translate("list_detail.item_added", {}, "Item added."));
+      }
     } catch (error) {
       setListMessage(root, "error", error instanceof Error ? error.message : translate("list_detail.item_add_failed", {}, "Could not add item."));
     }
@@ -2687,17 +3064,16 @@ async function initListDetail() {
     }
 
     try {
-      const updatedItem = isDemoList(root)
-        ? updateDemoItem(state, state.editingItemId, payload)
-        : await fetchJson(`/api/v1/items/${state.editingItemId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+      const updatedItem = await updateItemWithOfflineFallback(root, state, state.editingItemId, payload);
       upsertItem(state, updatedItem);
       renderItems(root, state);
+      persistOfflineListState(root, state);
       setItemEditPanelOpen(root, state, updatedItem.id);
-      setListMessage(root, "success", translate("list_detail.item_updated", {}, "Item updated."));
+      if (state.pendingMutations.length > 0) {
+        showOfflineSavedMessage(root);
+      } else {
+        setListMessage(root, "success", translate("list_detail.item_updated", {}, "Item updated."));
+      }
     } catch (error) {
       setListMessage(root, "error", error instanceof Error ? error.message : translate("list_detail.item_update_failed", {}, "Could not save item."));
     }
@@ -2755,12 +3131,11 @@ async function initListDetail() {
           throw new Error(translate("list_detail.item_not_found", {}, "Could not find that item."));
         }
         if (existingItem.checked) {
-          const updatedItem = isDemoList(root)
-            ? setDemoItemChecked(state, reuseItemId, false)
-            : await postJson(`/api/v1/items/${reuseItemId}/uncheck`, {});
+          const updatedItem = await setItemCheckedWithOfflineFallback(root, state, reuseItemId, false);
           upsertItem(state, updatedItem);
           itemForm.reset();
           renderItems(root, state);
+          persistOfflineListState(root, state);
           setItemPanelOpen(root, false);
           highlightItem(root, state, reuseItemId);
           showUndoToast(
@@ -2769,7 +3144,11 @@ async function initListDetail() {
             translate("list_detail.item_added_back_named", { name: existingItem.name }, "{name} added back to the list."),
             restoreCheckedSuggestion.bind(null, root, state, reuseItemId),
           );
-          setListMessage(root, "success", translate("list_detail.item_added_back", {}, "Item added back to the list."));
+          if (state.pendingMutations.length > 0) {
+            showOfflineSavedMessage(root);
+          } else {
+            setListMessage(root, "success", translate("list_detail.item_added_back", {}, "Item added back to the list."));
+          }
           return;
         }
 
@@ -2784,11 +3163,10 @@ async function initListDetail() {
           throw new Error(translate("list_detail.item_not_found", {}, "Could not find that item."));
         }
         const action = existingItem.checked ? "uncheck" : "check";
-        const updatedItem = isDemoList(root)
-          ? setDemoItemChecked(state, toggleId, action === "check")
-          : await postJson(`/api/v1/items/${toggleId}/${action}`, {});
+        const updatedItem = await setItemCheckedWithOfflineFallback(root, state, toggleId, action === "check");
         upsertItem(state, updatedItem);
         renderItems(root, state);
+        persistOfflineListState(root, state);
         showUndoToast(
           root,
           state,
@@ -3168,6 +3546,18 @@ export {
   initDashboard,
   setListMessage,
   setListSyncStatus,
+  offlineListStorageKey,
+  loadOfflineListState,
+  createOfflineId,
+  isBrowserOffline,
+  isOfflineRequestError,
+  persistOfflineListState,
+  applyOfflineListState,
+  showOfflineSavedMessage,
+  queueOfflineMutation,
+  shouldQueueItemMutation,
+  applyOfflineSyncResult,
+  flushOfflineMutations,
   hideUndoToast,
   showUndoToast,
   normalizeItemName,
@@ -3193,6 +3583,11 @@ export {
   createDemoItem,
   updateDemoItem,
   setDemoItemChecked,
+  createOfflineItem,
+  applyLocalCheckedState,
+  createItemWithOfflineFallback,
+  updateItemWithOfflineFallback,
+  setItemCheckedWithOfflineFallback,
   saveCategoryOrder,
   setItemEditPanelOpen,
   renderCategoryOrderSettings,
