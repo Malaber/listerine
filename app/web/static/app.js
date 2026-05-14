@@ -1625,6 +1625,18 @@ function setItemPanelOpen(root, isOpen) {
   }
 }
 
+function openItemPanelForCategory(root, state, categoryId) {
+  const selectedCategoryId = categoryId && state.categories.has(categoryId) ? categoryId : "";
+  const categorySearch = root.querySelector("[data-item-category-search]");
+  if (categorySearch instanceof HTMLInputElement) {
+    categorySearch.value = "";
+  }
+  setItemPanelOpen(root, true);
+  syncCategoryRadioGroups(root, state);
+  setCategoryRadioValue(root, 'input[name="category_id"]', selectedCategoryId);
+  renderItemSuggestions(root, state);
+}
+
 function formatSuggestionMeta(state, item) {
   const meta = [];
   const category = item.category_id ? state.categories.get(item.category_id)?.name || "" : "";
@@ -2472,8 +2484,27 @@ function renderItems(root, state) {
     const headingMeta = document.createElement("p");
     headingMeta.className = "item-category-meta";
     headingMeta.textContent = translatePlural("list_detail.item_count", items.length, {}, { one: "{count} item", other: "{count} items" });
-    headingCopy.appendChild(headingMeta);
     heading.appendChild(headingCopy);
+
+    const headingActions = document.createElement("div");
+    headingActions.className = "item-category-actions";
+
+    const quickAddButton = document.createElement("button");
+    quickAddButton.className = "item-category-quick-add";
+    quickAddButton.type = "button";
+    quickAddButton.dataset.itemQuickAddCategory = category?.id || "";
+    const quickAddLabel = category
+      ? translate("list_detail.quick_add_category", { name: category.name }, "Quick add to {name}")
+      : translate("list_detail.quick_add_uncategorized", {}, "Quick add uncategorized item");
+    quickAddButton.setAttribute("aria-label", quickAddLabel);
+    quickAddButton.title = quickAddLabel;
+    const quickAddIcon = document.createElement("span");
+    quickAddIcon.setAttribute("aria-hidden", "true");
+    quickAddIcon.textContent = "+";
+    quickAddButton.appendChild(quickAddIcon);
+    headingActions.appendChild(quickAddButton);
+    headingActions.appendChild(headingMeta);
+    heading.appendChild(headingActions);
 
     section.appendChild(heading);
 
@@ -2552,8 +2583,11 @@ function renderItems(root, state) {
     const headingMeta = document.createElement("p");
     headingMeta.className = "item-category-meta";
     headingMeta.textContent = translatePlural("list_detail.item_count", checkedTotalCount, {}, { one: "{count} item", other: "{count} items" });
-    headingCopy.appendChild(headingMeta);
     heading.appendChild(headingCopy);
+    const headingActions = document.createElement("div");
+    headingActions.className = "item-category-actions";
+    headingActions.appendChild(headingMeta);
+    heading.appendChild(headingActions);
     section.appendChild(heading);
 
     checkedItems.forEach((item) => {
@@ -3193,7 +3227,14 @@ async function initListDetail() {
     const reuseItemId = target.dataset.itemReuse;
     const categoryMove = target.dataset.settingsCategoryMove;
     const categoryId = target.dataset.categoryId;
+    const quickAddButton = target.closest("[data-item-quick-add-category]");
     const editCard = target.closest("[data-item-edit]");
+
+    if (quickAddButton instanceof HTMLElement) {
+      event.preventDefault();
+      openItemPanelForCategory(root, state, quickAddButton.dataset.itemQuickAddCategory || "");
+      return;
+    }
 
     if (editCard && !target.closest("button")) {
       setItemEditPanelOpen(root, state, editCard.dataset.itemEdit || null);
@@ -3702,6 +3743,7 @@ export {
   itemSuggestionMatch,
   syncModalState,
   setItemPanelOpen,
+  openItemPanelForCategory,
   formatSuggestionMeta,
   categorySortKey,
   decorateItem,
