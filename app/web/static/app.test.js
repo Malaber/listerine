@@ -1037,6 +1037,50 @@ test("renderItemSuggestions keeps unchanged matches mounted", () => {
   }
 });
 
+test("renderItemSuggestions keeps surviving matches mounted when narrowed", () => {
+  const { document, root, window } = createSuggestionRoot();
+  const originalHTMLElement = globalThis.HTMLElement;
+  const originalHTMLInputElement = globalThis.HTMLInputElement;
+  setGlobalProperty("HTMLElement", window.HTMLElement);
+  setGlobalProperty("HTMLInputElement", window.HTMLInputElement);
+  const input = document.querySelector("[data-item-name-input]");
+  input.value = "To";
+  const state = createState([
+    {
+      id: "item-1",
+      name: "Tofu",
+      checked: false,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+    },
+    {
+      id: "item-2",
+      name: "Tomate",
+      checked: false,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+    },
+  ]);
+
+  try {
+    renderItemSuggestions(root, state);
+    const firstSuggestion = document.querySelector(".item-suggestion");
+    assert.equal(firstSuggestion.querySelector(".item-name").textContent, "Tofu");
+    assert.equal(document.querySelectorAll(".item-suggestion").length, 2);
+
+    input.value = "Tofu";
+    renderItemSuggestions(root, state);
+
+    assert.equal(document.querySelector(".item-suggestion"), firstSuggestion);
+    assert.equal(document.querySelectorAll(".item-suggestion").length, 1);
+  } finally {
+    setGlobalProperty("HTMLElement", originalHTMLElement);
+    setGlobalProperty("HTMLInputElement", originalHTMLInputElement);
+  }
+});
+
 test("demo list helpers reuse the real list page with local data", async () => {
   const { document, payload, root, window } = createDemoListRoot();
   const originals = {
