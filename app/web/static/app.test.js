@@ -177,8 +177,8 @@ function createDemoListRoot() {
   const demoPayload = {
     list: { id: "demo-list", name: "Saturday Groceries" },
     categories: [
-      { id: "produce", name: "Produce", color: "#6bbf59" },
-      { id: "pantry", name: "Pantry", color: "#f59e0b" },
+      { id: "produce", name: "Produce", color: "#8f7a62" },
+      { id: "pantry", name: "Pantry", color: "#8b6b4f" },
     ],
     category_order: [
       { category_id: "produce", sort_order: 0 },
@@ -287,6 +287,27 @@ test("renderItems only shows loaded checked items before loading more", () => {
   assert.equal(document.querySelector(".item-category-header .item-category-meta").textContent, "120 items");
   assert.equal(document.querySelector(".checked-items-load-more button").textContent, "Load 100 more");
   assert.equal(document.querySelector(".checked-items-load-more .item-category-meta").textContent, "110 older items not loaded");
+});
+
+test("renderItems uses brown fallback swatches for uncategorized and checked groups", () => {
+  const { document, root } = createListRoot();
+  const activeItem = {
+    id: "active-item",
+    name: "Loose item",
+    checked: false,
+    checked_at: null,
+    category_id: null,
+    note: null,
+    quantity_text: null,
+    sort_order: 0,
+  };
+  const state = createState([activeItem, createCheckedItem(0)]);
+
+  renderItems(root, state);
+
+  const swatches = document.querySelectorAll(".item-category-swatch");
+  assert.match(swatches[0].getAttribute("style") || "", /217, 197, 179|#d9c5b3/);
+  assert.match(swatches[1].getAttribute("style") || "", /181, 150, 118|#b59676/);
 });
 
 test("loadMoreCheckedItems fetches one hundred older checked items per page", async () => {
