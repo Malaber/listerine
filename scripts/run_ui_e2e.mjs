@@ -1151,17 +1151,17 @@ async function main() {
       await page.getByRole("button", { name: "Add item" }).click();
       await expectVisible(page.locator("[data-item-panel]"), "Add button should open add modal");
     }
-    await addForm.getByLabel("Item name").fill("Spag");
+    await addForm.getByLabel("Item name").fill("Spaghetty");
     const activeSuggestion = addForm.locator(".item-suggestion", { hasText: "Spaghetti" });
-    await expectVisible(activeSuggestion, "Expected duplicate suggestion for active item");
+    await expectVisible(activeSuggestion, "Expected fuzzy duplicate suggestion for active item");
     await activeSuggestion.locator("button").click();
     await expectHidden(page.locator("[data-item-panel]"), "Suggestion reuse should close add modal");
     await page.waitForSelector('[data-item-card].is-highlighted', { timeout: 3000 });
 
     await page.getByRole("button", { name: "Add item" }).click();
-    await addForm.getByLabel("Item name").fill("Brot");
+    await addForm.getByLabel("Item name").fill("Broz");
     const checkedSuggestion = addForm.locator(".item-suggestion", { hasText: "Brot" });
-    await expectVisible(checkedSuggestion, "Expected suggestion for checked duplicate item");
+    await expectVisible(checkedSuggestion, "Expected fuzzy suggestion for checked duplicate item");
     await checkedSuggestion.locator("button").click();
     await expectVisible(
       page.locator("[data-list-toast]", { hasText: "Brot added back to the list." }),
@@ -1360,7 +1360,7 @@ async function main() {
   const summary = [
     "## UI E2E",
     "",
-    `Browser UI flow passed for ${deviceName} using seeded real database data and passkey auth for route rendering, login gating, multi-passkey enrollment and deletion, add/edit flows, duplicate suggestions, undo toasts, category alias search, admin navigation, websocket updates, and household invite acceptance.`,
+    `Browser UI flow passed for ${deviceName} using seeded real database data and passkey auth for route rendering, login gating, multi-passkey enrollment and deletion, add/edit flows, fuzzy duplicate suggestions, undo toasts, category alias search, admin navigation, websocket updates, and household invite acceptance.`,
     "",
   ].join("\n");
   await fs.writeFile(path.join(artifactDir, "summary.md"), summary);
