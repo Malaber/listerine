@@ -688,16 +688,57 @@ main {
 }
 
 .item-card {
+  display: block;
+  position: relative;
+  overflow: hidden;
+  border: 0;
+  border-top: 1px solid rgba(217, 197, 179, 0.72);
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.item-card-content {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.9rem;
-  border: 0;
-  border-top: 1px solid rgba(217, 197, 179, 0.72);
-  border-radius: 0;
   padding: 0.8rem 0.95rem;
-  background: transparent;
-  cursor: pointer;
+  background: inherit;
+  transform: translateX(var(--item-swipe-x, 0));
+  transition: transform 0.18s ease;
+}
+
+.item-card.is-swiping .item-card-content {
+  transition: none;
+}
+
+.item-swipe-action {
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 0;
+  width: min(9rem, 45%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--brand-lime);
+  color: #fff;
+  font-size: 0.88rem;
+  font-weight: 800;
+  opacity: 0;
+  transform: translateX(-0.75rem);
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+  pointer-events: none;
+}
+
+.item-card.is-swiping .item-swipe-action,
+.item-card.is-swipe-ready .item-swipe-action {
+  opacity: 1;
+  transform: translateX(0);
 }
 
 .item-category-header + .item-card {
@@ -809,6 +850,61 @@ main {
 
 .item-actions button:hover {
   background: var(--brand-aqua-soft);
+}
+
+.item-more-button {
+  width: 2.15rem;
+  height: 2.15rem;
+  padding: 0;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.item-more-menu {
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid rgba(217, 197, 179, 0.56);
+  padding: 0.62rem 0.95rem;
+  background: rgba(255, 250, 242, 0.82);
+}
+
+.item-more-menu[hidden] {
+  display: none;
+}
+
+.item-more-menu button {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-strong);
+  color: var(--text);
+  cursor: pointer;
+  padding: 0.55rem 0.8rem;
+  font: inherit;
+  font-weight: 800;
+}
+
+.item-more-menu button:hover {
+  background: var(--brand-aqua-soft);
+}
+
+.item-card.is-hidden .item-card-content {
+  background: rgba(248, 239, 230, 0.68);
+}
+
+.item-hidden-clock {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--brand-aqua-soft);
+  border-color: var(--border-strong);
+  color: var(--brand-navy);
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.item-hidden-clock::after {
+  display: none;
 }
 
 .item-category-group {
@@ -1826,8 +1922,12 @@ main {
     gap: 0.55rem;
     border-radius: 0;
     border-top-color: rgba(217, 197, 179, 0.42);
-    padding: 0.62rem 0.8rem;
     background: var(--surface-strong);
+  }
+
+  .item-card-content {
+    gap: 0.55rem;
+    padding: 0.62rem 0.8rem;
   }
 
   .item-main {
@@ -1854,6 +1954,18 @@ main {
     min-height: 2rem;
     padding: 0.38rem 0.62rem;
     font-size: 0.78rem;
+  }
+
+  .item-more-button {
+    width: 1.95rem;
+    height: 1.95rem;
+    min-height: 0;
+    padding: 0;
+    font-size: 1.05rem;
+  }
+
+  .item-more-menu {
+    padding: 0.5rem 0.8rem;
   }
 
   .floating-add-button {
