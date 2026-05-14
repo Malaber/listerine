@@ -3,7 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_list_for_user
@@ -70,6 +70,14 @@ def _payload_model(model, payload: dict[str, object | None] | None):
 def _checked_state_recorded_at(item: GroceryItem) -> datetime:
     fallback = datetime.min.replace(tzinfo=UTC)
     return _as_utc(item.checked_state_recorded_at or item.checked_at or item.updated_at or fallback)
+
+
+def _visible_active_item_filters(list_id: UUID, now: datetime):
+    return (
+        GroceryItem.list_id == list_id,
+        GroceryItem.checked.is_(False),
+        or_(GroceryItem.hidden_until.is_(None), GroceryItem.hidden_until <= now),
+    )
 
 
 async def _validate_category_id(db: AsyncSession, category_id: UUID | None) -> None:
@@ -176,7 +184,7 @@ async def list_item_window(
 ) -> GroceryItemsWindowOut:
     await get_list_for_user(db, list_id, user.id)
     active_result = await db.execute(
-        select(GroceryItem).where(GroceryItem.list_id == list_id, GroceryItem.checked.is_(False))
+        select(GroceryItem).where(*_visible_active_item_filters(list_id, datetime.now(UTC)))
     )
     checked_items = await _checked_items_page(
         db, list_id, offset=0, limit=CHECKED_ITEMS_INITIAL_LIMIT
@@ -234,6 +242,7 @@ async def check_item(
     recorded_at = datetime.now(UTC)
     item.checked_at = recorded_at
     item.checked_state_recorded_at = recorded_at
+    item.hidden_until = None
     item.checked_by = user.id
     item.updated_by = user.id
     await db.commit()
@@ -252,6 +261,7 @@ async def uncheck_item(
     item.checked = False
     item.checked_at = None
     item.checked_state_recorded_at = datetime.now(UTC)
+    item.hidden_until = None
     item.checked_by = None
     item.updated_by = user.id
     await db.commit()
@@ -346,6 +356,7 @@ async def sync_offline_items(
                     item.checked = mutation.checked
                     item.checked_at = recorded_at if mutation.checked else None
                     item.checked_state_recorded_at = recorded_at
+                    item.hidden_until = None
                     item.checked_by = user.id if mutation.checked else None
                     item.updated_by = user.id
                     event_type = "item_checked" if mutation.checked else "item_unchecked"

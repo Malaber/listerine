@@ -658,6 +658,13 @@ async function resetFixtureItems(requestContext, listId, expectedChecked) {
       continue;
     }
 
+    if (item.hidden_until) {
+      await apiJson(requestContext, `/api/v1/items/${item.id}`, {
+        method: "PATCH",
+        data: { hidden_until: null },
+      });
+    }
+
     const shouldBeChecked = expectedChecked.get(item.name);
     if (Boolean(item.checked) === shouldBeChecked) {
       continue;
@@ -675,6 +682,40 @@ async function textList(locator) {
 
 function itemCard(page, text) {
   return page.locator(".item-card", { hasText: text }).first();
+}
+
+async function swipeItemRight(card) {
+  await card.evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    const startX = rect.left + Math.min(24, rect.width * 0.18);
+    const endX = Math.min(rect.right - 12, startX + 120);
+    const y = rect.top + rect.height / 2;
+    const base = {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 42,
+      pointerType: "touch",
+      isPrimary: true,
+    };
+    node.dispatchEvent(new PointerEvent("pointerdown", {
+      ...base,
+      buttons: 1,
+      clientX: startX,
+      clientY: y,
+    }));
+    node.dispatchEvent(new PointerEvent("pointermove", {
+      ...base,
+      buttons: 1,
+      clientX: endX,
+      clientY: y,
+    }));
+    node.dispatchEvent(new PointerEvent("pointerup", {
+      ...base,
+      buttons: 0,
+      clientX: endX,
+      clientY: y,
+    }));
+  });
 }
 
 async function revealCheckedItemCard(page, text) {
@@ -1000,6 +1041,32 @@ async function main() {
     await activeSuggestion.locator("button").click();
     await expectHidden(page.locator("[data-item-panel]"), "Suggestion reuse should close add modal");
     await page.waitForSelector('[data-item-card].is-highlighted', { timeout: 3000 });
+
+    const spaghettiCard = itemCard(page, "Spaghetti");
+    if (deviceName === "desktop") {
+      await spaghettiCard.getByRole("button", { name: "Hide Spaghetti for 4 hours" }).click();
+    } else {
+      await swipeItemRight(spaghettiCard);
+    }
+    await expectVisible(
+      page.locator("[data-list-toast]", { hasText: "Spaghetti hidden for 4 hours." }),
+      "Expected hide-for-later toast",
+    );
+    await expectHidden(itemCard(page, "Spaghetti"), "Hidden item should leave the active list");
+    await pageTwo.waitForFunction(
+      () => ![...document.querySelectorAll(".item-card")].some((node) =>
+        node.textContent?.includes("Spaghetti"),
+      ),
+      { timeout: 5000 },
+    );
+    await page.locator("[data-list-toast-undo]").click();
+    await expectVisible(itemCard(page, "Spaghetti"), "Undo should restore hidden item");
+    await pageTwo.waitForFunction(
+      () => [...document.querySelectorAll(".item-card")].some((node) =>
+        node.textContent?.includes("Spaghetti"),
+      ),
+      { timeout: 5000 },
+    );
 
     await page.getByRole("button", { name: "Add item" }).click();
     await addForm.getByLabel("Item name").fill("Brot");

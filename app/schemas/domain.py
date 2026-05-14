@@ -75,6 +75,7 @@ class GroceryItemUpdate(BaseModel):
     note: str | None = None
     category_id: UUID | None = None
     sort_order: int | None = None
+    hidden_until: datetime | None = None
 
 
 class GroceryItemOut(ORMModel):
@@ -87,6 +88,7 @@ class GroceryItemOut(ORMModel):
     checked: bool
     checked_at: datetime | None
     checked_state_recorded_at: datetime | None
+    hidden_until: datetime | None
     sort_order: int
 
 

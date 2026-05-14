@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from app.api.deps import ensure_non_admin_user, get_current_user, get_list_for_user
 from app.core.database import get_db
@@ -13,6 +13,14 @@ from app.services.websocket_hub import hub
 router = APIRouter(tags=["websocket"])
 
 CHECKED_ITEMS_INITIAL_LIMIT = 10
+
+
+def _visible_active_item_filters(list_id: UUID, now: datetime):
+    return (
+        GroceryItem.list_id == list_id,
+        GroceryItem.checked.is_(False),
+        or_(GroceryItem.hidden_until.is_(None), GroceryItem.hidden_until <= now),
+    )
 
 
 async def _checked_item_count(db, list_id: UUID) -> int:
@@ -29,7 +37,7 @@ async def _checked_item_count(db, list_id: UUID) -> int:
 
 async def _snapshot_items(db, list_id: UUID) -> tuple[list[dict[str, object]], int]:
     active_result = await db.execute(
-        select(GroceryItem).where(GroceryItem.list_id == list_id, GroceryItem.checked.is_(False))
+        select(GroceryItem).where(*_visible_active_item_filters(list_id, datetime.now(UTC)))
     )
     checked_result = await db.execute(
         select(GroceryItem)

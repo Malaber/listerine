@@ -688,16 +688,57 @@ main {
 }
 
 .item-card {
+  display: block;
+  position: relative;
+  overflow: hidden;
+  border: 0;
+  border-top: 1px solid rgba(217, 197, 179, 0.72);
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.item-card-content {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.9rem;
-  border: 0;
-  border-top: 1px solid rgba(217, 197, 179, 0.72);
-  border-radius: 0;
   padding: 0.8rem 0.95rem;
-  background: transparent;
-  cursor: pointer;
+  background: inherit;
+  transform: translateX(var(--item-swipe-x, 0));
+  transition: transform 0.18s ease;
+}
+
+.item-card.is-swiping .item-card-content {
+  transition: none;
+}
+
+.item-swipe-action {
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 0;
+  width: min(9rem, 45%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--brand-lime);
+  color: #fff;
+  font-size: 0.88rem;
+  font-weight: 800;
+  opacity: 0;
+  transform: translateX(-0.75rem);
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+  pointer-events: none;
+}
+
+.item-card.is-swiping .item-swipe-action,
+.item-card.is-swipe-ready .item-swipe-action {
+  opacity: 1;
+  transform: translateX(0);
 }
 
 .item-category-header + .item-card {
@@ -809,6 +850,10 @@ main {
 
 .item-actions button:hover {
   background: var(--brand-aqua-soft);
+}
+
+.item-later-button {
+  white-space: nowrap;
 }
 
 .item-category-group {
@@ -1690,8 +1735,12 @@ main {
     gap: 0.55rem;
     border-radius: 0;
     border-top-color: rgba(217, 197, 179, 0.42);
-    padding: 0.62rem 0.8rem;
     background: var(--surface-strong);
+  }
+
+  .item-card-content {
+    gap: 0.55rem;
+    padding: 0.62rem 0.8rem;
   }
 
   .item-main {
