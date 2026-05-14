@@ -724,6 +724,50 @@ def test_item_window_limits_checked_items_and_pages_older_checked_items(client) 
     assert checked_item_ids[0] == older_checked_items[1]["id"]
     assert active_item["id"] in {item["id"] for item in item_window["items"]}
 
+    hidden_until = (datetime.now(UTC) + timedelta(hours=4)).isoformat()
+    hidden_item = client.patch(
+        f"/api/v1/items/{active_item['id']}",
+        json={"hidden_until": hidden_until},
+        headers=headers,
+    ).json()
+    assert hidden_item["hidden_until"] is not None
+
+    hidden_window = client.get(
+        f"/api/v1/lists/{grocery_list['id']}/items/window", headers=headers
+    ).json()
+    hidden_window_item = next(
+        item for item in hidden_window["items"] if item["id"] == active_item["id"]
+    )
+    assert hidden_window_item["hidden_until"] is not None
+    all_items = client.get(f"/api/v1/lists/{grocery_list['id']}/items", headers=headers).json()
+    assert active_item["id"] in {item["id"] for item in all_items}
+
+    checked_hidden = client.post(f"/api/v1/items/{active_item['id']}/check", headers=headers).json()
+    assert checked_hidden["checked"] is True
+    assert checked_hidden["hidden_until"] is None
+    unchecked_hidden = client.post(
+        f"/api/v1/items/{active_item['id']}/uncheck", headers=headers
+    ).json()
+    assert unchecked_hidden["checked"] is False
+    assert unchecked_hidden["hidden_until"] is None
+
+    hidden_again = client.patch(
+        f"/api/v1/items/{active_item['id']}",
+        json={"hidden_until": hidden_until},
+        headers=headers,
+    ).json()
+    assert hidden_again["hidden_until"] is not None
+    visible_again = client.patch(
+        f"/api/v1/items/{active_item['id']}",
+        json={"hidden_until": None},
+        headers=headers,
+    ).json()
+    assert visible_again["hidden_until"] is None
+    visible_window = client.get(
+        f"/api/v1/lists/{grocery_list['id']}/items/window", headers=headers
+    ).json()
+    assert active_item["id"] in {item["id"] for item in visible_window["items"]}
+
 
 def test_lists_include_open_item_count(client) -> None:
     headers = _auth_headers(client, f"{uuid4()}@example.com")
