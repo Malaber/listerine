@@ -615,7 +615,9 @@ function renderPasskeys(root, passkeys) {
   }
 
   container.innerHTML = "";
-  emptyState.hidden = passkeys.length > 0;
+  const hasPasskeys = passkeys.length > 0;
+  emptyState.hidden = hasPasskeys;
+  emptyState.style.display = hasPasskeys ? "none" : "";
 
   passkeys.forEach((passkey, index) => {
     const row = document.createElement("article");

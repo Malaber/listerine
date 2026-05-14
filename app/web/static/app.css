@@ -442,6 +442,10 @@ main {
   background: var(--surface-strong);
 }
 
+.dashboard-empty[hidden] {
+  display: none;
+}
+
 .dashboard-household-list {
   display: grid;
   gap: 1rem;
