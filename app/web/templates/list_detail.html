@@ -161,18 +161,36 @@
           <p class="dashboard-label">{{ t("list_detail.edit_item") }}</p>
           <h2 data-item-edit-title>{{ t("list_detail.edit_item") }}</h2>
         </div>
-        <button class="add-item-close" type="button" aria-label="{{ t("list_detail.close_item_editor") }}" data-item-edit-close>
-          &times;
-        </button>
+        <div class="item-edit-header-actions" data-item-edit-header-actions>
+          <div class="item-edit-history-actions" role="group" aria-label="{{ t("list_detail.edit_history_actions") }}">
+            <button
+              type="button"
+              class="item-edit-history-button"
+              data-item-edit-undo
+              aria-label="{{ t("list_detail.undo_item_edit") }}"
+              disabled
+            >
+              ←
+            </button>
+            <button
+              type="button"
+              class="item-edit-history-button"
+              data-item-edit-redo
+              aria-label="{{ t("list_detail.redo_item_edit") }}"
+              disabled
+            >
+              →
+            </button>
+          </div>
+          <button class="add-item-close" type="button" aria-label="{{ t("list_detail.close_item_editor") }}" data-item-edit-close>
+            &times;
+          </button>
+        </div>
       </div>
       <form class="dashboard-form" data-item-edit-form>
         <label class="dashboard-field">
           <span>{{ t("list_detail.item_name") }}</span>
           <input type="text" name="name" maxlength="255" required />
-        </label>
-        <label class="dashboard-field" data-item-edit-list-field hidden>
-          <span>{{ t("list_detail.move_to_list") }}</span>
-          <select name="list_id" data-item-edit-list-select></select>
         </label>
         <fieldset class="dashboard-field category-radio-group">
           <legend>{{ t("list_detail.category") }}</legend>
@@ -193,8 +211,15 @@
           <span>{{ t("list_detail.note") }}</span>
           <input type="text" name="note" />
         </label>
+        <label class="dashboard-field" data-item-edit-list-field hidden>
+          <span>{{ t("list_detail.move_to_list") }}</span>
+          <select name="list_id" data-item-edit-list-select></select>
+        </label>
+        <div class="item-edit-live-status" data-item-edit-status hidden>
+          <span class="item-edit-live-spinner" data-item-edit-spinner aria-hidden="true"></span>
+          <span data-item-edit-status-text></span>
+        </div>
         <div class="item-edit-actions">
-          <button type="submit">{{ t("common.save_changes") }}</button>
           <button type="button" class="danger-button" data-item-edit-delete>{{ t("common.delete") }}</button>
         </div>
       </form>

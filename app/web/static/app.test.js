@@ -34,6 +34,15 @@ import {
   setDemoItemChecked,
   setLanguageSettingsOpen,
   setListSyncStatus,
+  itemEditHistoryStorageKey,
+  readItemEditFormPayload,
+  setItemEditPanelOpen,
+  scheduleItemEditSave,
+  flushItemEditSave,
+  closeItemEditPanel,
+  undoItemEdit,
+  redoItemEdit,
+  moveEditingItemToList,
   storeLanguagePreference,
   syncLanguageSettings,
   updateDemoItem,
@@ -56,7 +65,6 @@ import {
   moveItemWithOfflineFallback,
   setItemCheckedWithOfflineFallback,
   syncItemMoveSelect,
-  setItemEditPanelOpen,
   applyOfflineSyncResult,
   flushOfflineMutations,
   restoreHiddenItem,
@@ -73,6 +81,7 @@ function setGlobalProperty(name, value) {
 }
 
 function setDomGlobals(dom) {
+  setGlobalProperty("FormData", dom.window.FormData);
   setGlobalProperty("HTMLElement", dom.window.HTMLElement);
   setGlobalProperty("HTMLFormElement", dom.window.HTMLFormElement);
   setGlobalProperty("HTMLInputElement", dom.window.HTMLInputElement);
@@ -80,6 +89,7 @@ function setDomGlobals(dom) {
 }
 
 function restoreDomGlobals(originals) {
+  setGlobalProperty("FormData", originals.FormData);
   setGlobalProperty("HTMLElement", originals.HTMLElement);
   setGlobalProperty("HTMLFormElement", originals.HTMLFormElement);
   setGlobalProperty("HTMLInputElement", originals.HTMLInputElement);
@@ -331,6 +341,48 @@ function createListRoot() {
   };
 }
 
+function createEditListRoot() {
+  const dom = new JSDOM(`
+    <section data-list-detail data-list-id="list-1">
+      <h1 data-list-title>Weekly</h1>
+      <div data-list-error hidden></div>
+      <div data-list-success hidden></div>
+      <p data-list-sync-status></p>
+      <input data-item-category-search value="" />
+      <input data-item-edit-category-search value="" />
+      <div data-item-suggestions-slot><div data-item-suggestions></div></div>
+      <div data-item-category-radios></div>
+      <div data-item-edit-category-radios></div>
+      <div data-item-empty></div>
+      <div data-item-list></div>
+      <div data-item-edit-overlay hidden>
+        <section data-item-edit-panel hidden>
+          <h2 data-item-edit-title></h2>
+          <form data-item-edit-form>
+            <input type="text" name="name" />
+            <input type="text" name="quantity_text" />
+            <input type="text" name="note" />
+            <label data-item-edit-list-field hidden>
+              <select name="list_id" data-item-edit-list-select></select>
+            </label>
+            <div data-item-edit-status hidden>
+              <span data-item-edit-spinner></span>
+              <span data-item-edit-status-text></span>
+            </div>
+            <button type="button" data-item-edit-undo disabled>Undo</button>
+            <button type="button" data-item-edit-redo disabled>Redo</button>
+          </form>
+        </section>
+      </div>
+    </section>
+  `, { url: "https://example.test/lists/list-1" });
+  return {
+    document: dom.window.document,
+    root: dom.window.document.querySelector("[data-list-detail]"),
+    window: dom.window,
+  };
+}
+
 function createQuickAddRoot() {
   const dom = new JSDOM(`
     <!doctype html>
@@ -415,10 +467,10 @@ function createEditRoot() {
           <input name="quantity_text" />
           <input name="note" />
           <input data-item-edit-category-search value="" />
+          <div data-item-edit-category-radios></div>
           <label data-item-edit-list-field hidden>
             <select name="list_id" data-item-edit-list-select></select>
           </label>
-          <div data-item-edit-category-radios></div>
         </form>
       </section>
       <input data-item-category-search value="" />
@@ -511,6 +563,12 @@ function createState(items) {
     editingItemId: null,
     highlightedItemId: null,
     highlightTimers: new Map(),
+    itemEditHistory: new Map(),
+    itemEditLastSavedPayload: null,
+    itemEditNeedsSave: false,
+    itemEditRedoHistory: new Map(),
+    itemEditSaveInFlight: null,
+    itemEditSaveTimerId: null,
     items: new Map(items.map((item) => [item.id, item])),
     lists: [{ id: "list-1", name: "Weekly" }],
     offlineSyncInFlight: null,
@@ -819,6 +877,7 @@ test("item editor renders move-to-list choices", () => {
     const field = root.querySelector("[data-item-edit-list-field]");
     const select = root.querySelector("[data-item-edit-list-select]");
     assert.equal(field.hidden, false);
+    assert.equal(field.previousElementSibling?.dataset.itemEditCategoryRadios, "");
     assert.deepEqual([...select.options].map((option) => option.textContent), ["Weekly", "Errands"]);
     assert.equal(select.value, "list-2");
 
@@ -839,7 +898,9 @@ test("item editor renders move-to-list choices", () => {
 test("offline list cache helpers persist local state and merge sync results", () => {
   const { document, root, window } = createListRoot();
   const originals = {
+    FormData: globalThis.FormData,
     HTMLElement: globalThis.HTMLElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
     HTMLInputElement: globalThis.HTMLInputElement,
     document: globalThis.document,
     window: globalThis.window,
@@ -941,7 +1002,9 @@ test("offline list cache helpers persist local state and merge sync results", ()
 test("offline item mutations save locally when browser or request is offline", async () => {
   const { document, root, window } = createListRoot();
   const originals = {
+    FormData: globalThis.FormData,
     HTMLElement: globalThis.HTMLElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
     HTMLInputElement: globalThis.HTMLInputElement,
     document: globalThis.document,
     fetch: globalThis.fetch,
@@ -1001,7 +1064,9 @@ test("offline item mutations save locally when browser or request is offline", a
 test("offline item helpers use network while online and fall back on fetch TypeError", async () => {
   const { root, window } = createListRoot();
   const originals = {
+    FormData: globalThis.FormData,
     HTMLElement: globalThis.HTMLElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
     HTMLInputElement: globalThis.HTMLInputElement,
     document: globalThis.document,
     fetch: globalThis.fetch,
@@ -1137,6 +1202,253 @@ test("offline item helpers use network while online and fall back on fetch TypeE
   }
 });
 
+test("live item editing debounces saves, flushes before close, and undoes local history", async () => {
+  const { document, root, window } = createEditListRoot();
+  const originals = {
+    FormData: globalThis.FormData,
+    HTMLElement: globalThis.HTMLElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    document: globalThis.document,
+    fetch: globalThis.fetch,
+    navigator: globalThis.navigator,
+    window: globalThis.window,
+  };
+  const state = createState([
+    {
+      id: "item-1",
+      list_id: "list-1",
+      name: "Milk",
+      checked: false,
+      checked_at: null,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+      sort_order: 0,
+    },
+  ]);
+  const calls = [];
+
+  setDomGlobals({ window });
+  setGlobalProperty("document", document);
+  setGlobalProperty("window", window);
+  setGlobalProperty("navigator", { onLine: true });
+  setGlobalProperty("fetch", async (url, options) => {
+    const payload = JSON.parse(options.body);
+    calls.push({ url, method: options.method, payload });
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ...state.items.get("item-1"),
+        ...payload,
+      }),
+    };
+  });
+
+  try {
+    setItemEditPanelOpen(root, state, "item-1");
+    const form = document.querySelector("[data-item-edit-form]");
+    const undoButton = document.querySelector("[data-item-edit-undo]");
+    const redoButton = document.querySelector("[data-item-edit-redo]");
+    assert.equal(readItemEditFormPayload(root).name, "Milk");
+    assert.equal(undoButton.disabled, true);
+    assert.equal(redoButton.disabled, true);
+
+    form.elements.namedItem("note").value = "organic";
+    scheduleItemEditSave(root, state, 20);
+    form.elements.namedItem("note").value = "organic whole milk";
+    scheduleItemEditSave(root, state, 20);
+    assert.equal(calls.length, 0);
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
+
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0], {
+      url: "/api/v1/items/item-1",
+      method: "PATCH",
+      payload: {
+        name: "Milk",
+        quantity_text: null,
+        note: "organic whole milk",
+        category_id: null,
+      },
+    });
+    assert.equal(document.querySelector("[data-item-edit-status-text]").textContent, "Saved.");
+    assert.equal(window.localStorage.getItem(itemEditHistoryStorageKey("list-1")).includes("Milk"), true);
+
+    form.elements.namedItem("quantity_text").value = "wrong amount";
+    assert.equal(await undoItemEdit(root, state), true);
+    assert.equal(calls.length, 1);
+    assert.equal(form.elements.namedItem("quantity_text").value, "");
+    assert.equal(redoButton.disabled, false);
+
+    form.elements.namedItem("quantity_text").value = "2 cartons";
+    assert.equal(await closeItemEditPanel(root, state), true);
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1].payload.quantity_text, "2 cartons");
+    assert.equal(document.querySelector("[data-item-edit-overlay]").hidden, true);
+
+    setItemEditPanelOpen(root, state, "item-1");
+    assert.equal(form.elements.namedItem("quantity_text").value, "2 cartons");
+    assert.equal(undoButton.disabled, false);
+    assert.equal(await undoItemEdit(root, state), true);
+    assert.equal(calls.length, 3);
+    assert.equal(calls[2].payload.quantity_text, null);
+    assert.equal(form.elements.namedItem("quantity_text").value, "");
+    assert.equal(document.querySelector("[data-list-success]").textContent, "Edit undone.");
+    assert.equal(redoButton.disabled, false);
+
+    assert.equal(await redoItemEdit(root, state), true);
+    assert.equal(calls.length, 4);
+    assert.equal(calls[3].payload.quantity_text, "2 cartons");
+    assert.equal(form.elements.namedItem("quantity_text").value, "2 cartons");
+    assert.equal(document.querySelector("[data-list-success]").textContent, "Edit redone.");
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("fetch", originals.fetch);
+    setGlobalProperty("navigator", originals.navigator);
+    setGlobalProperty("window", originals.window);
+  }
+});
+
+test("live item editing moves to another list from the autosave dialog", async () => {
+  const { document, root, window } = createEditListRoot();
+  const originals = {
+    FormData: globalThis.FormData,
+    HTMLElement: globalThis.HTMLElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    HTMLSelectElement: globalThis.HTMLSelectElement,
+    document: globalThis.document,
+    fetch: globalThis.fetch,
+    navigator: globalThis.navigator,
+    window: globalThis.window,
+  };
+  const state = createState([
+    {
+      id: "item-1",
+      list_id: "list-1",
+      name: "Milk",
+      checked: false,
+      checked_at: null,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+      sort_order: 0,
+    },
+  ]);
+  state.lists = [
+    { id: "list-1", name: "Weekly" },
+    { id: "list-2", name: "Errands" },
+  ];
+  const calls = [];
+
+  setDomGlobals({ window });
+  setGlobalProperty("document", document);
+  setGlobalProperty("window", window);
+  setGlobalProperty("navigator", { onLine: true });
+  setGlobalProperty("fetch", async (url, options) => {
+    const payload = JSON.parse(options.body);
+    calls.push({ url, method: options.method, payload });
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ...state.items.get("item-1"),
+        ...payload,
+      }),
+    };
+  });
+
+  try {
+    setItemEditPanelOpen(root, state, "item-1");
+    const form = document.querySelector("[data-item-edit-form]");
+    form.elements.namedItem("note").value = "organic";
+
+    assert.equal(await moveEditingItemToList(root, state, "list-2"), true);
+
+    assert.deepEqual(calls, [
+      {
+        url: "/api/v1/items/item-1",
+        method: "PATCH",
+        payload: {
+          name: "Milk",
+          quantity_text: null,
+          note: "organic",
+          category_id: null,
+          list_id: "list-2",
+        },
+      },
+    ]);
+    assert.equal(state.items.has("item-1"), false);
+    assert.equal(document.querySelector("[data-item-edit-overlay]").hidden, true);
+    assert.equal(document.querySelector("[data-list-success]").textContent, "Item moved to another list.Go to list");
+    assert.equal(document.querySelector("[data-list-success] a").getAttribute("href"), "/lists/list-2");
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("fetch", originals.fetch);
+    setGlobalProperty("navigator", originals.navigator);
+    setGlobalProperty("window", originals.window);
+  }
+});
+
+test("live item editing keeps the modal open when close-triggered save fails", async () => {
+  const { document, root, window } = createEditListRoot();
+  const originals = {
+    FormData: globalThis.FormData,
+    HTMLElement: globalThis.HTMLElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    document: globalThis.document,
+    fetch: globalThis.fetch,
+    navigator: globalThis.navigator,
+    window: globalThis.window,
+  };
+  const state = createState([
+    {
+      id: "item-1",
+      list_id: "list-1",
+      name: "Milk",
+      checked: false,
+      checked_at: null,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+      sort_order: 0,
+    },
+  ]);
+
+  setDomGlobals({ window });
+  setGlobalProperty("document", document);
+  setGlobalProperty("window", window);
+  setGlobalProperty("navigator", { onLine: true });
+  setGlobalProperty("fetch", async () => ({
+    ok: false,
+    status: 500,
+    json: async () => ({ detail: "Server rejected edit." }),
+  }));
+
+  try {
+    setItemEditPanelOpen(root, state, "item-1");
+    const form = document.querySelector("[data-item-edit-form]");
+    form.elements.namedItem("note").value = "will fail";
+
+    assert.equal(await closeItemEditPanel(root, state), false);
+    assert.equal(document.querySelector("[data-item-edit-overlay]").hidden, false);
+    assert.equal(document.querySelector("[data-item-edit-status-text]").textContent, "Server rejected edit.");
+    assert.equal(document.querySelector("[data-list-error]").textContent, "Server rejected edit.");
+    assert.equal(state.items.get("item-1").note, null);
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("fetch", originals.fetch);
+    setGlobalProperty("navigator", originals.navigator);
+    setGlobalProperty("window", originals.window);
+  }
+});
+
 test("hideItemForLater hides for four hours and restoreHiddenItem clears it", async () => {
   const { document, root, window } = createListRoot();
   const originals = {
@@ -1203,7 +1515,9 @@ test("hideItemForLater hides for four hours and restoreHiddenItem clears it", as
 test("flushOfflineMutations clears applied mutations and reports sync failures", async () => {
   const { document, root, window } = createListRoot();
   const originals = {
+    FormData: globalThis.FormData,
     HTMLElement: globalThis.HTMLElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
     HTMLInputElement: globalThis.HTMLInputElement,
     document: globalThis.document,
     fetch: globalThis.fetch,
@@ -1494,7 +1808,9 @@ test("renderItemSuggestions keeps surviving matches mounted when narrowed", () =
 test("demo list helpers reuse the real list page with local data", async () => {
   const { document, payload, root, window } = createDemoListRoot();
   const originals = {
+    FormData: globalThis.FormData,
     HTMLElement: globalThis.HTMLElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
     HTMLInputElement: globalThis.HTMLInputElement,
     HTMLSelectElement: globalThis.HTMLSelectElement,
     document: globalThis.document,
