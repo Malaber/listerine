@@ -170,6 +170,10 @@
           <span>{{ t("list_detail.item_name") }}</span>
           <input type="text" name="name" maxlength="255" required />
         </label>
+        <label class="dashboard-field" data-item-edit-list-field hidden>
+          <span>{{ t("list_detail.move_to_list") }}</span>
+          <select name="list_id" data-item-edit-list-select></select>
+        </label>
         <fieldset class="dashboard-field category-radio-group">
           <legend>{{ t("list_detail.category") }}</legend>
           <input

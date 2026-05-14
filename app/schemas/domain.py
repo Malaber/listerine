@@ -71,6 +71,7 @@ class GroceryItemCreate(BaseModel):
 
 class GroceryItemUpdate(BaseModel):
     name: str | None = None
+    list_id: UUID | None = None
     quantity_text: str | None = None
     note: str | None = None
     category_id: UUID | None = None

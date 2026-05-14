@@ -44,7 +44,10 @@ import {
   applyLocalCheckedState,
   createItemWithOfflineFallback,
   updateItemWithOfflineFallback,
+  moveItemWithOfflineFallback,
   setItemCheckedWithOfflineFallback,
+  syncItemMoveSelect,
+  setItemEditPanelOpen,
   applyOfflineSyncResult,
   flushOfflineMutations,
 } from "./app.js";
@@ -59,12 +62,14 @@ function setGlobalProperty(name, value) {
 
 function setDomGlobals(dom) {
   setGlobalProperty("HTMLElement", dom.window.HTMLElement);
+  setGlobalProperty("HTMLFormElement", dom.window.HTMLFormElement);
   setGlobalProperty("HTMLInputElement", dom.window.HTMLInputElement);
   setGlobalProperty("HTMLSelectElement", dom.window.HTMLSelectElement);
 }
 
 function restoreDomGlobals(originals) {
   setGlobalProperty("HTMLElement", originals.HTMLElement);
+  setGlobalProperty("HTMLFormElement", originals.HTMLFormElement);
   setGlobalProperty("HTMLInputElement", originals.HTMLInputElement);
   setGlobalProperty("HTMLSelectElement", originals.HTMLSelectElement);
 }
@@ -143,6 +148,7 @@ function createListRoot() {
       <p data-list-sync-status></p>
       <input data-item-category-search value="" />
       <input data-item-edit-category-search value="" />
+      <label data-item-edit-list-field hidden><select name="list_id" data-item-edit-list-select></select></label>
       <div data-item-suggestions-slot><div data-item-suggestions></div></div>
       <div data-item-category-radios></div>
       <div data-item-edit-category-radios></div>
@@ -164,6 +170,37 @@ function createSuggestionRoot() {
       <div data-item-suggestions-slot>
         <div data-item-suggestions></div>
       </div>
+    </section>
+  `);
+  return {
+    document: dom.window.document,
+    root: dom.window.document.querySelector("[data-list-detail]"),
+    window: dom.window,
+  };
+}
+
+function createEditRoot() {
+  const dom = new JSDOM(`
+    <section data-list-detail data-list-id="list-1">
+      <div data-item-panel-overlay hidden></div>
+      <div data-item-panel hidden></div>
+      <button data-item-form-toggle></button>
+      <div data-item-edit-overlay hidden></div>
+      <section data-item-edit-panel hidden>
+        <h2 data-item-edit-title></h2>
+        <form data-item-edit-form>
+          <input name="name" />
+          <input name="quantity_text" />
+          <input name="note" />
+          <input data-item-edit-category-search value="" />
+          <label data-item-edit-list-field hidden>
+            <select name="list_id" data-item-edit-list-select></select>
+          </label>
+          <div data-item-edit-category-radios></div>
+        </form>
+      </section>
+      <input data-item-category-search value="" />
+      <div data-item-category-radios></div>
     </section>
   `);
   return {
@@ -226,6 +263,7 @@ function createDemoListRoot() {
           <input data-item-name-input value="" />
           <input data-item-category-search value="" />
           <input data-item-edit-category-search value="" />
+          <label data-item-edit-list-field hidden><select name="list_id" data-item-edit-list-select></select></label>
           <div data-item-suggestions-slot><div data-item-suggestions></div></div>
           <div data-item-category-radios></div>
           <div data-item-edit-category-radios></div>
@@ -252,6 +290,7 @@ function createState(items) {
     highlightedItemId: null,
     highlightTimers: new Map(),
     items: new Map(items.map((item) => [item.id, item])),
+    lists: [{ id: "list-1", name: "Weekly" }],
     offlineSyncInFlight: null,
     pendingMutations: [],
   };
@@ -340,6 +379,60 @@ test("loadMoreCheckedItems fetches one hundred older checked items per page", as
   assert.equal(document.querySelector(".item-category-header .item-category-meta").textContent, "120 items");
   assert.equal(document.querySelector(".checked-items-load-more button").textContent, "Load 10 more");
   assert.equal(document.querySelector(".checked-items-load-more .item-category-meta").textContent, "10 older items not loaded");
+});
+
+test("item editor renders move-to-list choices", () => {
+  const { document, root, window } = createEditRoot();
+  const originals = {
+    HTMLElement: globalThis.HTMLElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    HTMLSelectElement: globalThis.HTMLSelectElement,
+    document: globalThis.document,
+    window: globalThis.window,
+  };
+  const state = createState([
+    {
+      id: "item-1",
+      list_id: "list-1",
+      name: "Milk",
+      checked: false,
+      checked_at: null,
+      category_id: null,
+      note: "organic",
+      quantity_text: "1",
+      sort_order: 0,
+    },
+  ]);
+  state.lists = [
+    { id: "list-1", name: "Weekly" },
+    { id: "list-2", name: "Errands" },
+  ];
+
+  setDomGlobals({ window });
+  setGlobalProperty("document", document);
+  setGlobalProperty("window", window);
+
+  try {
+    syncItemMoveSelect(root, state, "list-2");
+    const field = root.querySelector("[data-item-edit-list-field]");
+    const select = root.querySelector("[data-item-edit-list-select]");
+    assert.equal(field.hidden, false);
+    assert.deepEqual([...select.options].map((option) => option.textContent), ["Weekly", "Errands"]);
+    assert.equal(select.value, "list-2");
+
+    setItemEditPanelOpen(root, state, "item-1");
+    assert.equal(root.querySelector("[data-item-edit-title]").textContent, "Milk");
+    assert.equal(select.value, "list-1");
+
+    state.lists = [{ id: "list-1", name: "Weekly" }];
+    syncItemMoveSelect(root, state, "list-1");
+    assert.equal(field.hidden, true);
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("window", originals.window);
+  }
 });
 
 test("offline list cache helpers persist local state and merge sync results", () => {
@@ -553,6 +646,17 @@ test("offline item helpers use network while online and fall back on fetch TypeE
       };
     }
     if (url === "/api/v1/items/item-1" && options?.method === "PATCH") {
+      const body = JSON.parse(options.body);
+      if (body.list_id === "list-2") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ...state.items.get("item-1"),
+            ...body,
+          }),
+        };
+      }
       return {
         ok: true,
         status: 200,
@@ -579,10 +683,31 @@ test("offline item helpers use network while online and fall back on fetch TypeE
     assert.equal(updated.note, "organic");
     assert.deepEqual(calls[1], ["/api/v1/items/item-1", "PATCH"]);
 
+    const moved = await moveItemWithOfflineFallback(root, state, "item-1", {
+      name: "Milk",
+      list_id: "list-2",
+      quantity_text: null,
+      note: null,
+      category_id: null,
+    });
+    assert.equal(moved.list_id, "list-2");
+    assert.deepEqual(calls[2], ["/api/v1/items/item-1", "PATCH"]);
+
     const checked = await setItemCheckedWithOfflineFallback(root, state, "item-1", true);
     assert.equal(checked.id, "item-1");
     assert.equal(checked.checked, true);
     assert.equal(state.pendingMutations[0].type, "set_checked");
+
+    await assert.rejects(
+      () => moveItemWithOfflineFallback(root, state, "item-1", {
+        name: "Milk",
+        list_id: "list-2",
+        quantity_text: null,
+        note: null,
+        category_id: null,
+      }),
+      /Move items while online/,
+    );
 
     state.pendingMutations = [];
     setGlobalProperty("fetch", async () => ({
@@ -803,6 +928,8 @@ test("demo list helpers reuse the real list page with local data", async () => {
     assert.equal(updatedItem.note, "Big box");
     const updatedViaFallback = await updateItemWithOfflineFallback(root, state, "demo-item-3", { note: "Fallback box" });
     assert.equal(updatedViaFallback.note, "Fallback box");
+    const movedViaFallback = await moveItemWithOfflineFallback(root, state, "demo-item-3", { list_id: "demo-list" });
+    assert.equal(movedViaFallback.list_id, "demo-list");
 
     const checkedItem = setDemoItemChecked(state, "demo-item-1", true);
     assert.equal(checkedItem.checked, true);

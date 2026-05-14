@@ -210,16 +210,30 @@ async def update_item(
 ) -> GroceryItem:
     result = await db.execute(select(GroceryItem).where(GroceryItem.id == item_id))
     item = result.scalar_one()
-    await get_list_for_user(db, item.list_id, user.id)
+    source_list = await get_list_for_user(db, item.list_id, user.id)
+    target_list = source_list
+    is_moving_lists = payload.list_id is not None and payload.list_id != item.list_id
+    if is_moving_lists:
+        target_list = await get_list_for_user(db, payload.list_id, user.id)
+        if target_list.household_id != source_list.household_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Items can only move between lists in the same household.",
+            )
     await _validate_category_id(
         db, payload.category_id if "category_id" in payload.model_fields_set else None
     )
-    for key, value in payload.model_dump(exclude_unset=True).items():
+    for key, value in payload.model_dump(exclude_unset=True, exclude={"list_id"}).items():
         setattr(item, key, value)
+    item.list_id = target_list.id
     item.updated_by = user.id
     await db.commit()
     await db.refresh(item)
-    await _broadcast("item_updated", user.id, item)
+    if is_moving_lists:
+        await _broadcast_deleted(source_list.id, user.id, item.id)
+        await _broadcast("item_created", user.id, item)
+    else:
+        await _broadcast("item_updated", user.id, item)
     return item
 
 

@@ -1290,6 +1290,7 @@ function persistOfflineListState(root, state) {
     JSON.stringify({
       title: listTitleText(root),
       items: [...state.items.values()],
+      lists: state.lists || [],
       checkedRemainingCount: state.checkedRemainingCount || 0,
       categories: [...state.categories.values()],
       categoryOrder: [...state.categoryOrder.entries()].map(([category_id, sort_order]) => ({
@@ -1308,6 +1309,7 @@ function applyOfflineListState(root, state, cachedState) {
   }
 
   state.categories = new Map((cachedState.categories || []).map((category) => [category.id, category]));
+  state.lists = cachedState.lists || [];
   state.categoryOrder = new Map(
     (cachedState.categoryOrder || []).map((entry) => [entry.category_id, entry.sort_order]),
   );
@@ -1778,6 +1780,7 @@ function getDemoPayload(root) {
 function cloneDemoItem(item) {
   return {
     id: item.id,
+    list_id: item.list_id || null,
     name: item.name,
     category_id: item.category_id || null,
     quantity_text: item.quantity_text || null,
@@ -1796,6 +1799,7 @@ function getNextDemoSortOrder(state) {
 function createDemoItem(state, payload) {
   const item = cloneDemoItem({
     id: `demo-item-${state.nextDemoId}`,
+    list_id: payload.list_id || null,
     name: payload.name,
     category_id: payload.category_id || null,
     quantity_text: payload.quantity_text || null,
@@ -1929,6 +1933,28 @@ async function updateItemWithOfflineFallback(root, state, itemId, payload) {
   }
 }
 
+async function moveItemWithOfflineFallback(root, state, itemId, payload) {
+  if (isDemoList(root)) {
+    return updateDemoItem(state, itemId, payload);
+  }
+
+  if (shouldQueueItemMutation(state, itemId) || isBrowserOffline()) {
+    throw new Error(
+      translate(
+        "list_detail.item_move_online_required",
+        {},
+        "Move items while online so both lists stay in sync.",
+      ),
+    );
+  }
+
+  return fetchJson(`/api/v1/items/${itemId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
 async function setItemCheckedWithOfflineFallback(root, state, itemId, checked) {
   if (isDemoList(root)) {
     return setDemoItemChecked(state, itemId, checked);
@@ -1980,6 +2006,22 @@ async function saveCategoryOrder(root, state) {
   state.categoryOrder = new Map(response.map((entry) => [entry.category_id, entry.sort_order]));
 }
 
+function syncItemMoveSelect(root, state, currentListId) {
+  const field = root.querySelector("[data-item-edit-list-field]");
+  const select = root.querySelector("[data-item-edit-list-select]");
+  const lists = state.lists || [];
+
+  field.hidden = lists.length <= 1;
+  select.innerHTML = "";
+  lists.forEach((list) => {
+    const option = document.createElement("option");
+    option.value = list.id;
+    option.textContent = list.name;
+    select.appendChild(option);
+  });
+  select.value = currentListId || root.dataset.listId || "";
+}
+
 function setItemEditPanelOpen(root, state, itemId) {
   const panel = root.querySelector("[data-item-edit-panel]");
   const overlay = root.querySelector("[data-item-edit-overlay]");
@@ -2024,6 +2066,7 @@ function setItemEditPanelOpen(root, state, itemId) {
   form.elements.namedItem("name").value = item.name;
   form.elements.namedItem("quantity_text").value = item.quantity_text || "";
   form.elements.namedItem("note").value = item.note || "";
+  syncItemMoveSelect(root, state, item.list_id || root.dataset.listId);
   const editSearch = root.querySelector("[data-item-edit-category-search]");
   if (editSearch instanceof HTMLInputElement) {
     editSearch.value = "";
@@ -2693,6 +2736,7 @@ async function loadListDetail(root, state) {
 
     state.demoPayload = payload;
     state.nextDemoId = items.length + 1;
+    state.lists = [{ id: payload.list.id, name: payload.list.name }];
     state.categories = new Map(categories.map((category) => [category.id, category]));
     state.categoryOrder = new Map(categoryOrder.map((entry) => [entry.category_id, entry.sort_order]));
     replaceItems(state, items.map(cloneDemoItem));
@@ -2707,13 +2751,15 @@ async function loadListDetail(root, state) {
   let itemWindow;
   let categories;
   let categoryOrder;
+  let lists;
 
   try {
-    [groceryList, itemWindow, categories, categoryOrder] = await Promise.all([
-      fetchJson(`/api/v1/lists/${listId}`),
+    groceryList = await fetchJson(`/api/v1/lists/${listId}`);
+    [itemWindow, categories, categoryOrder, lists] = await Promise.all([
       fetchJson(`/api/v1/lists/${listId}/items/window`),
       fetchJson(`/api/v1/lists/${listId}/categories`),
       fetchJson(`/api/v1/lists/${listId}/category-order`),
+      fetchJson(`/api/v1/households/${groceryList.household_id}/lists`),
     ]);
   } catch (error) {
     const cachedState = loadOfflineListState(listId);
@@ -2739,6 +2785,7 @@ async function loadListDetail(root, state) {
   }
 
   state.categories = new Map(categories.map((category) => [category.id, category]));
+  state.lists = lists;
   state.categoryOrder = new Map(
     categoryOrder.map((entry) => [entry.category_id, entry.sort_order])
   );
@@ -2864,6 +2911,7 @@ async function initListDetail() {
     highlightedItemId: null,
     highlightTimers: new Map(),
     items: new Map(),
+    lists: [],
     nextDemoId: 1,
     socket: null,
     undoAction: null,
@@ -3050,6 +3098,10 @@ async function initListDetail() {
     }
 
     const formData = new FormData(itemEditForm);
+    const existingItem = state.items.get(state.editingItemId);
+    const existingListId = existingItem?.list_id || listId;
+    const targetListId = String(formData.get("list_id") || existingListId).trim();
+    const isMovingItem = targetListId !== existingListId;
     const payload = {
       name: String(formData.get("name") || "").trim(),
       quantity_text: String(formData.get("quantity_text") || "").trim() || null,
@@ -3063,15 +3115,33 @@ async function initListDetail() {
     }
 
     try {
-      const updatedItem = await updateItemWithOfflineFallback(root, state, state.editingItemId, payload);
-      upsertItem(state, updatedItem);
+      const updatedItem = isMovingItem
+        ? await moveItemWithOfflineFallback(root, state, state.editingItemId, {
+            ...payload,
+            list_id: targetListId,
+          })
+        : await updateItemWithOfflineFallback(root, state, state.editingItemId, payload);
+      if (isMovingItem) {
+        removeItem(state, updatedItem.id);
+        setItemEditPanelOpen(root, state, null);
+      } else {
+        upsertItem(state, updatedItem);
+      }
       renderItems(root, state);
       persistOfflineListState(root, state);
-      setItemEditPanelOpen(root, state, updatedItem.id);
+      if (!isMovingItem) {
+        setItemEditPanelOpen(root, state, updatedItem.id);
+      }
       if (state.pendingMutations.length > 0) {
         showOfflineSavedMessage(root);
       } else {
-        setListMessage(root, "success", translate("list_detail.item_updated", {}, "Item updated."));
+        setListMessage(
+          root,
+          "success",
+          isMovingItem
+            ? translate("list_detail.item_moved", {}, "Item moved to another list.")
+            : translate("list_detail.item_updated", {}, "Item updated."),
+        );
       }
     } catch (error) {
       setListMessage(root, "error", error instanceof Error ? error.message : translate("list_detail.item_update_failed", {}, "Could not save item."));
@@ -3586,8 +3656,10 @@ export {
   applyLocalCheckedState,
   createItemWithOfflineFallback,
   updateItemWithOfflineFallback,
+  moveItemWithOfflineFallback,
   setItemCheckedWithOfflineFallback,
   saveCategoryOrder,
+  syncItemMoveSelect,
   setItemEditPanelOpen,
   renderCategoryOrderSettings,
   setListSettingsOpen,
