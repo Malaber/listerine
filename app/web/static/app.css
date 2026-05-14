@@ -936,9 +936,44 @@ main {
 
 .item-category-copy {
   min-width: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 0.45rem;
+}
+
+.item-category-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-self: end;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.item-category-quick-add {
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid rgba(195, 168, 143, 0.62);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--brand-navy);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 1.45rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 0;
+  box-shadow: 0 1px 4px rgba(76, 53, 36, 0.08);
+}
+
+.item-category-quick-add:hover {
+  background: var(--brand-aqua-soft);
+  border-color: var(--border-strong);
+}
+
+.item-category-quick-add:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .item-category-header h3,
