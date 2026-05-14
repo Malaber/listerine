@@ -189,8 +189,20 @@
           <span>{{ t("list_detail.note") }}</span>
           <input type="text" name="note" />
         </label>
+        <div class="item-edit-live-status" data-item-edit-status hidden>
+          <span class="item-edit-live-spinner" data-item-edit-spinner aria-hidden="true"></span>
+          <span data-item-edit-status-text></span>
+        </div>
         <div class="item-edit-actions">
-          <button type="submit">{{ t("common.save_changes") }}</button>
+          <button
+            type="button"
+            class="secondary-button item-edit-undo-button"
+            data-item-edit-undo
+            aria-label="{{ t("list_detail.undo_item_edit") }}"
+            disabled
+          >
+            {{ t("common.undo") }}
+          </button>
           <button type="button" class="danger-button" data-item-edit-delete>{{ t("common.delete") }}</button>
         </div>
       </form>

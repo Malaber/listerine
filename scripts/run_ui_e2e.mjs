@@ -1105,21 +1105,49 @@ async function main() {
       editForm.locator(".category-radio-option .category-radio-copy span"),
     );
     assert(!aliasTexts.some((text) => text.includes("Also found as")), "Alias helper text should stay hidden");
+    await expectHidden(
+      editForm.getByRole("button", { name: "Save changes" }),
+      "Edit modal should live-save without a save button",
+    );
     await editForm.locator(".category-radio-option", { hasText: "Backwaren" }).click();
     await editForm.locator('input[name="quantity_text"]').fill("4 loaves");
-    await editForm.locator('input[name="note"]').fill("for the weekend");
-    await editForm.getByRole("button", { name: "Save changes" }).click();
     await expectVisible(
-      page.locator("[data-list-success]", { hasText: "Item updated." }),
-      "Expected item update success before closing the edit modal",
+      editForm.locator("[data-item-edit-status]", { hasText: "Saved." }),
+      "Expected quantity edit to live-save after debounce",
     );
+    await editForm.locator('input[name="note"]').fill("for the weekend");
     await page.locator("[data-item-edit-panel] .add-item-close[data-item-edit-close]").click();
-    await expectHidden(page.locator("[data-item-edit-overlay]"), "Edit modal should close before opening settings");
+    await expectHidden(page.locator("[data-item-edit-overlay]"), "Immediate close should flush pending edit");
+    await expectVisible(
+      itemCard(page, "Tomaten").locator(".item-meta", { hasText: "for the weekend" }),
+      "Close-triggered save should keep note edit",
+    );
     await expectVisible(itemCard(page, "Tomaten"), "Updated item should remain visible");
     await expectVisible(
       itemCard(page, "Tomaten").locator(".item-meta", { hasText: "4 loaves" }),
       "Updated quantity should render",
     );
+    await itemCard(page, "Tomaten").click();
+    await expectVisible(
+      page.locator("[data-item-edit-panel]").getByRole("heading", { name: "Tomaten" }),
+      "Expected Tomaten edit modal before undoing a live edit",
+    );
+    await editForm.locator('input[name="quantity_text"]').fill("wrong amount");
+    await expectVisible(
+      editForm.locator("[data-item-edit-status]", { hasText: "Saved." }),
+      "Expected wrong quantity to live-save before undo",
+    );
+    await editForm.locator("[data-item-edit-undo]").click();
+    await page.waitForFunction(
+      () => document.querySelector('[data-item-edit-form] input[name="quantity_text"]')?.value === "4 loaves",
+      { timeout: 5000 },
+    );
+    await expectVisible(
+      itemCard(page, "Tomaten").locator(".item-meta", { hasText: "4 loaves" }),
+      "Undo should restore previous live-saved quantity",
+    );
+    await page.locator("[data-item-edit-panel] .add-item-close[data-item-edit-close]").click();
+    await expectHidden(page.locator("[data-item-edit-overlay]"), "Edit modal should close before opening settings");
 
     await page.getByRole("button", { name: "Open list settings" }).click();
     await expectVisible(page.getByRole("heading", { name: "Category order" }), "Expected settings modal");
