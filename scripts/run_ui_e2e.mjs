@@ -277,6 +277,14 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
 
   const originalPasskeys = await passkeysFromSession(context.request);
   assert.equal(originalPasskeys.length, 1, "Expected one seeded passkey before adding another");
+  await expectHidden(
+    page.locator("[data-passkey-empty]"),
+    "Expected passkey empty state to stay hidden when passkeys are rendered",
+  );
+  await expectVisible(
+    page.locator(".passkey-row").first(),
+    "Expected seeded passkey row in settings",
+  );
 
   const seededCredential = (await authenticatorCredentials(authenticator))[0];
   assert(seededCredential, "Expected seeded credential in the virtual authenticator");
@@ -970,6 +978,10 @@ async function main() {
     await editForm.locator('input[name="quantity_text"]').fill("4 loaves");
     await editForm.locator('input[name="note"]').fill("for the weekend");
     await editForm.getByRole("button", { name: "Save changes" }).click();
+    await expectVisible(
+      page.locator("[data-list-success]", { hasText: "Item updated." }),
+      "Expected item update success before closing the edit modal",
+    );
     await page.locator("[data-item-edit-panel] .add-item-close[data-item-edit-close]").click();
     await expectHidden(page.locator("[data-item-edit-overlay]"), "Edit modal should close before opening settings");
     await expectVisible(itemCard(page, "Tomaten"), "Updated item should remain visible");

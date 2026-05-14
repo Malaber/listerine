@@ -17,6 +17,7 @@ import {
   loadMoreCheckedItems,
   normalizeLanguagePreference,
   registerServiceWorker,
+  renderPasskeys,
   renderItems,
   renderItemSuggestions,
   restoreCheckedSuggestion,
@@ -568,6 +569,60 @@ test("date formatters use the stored language preference", () => {
     assert.equal(formatPasskeyDate(null), "Never used yet");
     assert.match(formatPasskeyDate("2026-04-06T12:30:00Z"), /06\.04\.2026|06\. Apr\. 2026/);
     assert.match(formatInviteExpiry("2026-04-06T12:30:00Z"), /06\.04\.2026|06\. Apr\. 2026/);
+  } finally {
+    setGlobalProperty("document", originalDocument);
+    setGlobalProperty("navigator", originalNavigator);
+    setGlobalProperty("window", originalWindow);
+  }
+});
+
+test("renderPasskeys only shows the empty state when no passkeys exist", () => {
+  const originalDocument = globalThis.document;
+  const originalNavigator = globalThis.navigator;
+  const originalWindow = globalThis.window;
+  const dom = new JSDOM(
+    `<!doctype html>
+    <html>
+      <body>
+        <section data-passkey-management>
+          <div class="dashboard-empty" data-passkey-empty hidden>
+            <h3>No passkeys loaded</h3>
+          </div>
+          <div data-passkey-list></div>
+        </section>
+      </body>
+    </html>`,
+    { url: "https://example.test/settings" },
+  );
+
+  setGlobalProperty("document", dom.window.document);
+  setGlobalProperty("navigator", { language: "en-US" });
+  setGlobalProperty("window", dom.window);
+
+  try {
+    const root = dom.window.document.querySelector("[data-passkey-management]");
+    const emptyState = root.querySelector("[data-passkey-empty]");
+    const list = root.querySelector("[data-passkey-list]");
+
+    renderPasskeys(root, [
+      {
+        id: "passkey-1",
+        name: "Bitwarden - Listerine",
+        created_at: "2026-03-18T18:09:00Z",
+        last_used_at: "2026-05-12T18:13:00Z",
+      },
+    ]);
+
+    assert.equal(emptyState.hidden, true);
+    assert.equal(emptyState.style.display, "none");
+    assert.equal(list.querySelectorAll(".passkey-row").length, 1);
+    assert.match(list.textContent, /Bitwarden - Listerine/);
+
+    renderPasskeys(root, []);
+
+    assert.equal(emptyState.hidden, false);
+    assert.equal(emptyState.style.display, "");
+    assert.equal(list.querySelectorAll(".passkey-row").length, 0);
   } finally {
     setGlobalProperty("document", originalDocument);
     setGlobalProperty("navigator", originalNavigator);
