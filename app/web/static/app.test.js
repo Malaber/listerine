@@ -17,6 +17,7 @@ import {
   loadMoreCheckedItems,
   normalizeLanguagePreference,
   registerServiceWorker,
+  renderCategoryOrderSettings,
   renderHouseholds,
   renderPasskeys,
   renderItems,
@@ -301,6 +302,7 @@ function createListRoot() {
       <div data-item-edit-category-radios></div>
       <div data-item-empty></div>
       <div data-item-list></div>
+      <div data-list-settings-category-list></div>
     </section>
   `, { url: "https://example.test/lists/list-1" });
   return {
@@ -343,8 +345,8 @@ function createDemoListRoot() {
   const demoPayload = {
     list: { id: "demo-list", name: "Saturday Groceries" },
     categories: [
-      { id: "produce", name: "Produce", color: "#8f7a62" },
-      { id: "pantry", name: "Pantry", color: "#8b6b4f" },
+      { id: "produce", name: "Produce", color: "#6bbf59" },
+      { id: "pantry", name: "Pantry", color: "#f59e0b" },
     ],
     category_order: [
       { category_id: "produce", sort_order: 0 },
@@ -496,6 +498,35 @@ test("renderItems uses brown fallback swatches for uncategorized and checked gro
   const swatches = document.querySelectorAll(".item-category-swatch");
   assert.match(swatches[0].getAttribute("style") || "", /217, 197, 179|#d9c5b3/);
   assert.match(swatches[1].getAttribute("style") || "", /181, 150, 118|#b59676/);
+});
+
+test("category swatches preserve configured colors in list and settings views", () => {
+  const { document, root } = createListRoot();
+  const activeItem = {
+    id: "active-item",
+    name: "Paprika",
+    checked: false,
+    checked_at: null,
+    category_id: "cat-1",
+    note: null,
+    quantity_text: null,
+    sort_order: 0,
+  };
+  const state = createState([activeItem]);
+  state.categories.set("cat-1", { id: "cat-1", name: "Gemuese", color: "#7ed957" });
+  state.categoryOrder.set("cat-1", 0);
+
+  renderItems(root, state);
+  renderCategoryOrderSettings(root, state);
+
+  const listSwatchStyle = document
+    .querySelector(".item-category-group .item-category-swatch")
+    .getAttribute("style") || "";
+  const settingsSwatchStyle = document
+    .querySelector(".settings-category-row .item-category-swatch")
+    .getAttribute("style") || "";
+  assert.match(listSwatchStyle, /126, 217, 87|#7ed957/);
+  assert.match(settingsSwatchStyle, /126, 217, 87|#7ed957/);
 });
 
 test("loadMoreCheckedItems fetches one hundred older checked items per page", async () => {
