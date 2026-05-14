@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 
 from app.api.deps import ensure_non_admin_user, get_current_user, get_list_for_user
 from app.core.database import get_db
-from app.models import GroceryItem, ListCategoryOrder
+from app.models import GroceryItem, ListCategoryOrder, ListDisabledCategory
 from app.schemas.domain import GroceryItemOut, ListCategoryOrderOut
 from app.services.websocket_hub import hub
 
@@ -68,6 +68,12 @@ async def ws_list(websocket: WebSocket, list_id: UUID) -> None:
             )
             for row in category_order_result.scalars()
         ]
+        disabled_category_result = await db.execute(
+            select(ListDisabledCategory)
+            .where(ListDisabledCategory.list_id == list_id)
+            .order_by(ListDisabledCategory.category_id.asc())
+        )
+        disabled_category_ids = [str(row.category_id) for row in disabled_category_result.scalars()]
         await websocket.send_json(
             {
                 "type": "list_snapshot",
@@ -78,6 +84,7 @@ async def ws_list(websocket: WebSocket, list_id: UUID) -> None:
                     "items": snapshot,
                     "checked_remaining_count": checked_remaining_count,
                     "category_order": category_order,
+                    "disabled_category_ids": disabled_category_ids,
                 },
             }
         )
