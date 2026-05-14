@@ -16,6 +16,7 @@ import {
   loadListDetail,
   loadMoreCheckedItems,
   normalizeLanguagePreference,
+  openItemPanelForCategory,
   registerServiceWorker,
   renderPasskeys,
   renderItems,
@@ -149,6 +150,47 @@ function createListRoot() {
       <div data-item-empty></div>
       <div data-item-list></div>
     </section>
+  `, { url: "https://example.test/lists/list-1" });
+  return {
+    document: dom.window.document,
+    root: dom.window.document.querySelector("[data-list-detail]"),
+    window: dom.window,
+  };
+}
+
+function createQuickAddRoot() {
+  const dom = new JSDOM(`
+    <!doctype html>
+    <html>
+      <body>
+        <section data-list-detail data-list-id="list-1">
+          <button type="button" data-item-form-toggle aria-expanded="false">Add</button>
+          <div data-list-error hidden></div>
+          <div data-list-success hidden></div>
+          <div data-item-panel-overlay hidden>
+            <section data-item-panel hidden>
+              <form data-item-form>
+                <input data-item-name-input name="name" value="" />
+                <input data-item-category-search value="produce" />
+                <div data-item-category-radios></div>
+                <input name="quantity_text" value="" />
+                <input name="note" value="" />
+              </form>
+            </section>
+          </div>
+          <div data-item-edit-overlay hidden></div>
+          <section data-item-edit-panel hidden></section>
+          <div data-list-settings-overlay hidden></div>
+          <section data-list-settings-panel hidden></section>
+          <input data-item-edit-category-search value="" />
+          <div data-item-edit-category-radios></div>
+          <div data-item-suggestions-slot><div data-item-suggestions></div></div>
+          <div data-item-empty></div>
+          <div data-item-list></div>
+          <div data-list-settings-category-list></div>
+        </section>
+      </body>
+    </html>
   `, { url: "https://example.test/lists/list-1" });
   return {
     document: dom.window.document,
@@ -308,6 +350,75 @@ test("renderItems uses brown fallback swatches for uncategorized and checked gro
   const swatches = document.querySelectorAll(".item-category-swatch");
   assert.match(swatches[0].getAttribute("style") || "", /217, 197, 179|#d9c5b3/);
   assert.match(swatches[1].getAttribute("style") || "", /181, 150, 118|#b59676/);
+});
+
+test("category quick add buttons open the add form with the category selected", () => {
+  const { document, root, window } = createQuickAddRoot();
+  const originals = {
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    HTMLSelectElement: globalThis.HTMLSelectElement,
+    document: globalThis.document,
+    window: globalThis.window,
+  };
+  const state = createState([
+    {
+      id: "active-item",
+      name: "Tomatoes",
+      checked: false,
+      checked_at: null,
+      category_id: "cat-1",
+      note: null,
+      quantity_text: null,
+      sort_order: 0,
+    },
+    {
+      id: "loose-item",
+      name: "Loose item",
+      checked: false,
+      checked_at: null,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+      sort_order: 1,
+    },
+    createCheckedItem(0),
+  ]);
+  state.categories.set("cat-1", { id: "cat-1", name: "Produce", color: "#22c55e" });
+  state.categoryOrder.set("cat-1", 0);
+  setDomGlobals({ window });
+  setGlobalProperty("document", document);
+  setGlobalProperty("window", window);
+
+  try {
+    renderItems(root, state);
+
+    const quickAddButtons = document.querySelectorAll(".item-category-quick-add");
+    const checkedHeader = [...document.querySelectorAll(".item-category-header")]
+      .find((header) => header.textContent.includes("Checked off"));
+    assert.equal(quickAddButtons.length, 2);
+    assert.equal(quickAddButtons[0].getAttribute("aria-label"), "Add uncategorized item");
+    assert.equal(quickAddButtons[1].getAttribute("aria-label"), "Add item to Produce");
+    assert.equal(checkedHeader.querySelector(".item-category-quick-add"), null);
+
+    openItemPanelForCategory(root, state, "cat-1");
+    assert.equal(document.querySelector("[data-item-panel-overlay]").hidden, false);
+    assert.equal(document.querySelector("[data-item-panel]").hidden, false);
+    assert.equal(document.querySelector("[data-item-form-toggle]").getAttribute("aria-expanded"), "true");
+    assert.equal(document.querySelector("[data-item-category-search]").value, "");
+    assert.equal(document.querySelector('input[name="category_id"]:checked').value, "cat-1");
+
+    openItemPanelForCategory(root, state, "missing-cat");
+    assert.equal(document.querySelector('input[name="category_id"]:checked').value, "");
+  } finally {
+    restoreDomGlobals({
+      HTMLElement: originals.HTMLElement,
+      HTMLInputElement: originals.HTMLInputElement,
+      HTMLSelectElement: originals.HTMLSelectElement,
+    });
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("window", originals.window);
+  }
 });
 
 test("loadMoreCheckedItems fetches one hundred older checked items per page", async () => {
