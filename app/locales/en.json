@@ -286,6 +286,10 @@
     "enable_category": "Enable {name}",
     "disabled_for_list": "Disabled for this list",
     "category_settings_saved": "Category settings saved.",
+    "category_order_saving": "Saving category order...",
+    "category_order_save_failed": "Could not save category order.",
+    "disable_category_confirm_title": "Disable {name}?",
+    "disable_category_confirm_action": "Disable category",
     "disable_category_confirm": {
       "one": "Disable {name}? 1 item in this category will lose its category.",
       "other": "Disable {name}? {count} items in this category will lose their category."

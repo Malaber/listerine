@@ -69,6 +69,13 @@ import {
   applyOfflineSyncResult,
   flushOfflineMutations,
   restoreHiddenItem,
+  applyCategoryReorder,
+  categoryDropPosition,
+  categoryInsertionIndex,
+  clearCategoryDropIndicators,
+  confirmCategoryDisable,
+  saveCategoryOrderInBackground,
+  setCategoryDropIndicator,
   transitionAuthPanels,
   setAuthTab,
 } from "./app.js";
@@ -83,12 +90,16 @@ function setGlobalProperty(name, value) {
 
 function setDomGlobals(dom) {
   setGlobalProperty("HTMLElement", dom.window.HTMLElement);
+  setGlobalProperty("HTMLButtonElement", dom.window.HTMLButtonElement);
+  setGlobalProperty("HTMLFormElement", dom.window.HTMLFormElement);
   setGlobalProperty("HTMLInputElement", dom.window.HTMLInputElement);
   setGlobalProperty("HTMLSelectElement", dom.window.HTMLSelectElement);
 }
 
 function restoreDomGlobals(originals) {
   setGlobalProperty("HTMLElement", originals.HTMLElement);
+  setGlobalProperty("HTMLButtonElement", originals.HTMLButtonElement);
+  setGlobalProperty("HTMLFormElement", originals.HTMLFormElement);
   setGlobalProperty("HTMLInputElement", originals.HTMLInputElement);
   setGlobalProperty("HTMLSelectElement", originals.HTMLSelectElement);
 }
@@ -1538,15 +1549,12 @@ test("demo list helpers reuse the real list page with local data", async () => {
 test("category disabling hides choices and unassigns local items", async () => {
   const { document, root, window } = createDemoListRoot();
   const originals = {
+    HTMLButtonElement: globalThis.HTMLButtonElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
     HTMLElement: globalThis.HTMLElement,
     HTMLInputElement: globalThis.HTMLInputElement,
     document: globalThis.document,
     window: globalThis.window,
-  };
-  const confirms = [];
-  window.confirm = (message) => {
-    confirms.push(message);
-    return true;
   };
 
   setDomGlobals({ window });
@@ -1579,17 +1587,26 @@ test("category disabling hides choices and unassigns local items", async () => {
     restoreItemCategoryIds(state, previousPantryCategories);
     assert.equal(itemCountForCategory(state, "pantry"), 1);
 
-    const didDisable = await setCategoryDisabled(root, state, "produce", true);
+    const didDisablePromise = setCategoryDisabled(root, state, "produce", true);
+    assert.equal(document.querySelector("[data-category-disable-confirm-overlay]").hidden, false);
+    assert.match(
+      document.querySelector("[data-category-disable-confirm-copy]").textContent,
+      /1 item in this category/
+    );
+    document.querySelector("[data-category-disable-confirm-confirm]").click();
+    const didDisable = await didDisablePromise;
     assert.equal(didDisable, true);
     assert.equal(isCategoryDisabled(state, "produce"), true);
     assert.deepEqual(getDisabledCategoryIds(state), ["produce"]);
     assert.equal(state.items.get("demo-item-1").category_id, null);
-    assert.match(confirms[0], /Disable Produce/);
+    assert.equal(document.querySelector("[data-category-disable-confirm-overlay]").hidden, true);
     assert.equal(document.querySelector(".settings-category-row.is-disabled strong").textContent, "Produce");
+    assert.equal(document.querySelector(".settings-category-grabber svg").getAttribute("viewBox"), "0 0 24 24");
     assert.equal(document.querySelector(".settings-category-toggle svg").getAttribute("viewBox"), "0 0 24 24");
-    document.querySelector(".settings-category-row").classList.add("is-dragging", "is-drag-over");
+    document.querySelector(".settings-category-row").classList.add("is-dragging", "is-drag-over", "is-drop-after");
     clearCategoryDragState(root);
     assert.equal(document.querySelector(".settings-category-row").classList.contains("is-dragging"), false);
+    assert.equal(document.querySelector(".settings-category-row").classList.contains("is-drop-after"), false);
     assert.equal(document.querySelectorAll("[data-item-category-radios] .category-radio-option").length, 2);
     assert.equal(document.querySelector("[data-item-category-radios]").textContent.includes("Produce"), false);
 
@@ -1599,8 +1616,9 @@ test("category disabling hides choices and unassigns local items", async () => {
     assert.equal(isCategoryDisabled(state, "produce"), false);
     assert.equal(await setCategoryDisabled(root, state, "produce", false), false);
     assert.equal(await setCategoryDisabled(root, state, "missing", true), false);
-    window.confirm = () => false;
-    assert.equal(await setCategoryDisabled(root, state, "pantry", true), false);
+    const didCancelPromise = setCategoryDisabled(root, state, "pantry", true);
+    document.querySelector("[data-category-disable-confirm-cancel]").click();
+    assert.equal(await didCancelPromise, false);
     assert.equal(isCategoryDisabled(state, "pantry"), false);
 
     setDisabledCategoryIds(state, ["pantry", "missing"]);
@@ -1612,16 +1630,231 @@ test("category disabling hides choices and unassigns local items", async () => {
   }
 });
 
-test("category disabling restores local state when save fails", async () => {
+test("category reorder helpers mark gaps and save the latest order in the background", async () => {
   const { document, root, window } = createListRoot();
   const originals = {
+    HTMLButtonElement: globalThis.HTMLButtonElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
     HTMLElement: globalThis.HTMLElement,
     HTMLInputElement: globalThis.HTMLInputElement,
     document: globalThis.document,
     fetch: globalThis.fetch,
     window: globalThis.window,
   };
-  window.confirm = () => true;
+
+  setDomGlobals({ window });
+  setGlobalProperty("document", document);
+  setGlobalProperty("window", window);
+
+  try {
+    const state = createState([]);
+    state.categories.set("produce", { id: "produce", name: "Produce", color: "#22c55e" });
+    state.categories.set("pantry", { id: "pantry", name: "Pantry", color: "#f59e0b" });
+    state.categories.set("dairy", { id: "dairy", name: "Dairy", color: "#f9fafb" });
+    setCategoryOrder(state, ["produce", "pantry"]);
+    renderCategoryOrderSettings(root, state);
+
+    const pantryRow = document.querySelector('.settings-category-row[data-category-id="pantry"]');
+    Object.defineProperty(pantryRow, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ top: 10, bottom: 30, height: 20, left: 0, right: 100, width: 100 }),
+    });
+    assert.equal(categoryDropPosition(pantryRow, 21), "after");
+    assert.equal(categoryDropPosition(pantryRow, 19), "before");
+    setCategoryDropIndicator(root, state, pantryRow, "before");
+    assert.equal(pantryRow.classList.contains("is-drop-before"), true);
+    assert.deepEqual(state.categoryDropTarget, { categoryId: "pantry", position: "before" });
+    clearCategoryDropIndicators(root);
+    assert.equal(pantryRow.classList.contains("is-drop-before"), false);
+    assert.equal(categoryInsertionIndex(["produce", "pantry", "dairy"], "produce", "dairy", "after"), 2);
+
+    const fetchCalls = [];
+    let resolveFirstFetch;
+    const responseFor = (categoryIds) => ({
+      ok: true,
+      status: 200,
+      json: async () => categoryIds.map((category_id, sort_order) => ({ category_id, sort_order })),
+    });
+    setGlobalProperty("fetch", async (_url, options) => {
+      const categoryIds = JSON.parse(options.body).category_ids;
+      fetchCalls.push(categoryIds);
+      if (fetchCalls.length === 1) {
+        return new Promise((resolve) => {
+          resolveFirstFetch = () => resolve(responseFor(categoryIds));
+        });
+      }
+      return responseFor(categoryIds);
+    });
+
+    assert.equal(applyCategoryReorder(root, state, "produce", "dairy", "after"), true);
+    assert.deepEqual(fetchCalls, [["pantry"]]);
+    assert.equal(document.querySelector("[data-category-order-status]").hidden, false);
+    assert.equal(applyCategoryReorder(root, state, "produce", "pantry", "before"), true);
+    assert.deepEqual(fetchCalls, [["pantry"]]);
+
+    const savingPromise = state.categoryOrderSaveQueue.promise;
+    resolveFirstFetch();
+    await savingPromise;
+    assert.deepEqual(fetchCalls, [["pantry"], ["produce", "pantry"]]);
+    assert.equal(document.querySelector("[data-category-order-status]").hidden, true);
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("fetch", originals.fetch);
+    setGlobalProperty("window", originals.window);
+  }
+});
+
+test("background category order save reports failures without blocking the list UI", async () => {
+  const { document, root, window } = createListRoot();
+  const originals = {
+    HTMLButtonElement: globalThis.HTMLButtonElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    document: globalThis.document,
+    fetch: globalThis.fetch,
+    window: globalThis.window,
+  };
+
+  setDomGlobals({ window });
+  setGlobalProperty("document", document);
+  setGlobalProperty("window", window);
+  setGlobalProperty("fetch", async () => {
+    throw new TypeError("offline");
+  });
+
+  try {
+    const state = createState([]);
+    state.categories.set("produce", { id: "produce", name: "Produce", color: "#22c55e" });
+    setCategoryOrder(state, ["produce"]);
+    await saveCategoryOrderInBackground(root, state);
+    const status = document.querySelector("[data-category-order-status]");
+    assert.equal(status.hidden, false);
+    assert.equal(status.classList.contains("is-error"), true);
+    assert.equal(document.querySelector("[data-list-error]").textContent, "offline");
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("fetch", originals.fetch);
+    setGlobalProperty("window", originals.window);
+  }
+});
+
+test("category reorder works with pointer and drag gestures", async () => {
+  const { document, root, window } = createDemoListRoot();
+  const originals = {
+    HTMLButtonElement: globalThis.HTMLButtonElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    document: globalThis.document,
+    window: globalThis.window,
+  };
+
+  const dispatchInput = (target, type, properties = {}) => {
+    const event = new window.Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperties(
+      event,
+      Object.fromEntries(
+        Object.entries(properties).map(([key, value]) => [
+          key,
+          { configurable: true, value },
+        ])
+      )
+    );
+    target.dispatchEvent(event);
+    return event;
+  };
+  const labels = () =>
+    [...document.querySelectorAll(".settings-category-row strong")].map((node) => node.textContent);
+  const setRowRect = (row, top = 10) => {
+    Object.defineProperty(row, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ top, bottom: top + 20, height: 20, left: 0, right: 100, width: 100 }),
+    });
+  };
+
+  setDomGlobals({ window });
+  setGlobalProperty("document", document);
+  setGlobalProperty("window", window);
+
+  try {
+    await loadListDetail(root, {
+      categoryOrder: new Map(),
+      categories: new Map(),
+      checkedRemainingCount: 0,
+      disabledCategoryIds: new Set(),
+      demoPayload: getDemoPayload(root),
+      editingItemId: null,
+      highlightedItemId: null,
+      highlightTimers: new Map(),
+      items: new Map(),
+      nextDemoId: 1,
+      socket: null,
+      undoAction: null,
+      undoTimerId: null,
+    });
+
+    let produceRow = document.querySelector('.settings-category-row[data-category-id="produce"]');
+    let pantryRow = document.querySelector('.settings-category-row[data-category-id="pantry"]');
+    setRowRect(pantryRow);
+    document.elementFromPoint = () => pantryRow;
+    dispatchInput(produceRow.querySelector("[data-settings-category-grabber]"), "pointerdown", {
+      clientX: 5,
+      clientY: 12,
+      pointerId: 1,
+    });
+    dispatchInput(root, "pointermove", { clientX: 5, clientY: 25, pointerId: 1 });
+    assert.equal(pantryRow.classList.contains("is-drop-after"), true);
+    dispatchInput(root, "pointerup", { clientX: 5, clientY: 25, pointerId: 1 });
+    assert.deepEqual(labels(), ["Pantry", "Produce"]);
+
+    produceRow = document.querySelector('.settings-category-row[data-category-id="produce"]');
+    dispatchInput(produceRow.querySelector("[data-settings-category-grabber]"), "pointerdown", {
+      clientX: 5,
+      clientY: 12,
+      pointerId: 2,
+    });
+    dispatchInput(root, "pointercancel", { pointerId: 2 });
+    assert.equal(document.querySelector(".settings-category-row.is-dragging"), null);
+
+    pantryRow = document.querySelector('.settings-category-row[data-category-id="pantry"]');
+    produceRow = document.querySelector('.settings-category-row[data-category-id="produce"]');
+    setRowRect(produceRow);
+    const transferData = new Map();
+    const dataTransfer = {
+      dropEffect: "",
+      effectAllowed: "",
+      getData: (name) => transferData.get(name),
+      setData: (name, value) => transferData.set(name, value),
+    };
+    dispatchInput(pantryRow.querySelector("[data-settings-category-grabber]"), "dragstart", {
+      dataTransfer,
+    });
+    dispatchInput(produceRow, "dragover", { clientY: 25, dataTransfer });
+    assert.equal(produceRow.classList.contains("is-drop-after"), true);
+    dispatchInput(produceRow, "drop", { clientY: 25, dataTransfer });
+    dispatchInput(root, "dragend");
+    assert.deepEqual(labels(), ["Produce", "Pantry"]);
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("window", originals.window);
+  }
+});
+
+test("category disabling restores local state when save fails", async () => {
+  const { document, root, window } = createListRoot();
+  const originals = {
+    HTMLButtonElement: globalThis.HTMLButtonElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    document: globalThis.document,
+    fetch: globalThis.fetch,
+    window: globalThis.window,
+  };
 
   setDomGlobals({ window });
   setGlobalProperty("document", document);
@@ -1646,7 +1879,9 @@ test("category disabling restores local state when save fails", async () => {
     ]);
     state.categories.set("produce", { id: "produce", name: "Produce", color: "#22c55e" });
 
-    await assert.rejects(() => setCategoryDisabled(root, state, "produce", true), /offline/);
+    const failedDisablePromise = setCategoryDisabled(root, state, "produce", true);
+    document.querySelector("[data-category-disable-confirm-confirm]").click();
+    await assert.rejects(() => failedDisablePromise, /offline/);
     assert.equal(isCategoryDisabled(state, "produce"), false);
     assert.equal(state.items.get("item-1").category_id, "produce");
 
@@ -1659,7 +1894,9 @@ test("category disabling restores local state when save fails", async () => {
         json: async () => ({ category_ids: ["produce"] }),
       };
     });
-    assert.equal(await setCategoryDisabled(root, state, "produce", true), true);
+    const successfulDisablePromise = setCategoryDisabled(root, state, "produce", true);
+    document.querySelector("[data-category-disable-confirm-confirm]").click();
+    assert.equal(await successfulDisablePromise, true);
     assert.equal(isCategoryDisabled(state, "produce"), true);
     assert.equal(state.items.get("item-1").category_id, null);
   } finally {

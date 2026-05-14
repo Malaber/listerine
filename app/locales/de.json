@@ -286,6 +286,10 @@
     "enable_category": "{name} aktivieren",
     "disabled_for_list": "Für diese Liste deaktiviert",
     "category_settings_saved": "Kategorieeinstellungen gespeichert.",
+    "category_order_saving": "Kategorienreihenfolge wird gespeichert...",
+    "category_order_save_failed": "Kategorienreihenfolge konnte nicht gespeichert werden.",
+    "disable_category_confirm_title": "{name} deaktivieren?",
+    "disable_category_confirm_action": "Kategorie deaktivieren",
     "disable_category_confirm": {
       "one": "{name} deaktivieren? 1 Artikel in dieser Kategorie verliert seine Kategorie.",
       "other": "{name} deaktivieren? {count} Artikel in dieser Kategorie verlieren ihre Kategorie."
