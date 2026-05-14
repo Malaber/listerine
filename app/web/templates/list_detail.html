@@ -14,7 +14,17 @@
     <div class="list-hero-copy">
       <p class="dashboard-kicker">{{ list_kicker if list_kicker is defined else t("list_detail.kicker") }}</p>
       <div class="list-title-row">
-        <h1 data-list-title>{{ t("list_detail.loading_title") }}</h1>
+        <h1 class="list-title-heading">
+          <span data-list-title>{{ t("list_detail.loading_title") }}</span>
+          <span class="list-switcher" data-list-switcher hidden>
+            <label for="list-switcher-select">{{ t("list_detail.switch_list") }}</label>
+            <select
+              id="list-switcher-select"
+              aria-label="{{ t("list_detail.switch_list") }}"
+              data-list-switcher-select
+            ></select>
+          </span>
+        </h1>
         <button class="list-settings-button" type="button" aria-label="{{ t("list_detail.open_settings") }}" data-list-settings-toggle>
           {{ t("list_detail.list_settings") }}
         </button>
@@ -24,14 +34,6 @@
       {% endif %}
     </div>
     <div class="list-hero-actions">
-      <div class="list-switcher" data-list-switcher hidden>
-        <label for="list-switcher-select">{{ t("list_detail.switch_list") }}</label>
-        <select
-          id="list-switcher-select"
-          aria-label="{{ t("list_detail.switch_list") }}"
-          data-list-switcher-select
-        ></select>
-      </div>
       <a class="back-link" href="{{ list_back_href if list_back_href is defined else '/?dashboard=1' }}">
         {{ list_back_label if list_back_label is defined else t("list_detail.back_to_households") }}
       </a>
