@@ -244,17 +244,55 @@ async function assertHeaderActionsFitTranslatedLabels(page) {
 }
 
 async function assertLoginPageTabs(page) {
-  const signInTab = page.getByRole("tab", { name: "Sign In" });
-  const createAccountTab = page.getByRole("tab", { name: "Create Account" });
-  await expectVisible(signInTab, "Expected the Sign In tab on the login page");
-  await expectVisible(createAccountTab, "Expected the Create Account tab on the login page");
+  const signInTab = page.getByRole("tab", { name: "Use passkey" });
+  const createAccountTab = page.getByRole("tab", { name: "Create account" });
+  const signInButton = page.getByRole("button", { name: "Sign in with passkey" });
+  await expectVisible(signInTab, "Expected the passkey mode switch on the login page");
+  await expectVisible(createAccountTab, "Expected the create-account mode switch on the login page");
   await expectVisible(
     page.getByRole("heading", { name: "Sign In" }),
     "Expected the sign-in heading inside the active auth panel",
   );
-  await expectVisible(
-    page.getByRole("button", { name: "Sign in with passkey" }),
-    "Expected the passkey sign-in button on the login page",
+  await expectInViewport(
+    signInButton,
+    "Expected the passkey sign-in button to be visible before scrolling on the login page",
+  );
+  const layout = await page.evaluate(() => {
+    const shell = document.querySelector(".auth-shell");
+    const copy = document.querySelector(".auth-copy");
+    const panel = document.querySelector('[data-auth-tab-panel="signin"]');
+    if (!(shell instanceof HTMLElement) || !(copy instanceof HTMLElement) || !(panel instanceof HTMLElement)) {
+      throw new Error("Expected login shell, copy, and active panel");
+    }
+    const shellRect = shell.getBoundingClientRect();
+    return {
+      shellCenterOffset: Math.abs(shellRect.left + shellRect.width / 2 - window.innerWidth / 2),
+      viewportWidth: window.innerWidth,
+      copyTextAlign: getComputedStyle(copy).textAlign,
+      panelTextAlign: getComputedStyle(panel).textAlign,
+    };
+  });
+  assert(
+    layout.shellCenterOffset <= Math.max(4, layout.viewportWidth * 0.02),
+    "Expected the login widget to stay centered in the viewport",
+  );
+  assert.equal(layout.copyTextAlign, "left", "Expected login copy to be left aligned inside the centered widget");
+  assert.equal(layout.panelTextAlign, "left", "Expected auth panel text to be left aligned inside the card");
+}
+
+async function assertFaviconAsset(page, requestContext) {
+  logStep("Checking favicon link uses checked-in PNG asset");
+  const favicon = page.locator('head link[rel="icon"]').first();
+  await favicon.waitFor({ state: "attached" });
+  assert.equal(await favicon.getAttribute("type"), "image/png");
+  const href = await favicon.getAttribute("href");
+  assert.equal(href, "/static/img/Favicon.png");
+
+  const response = await requestContext.fetch(new URL(href, baseUrl).toString());
+  assert(response.ok(), `Expected favicon asset to load, got ${response.status()}`);
+  assert(
+    response.headers()["content-type"]?.startsWith("image/png"),
+    "Expected favicon asset to be served as image/png",
   );
 }
 
@@ -345,6 +383,7 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
 
   const originalPasskeys = await passkeysFromSession(context.request);
   assert.equal(originalPasskeys.length, 1, "Expected one seeded passkey before adding another");
+  const originalPasskeyName = originalPasskeys[0].name;
   await expectHidden(
     page.locator("[data-passkey-empty]"),
     "Expected passkey empty state to stay hidden when passkeys are rendered",
@@ -433,12 +472,17 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
   await openSettingsPage(page);
   logStep("Deleting the original passkey using the second passkey as confirmation");
   await page.locator(".passkey-row").nth(0).getByRole("button", { name: "Delete" }).click();
+  const deletePanel = page.locator("[data-passkey-delete-panel]");
   await expectVisible(
-    page.locator("[data-passkey-delete-panel]", {
+    deletePanel.filter({
       hasText:
-        "You must authenticate with another passkey to confirm you still have a working Passkey after deleting one.",
+        `To delete ${originalPasskeyName}, you must authenticate with another passkey to confirm you still have a working Passkey after deleting one.`,
     }),
     "Expected passkey delete confirmation modal",
+  );
+  await expectVisible(
+    deletePanel.locator("strong", { hasText: "another" }),
+    "Expected the delete confirmation to emphasize another passkey",
   );
   await page.getByRole("button", { name: "Continue to verification" }).click();
   await expectVisible(
@@ -646,6 +690,12 @@ async function scenarioFromSeed(seed, requestContext) {
   };
 }
 
+async function openItemCountLabel(requestContext, listId) {
+  const items = await apiJson(requestContext, `/api/v1/lists/${listId}/items`);
+  const openItemCount = items.filter((item) => !item.checked).length;
+  return openItemCount === 1 ? "1 open item" : `${openItemCount} open items`;
+}
+
 async function resetFixtureItems(requestContext, listId, expectedChecked) {
   const items = await apiJson(requestContext, `/api/v1/lists/${listId}/items`);
   for (const item of items) {
@@ -779,6 +829,10 @@ function extractInviteToken(inviteUrl) {
 
 async function runInviteFlow(ownerPage, browser, scenario, seed, rpId) {
   logStep("Creating and accepting a household invite");
+  const expectedOpenItemLabel = await openItemCountLabel(
+    ownerPage.context().request,
+    scenario.listId,
+  );
   await ownerPage.goto(new URL("/?dashboard=1", baseUrl).toString(), { waitUntil: "networkidle" });
   await expectVisible(
     ownerPage.getByRole("heading", { name: "Households and Lists" }),
@@ -789,6 +843,11 @@ async function runInviteFlow(ownerPage, browser, scenario, seed, rpId) {
     .locator(".household-card", { hasText: scenario.householdName })
     .first();
   await expectVisible(ownerHouseholdCard, "Expected seeded household card on dashboard");
+  const ownerListLink = ownerHouseholdCard.locator(`a[href="/lists/${scenario.listId}"]`);
+  await expectVisible(
+    ownerListLink.filter({ hasText: expectedOpenItemLabel }),
+    "Expected dashboard list link to show open item count",
+  );
 
   await ownerHouseholdCard.getByRole("button", { name: "Create invite link" }).click();
   const inviteInput = ownerHouseholdCard.locator(
@@ -845,8 +904,10 @@ async function runInviteFlow(ownerPage, browser, scenario, seed, rpId) {
       "Invitee should see the seeded list after accepting the invite",
     );
     await expectVisible(
-      acceptedHouseholdCard.getByRole("link", { name: "Open list" }).first(),
-      "Invitee should be able to reach the seeded list after accepting the invite",
+      acceptedHouseholdCard
+        .locator(`a[href="/lists/${scenario.listId}"]`)
+        .filter({ hasText: expectedOpenItemLabel }),
+      "Invitee should see the seeded list open item count after accepting the invite",
     );
     await screenshot(inviteePage, "invite-accepted");
   } finally {
@@ -949,6 +1010,7 @@ async function main() {
     await installSeededPasskey(authenticator, owner, rpId);
     logStep("Signing in with the seeded owner passkey");
     await loginFromRoot(page, owner, "Households and Lists");
+    await assertFaviconAsset(page, context.request);
     await assertHeaderActionsFitTranslatedLabels(page);
     await runAdminPasskeyAddLinkFlow(page, seed, rpId);
     await runPasskeyManagementFlow(page, context, owner, rpId, authenticator);
