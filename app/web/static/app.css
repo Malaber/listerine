@@ -1863,17 +1863,26 @@ main {
 
 .auth-shell {
   display: grid;
-  gap: 2rem;
-  max-width: 960px;
+  justify-items: center;
+  gap: 1rem;
+  width: min(100%, 48rem);
+  margin: 0 auto;
+  padding-block: clamp(0.35rem, 2.5vh, 1.8rem) 1rem;
+  text-align: left;
 }
 
 .auth-copy {
-  max-width: 48rem;
-}
-
-.auth-copy {
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(217, 197, 179, 0.82);
+  border-radius: 16px;
+  box-shadow: 0 14px 44px rgba(76, 53, 36, 0.1);
+  box-sizing: border-box;
   display: grid;
+  justify-items: start;
   gap: 0.75rem;
+  max-width: 44rem;
+  padding: 1rem 1.15rem;
+  width: min(100%, 44rem);
 }
 
 .auth-copy h1,
@@ -1883,31 +1892,41 @@ main {
 }
 
 .auth-copy h1 {
-  font-size: clamp(2.3rem, 6vw, 3.4rem);
-  line-height: 0.95;
+  font-size: clamp(2.25rem, 5vw, 3.1rem);
+  line-height: 1;
 }
 
 .auth-copy h2 {
-  margin-top: 0.65rem;
-  font-size: clamp(1.55rem, 4vw, 2rem);
+  margin-top: 0.2rem;
+  font-size: clamp(1.45rem, 4vw, 1.95rem);
   line-height: 1.05;
 }
 
 .auth-copy p {
   color: var(--text-muted);
-  line-height: 1.45;
+  font-size: 1.02rem;
+  line-height: 1.5;
+}
+
+.auth-copy .secondary-button {
+  justify-self: start;
 }
 
 .auth-card {
   background: var(--surface-strong);
   border: 1px solid var(--border);
   border-radius: 16px;
-  padding: 1rem 1.25rem;
+  box-sizing: border-box;
+  display: grid;
+  gap: 1rem;
+  width: min(100%, 44rem);
+  padding: 1.25rem;
   box-shadow: 0 10px 30px var(--shadow);
+  text-align: left;
 }
 
 .auth-card-primary {
-  max-width: 72rem;
+  max-width: none;
 }
 
 .auth-form {
@@ -1915,32 +1934,71 @@ main {
   gap: 1rem;
 }
 
+.auth-panels,
+.auth-panel {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.auth-panels {
+  transition: height 180ms ease;
+}
+
+.auth-panel[hidden] {
+  display: none;
+}
+
+.auth-panel h2,
+.auth-panel p {
+  margin: 0;
+  text-align: left;
+}
+
+.auth-panel h2 {
+  font-size: clamp(1.45rem, 3vw, 2rem);
+  line-height: 1.1;
+}
+
+.auth-panel p {
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
 .auth-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
+  justify-self: center;
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.2rem;
+  width: min(100%, 24rem);
+  padding: 0.2rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-muted);
 }
 
 .auth-tab-button {
-  border: 1px solid var(--border);
-  background: var(--surface-muted);
+  border: 0;
+  background: transparent;
   color: var(--text);
   cursor: pointer;
   font: inherit;
+  font-size: 0.9rem;
   font-weight: 700;
-  padding: 0.65rem 1rem;
+  line-height: 1.1;
+  min-height: 2.2rem;
+  padding: 0.45rem 0.75rem;
   border-radius: 999px;
+  text-align: center;
 }
 
 .auth-tab-button[aria-selected="true"] {
-  background: var(--brand-navy);
-  border-color: var(--brand-navy);
-  color: #fff;
+  background: var(--surface-strong);
+  color: var(--brand-navy-strong);
+  box-shadow: 0 3px 10px var(--shadow);
 }
 
 .auth-tab-button:hover {
-  border-color: var(--border-strong);
+  color: var(--brand-navy-strong);
 }
 
 .auth-field {
@@ -1970,8 +2028,10 @@ main {
   background: var(--brand-navy);
   color: #fff;
   cursor: pointer;
+  min-height: 3.35rem;
   padding: 0.85rem 1.1rem;
   font-weight: 700;
+  text-align: center;
 }
 
 .auth-form button:hover {
@@ -2006,39 +2066,54 @@ main {
 
 @media (max-width: 720px) {
   .auth-card {
-    padding: 0.9rem 1rem;
+    gap: 0.85rem;
+    padding: 0.9rem;
     border-radius: 16px;
   }
 
   .auth-tabs {
-    gap: 0.4rem;
-    margin-bottom: 0.75rem;
+    width: 100%;
   }
 
   .auth-tab-button {
-    width: 100%;
-    padding: 0.6rem 0.85rem;
+    min-height: 2.15rem;
+    padding: 0.45rem 0.5rem;
   }
 
   .auth-shell {
-    gap: 1.1rem;
+    gap: 0.9rem;
+    padding-block: 0 0.6rem;
   }
 
   .auth-copy {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
     gap: 0.55rem;
+    padding: 0;
   }
 
   .auth-copy h1 {
-    font-size: 2.1rem;
+    font-size: 2.45rem;
   }
 
   .auth-copy h2 {
-    margin-top: 0.45rem;
-    font-size: 1.35rem;
+    margin-top: 0.15rem;
+    font-size: 1.45rem;
   }
 
   .auth-form {
     gap: 0.8rem;
+  }
+
+  .auth-panel {
+    gap: 0.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-panels {
+    transition: none;
   }
 }
 
@@ -2106,10 +2181,15 @@ main {
 
 .passkey-delete-panel {
   width: min(100%, 34rem);
+  padding: clamp(1.75rem, 4vw, 2.5rem);
 }
 
 .passkey-delete-panel .dashboard-helper {
-  margin: 0.75rem 0 0;
+  margin: 1.2rem 0 0;
+}
+
+.passkey-delete-panel .passkey-name-actions {
+  margin-top: 0.35rem;
 }
 
 .capabilities-shell {

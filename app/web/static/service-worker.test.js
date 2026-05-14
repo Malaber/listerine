@@ -123,6 +123,7 @@ test("service worker precaches shell assets and skips waiting", async () => {
         "/static/app.css",
         "/static/app.js",
         "/static/img/planini.svg",
+        "/static/img/Favicon.png",
         "/static/img/apple-touch-icon.png",
         "/static/img/pwa-192.png",
         "/static/img/pwa-512.png",

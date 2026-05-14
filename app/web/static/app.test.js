@@ -17,6 +17,8 @@ import {
   loadMoreCheckedItems,
   normalizeLanguagePreference,
   registerServiceWorker,
+  renderCategoryOrderSettings,
+  renderHouseholds,
   renderPasskeys,
   renderItems,
   renderItemSuggestions,
@@ -47,6 +49,8 @@ import {
   setItemCheckedWithOfflineFallback,
   applyOfflineSyncResult,
   flushOfflineMutations,
+  transitionAuthPanels,
+  setAuthTab,
 } from "./app.js";
 
 function setGlobalProperty(name, value) {
@@ -134,6 +138,156 @@ test("registerServiceWorker registers the root service worker when available", a
   }
 });
 
+test("transitionAuthPanels applies and clears height animation styles", () => {
+  const dom = new JSDOM(`
+    <section>
+      <div data-auth-panels></div>
+    </section>
+  `);
+  const originals = {
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    HTMLSelectElement: globalThis.HTMLSelectElement,
+  };
+  const originalWindow = globalThis.window;
+  const root = dom.window.document.querySelector("section");
+  const panels = dom.window.document.querySelector("[data-auth-panels]");
+  let didUpdate = false;
+
+  setDomGlobals(dom);
+  setGlobalProperty("window", dom.window);
+  panels.getBoundingClientRect = () => ({ height: 120 });
+  Object.defineProperty(panels, "scrollHeight", { configurable: true, value: 220 });
+
+  try {
+    transitionAuthPanels(root, () => {
+      didUpdate = true;
+    });
+    assert.equal(didUpdate, true);
+    assert.equal(panels.style.height, "220px");
+    assert.equal(panels.style.overflow, "hidden");
+
+    panels.dispatchEvent(new dom.window.Event("transitionend"));
+    assert.equal(panels.style.height, "");
+    assert.equal(panels.style.overflow, "");
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("window", originalWindow);
+    dom.window.close();
+  }
+});
+
+test("transitionAuthPanels updates without animation when no wrapper exists", () => {
+  const dom = new JSDOM("<section></section>");
+  const originals = {
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    HTMLSelectElement: globalThis.HTMLSelectElement,
+  };
+  let didUpdate = false;
+
+  setDomGlobals(dom);
+
+  try {
+    transitionAuthPanels(dom.window.document.querySelector("section"), () => {
+      didUpdate = true;
+    });
+    assert.equal(didUpdate, true);
+  } finally {
+    restoreDomGlobals(originals);
+    dom.window.close();
+  }
+});
+
+test("transitionAuthPanels skips styles when panel height is stable", () => {
+  const dom = new JSDOM(`
+    <section>
+      <div data-auth-panels></div>
+    </section>
+  `);
+  const originals = {
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    HTMLSelectElement: globalThis.HTMLSelectElement,
+  };
+  const originalWindow = globalThis.window;
+  const root = dom.window.document.querySelector("section");
+  const panels = dom.window.document.querySelector("[data-auth-panels]");
+
+  setDomGlobals(dom);
+  setGlobalProperty("window", dom.window);
+  panels.getBoundingClientRect = () => ({ height: 120 });
+  Object.defineProperty(panels, "scrollHeight", { configurable: true, value: 120 });
+
+  try {
+    transitionAuthPanels(root, () => undefined);
+    assert.equal(panels.style.height, "");
+    assert.equal(panels.style.overflow, "");
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("window", originalWindow);
+    dom.window.close();
+  }
+});
+
+test("setAuthTab toggles panels, selected state, focus, and panel height", () => {
+  const dom = new JSDOM(`
+    <section data-passkey-auth>
+      <div data-auth-panels>
+        <div data-auth-tab-panel="signin">
+          <form data-passkey-login></form>
+        </div>
+        <div data-auth-tab-panel="signup" hidden>
+          <form data-passkey-register>
+            <input name="display_name" />
+          </form>
+        </div>
+      </div>
+      <button data-auth-tab-trigger="signin" aria-selected="true"></button>
+      <button data-auth-tab-trigger="signup" aria-selected="false"></button>
+    </section>
+  `);
+  const originals = {
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    HTMLSelectElement: globalThis.HTMLSelectElement,
+  };
+  const originalWindow = globalThis.window;
+  const root = dom.window.document.querySelector("[data-passkey-auth]");
+  const panels = dom.window.document.querySelector("[data-auth-panels]");
+
+  setDomGlobals(dom);
+  setGlobalProperty("window", dom.window);
+  panels.getBoundingClientRect = () => ({ height: 120 });
+  Object.defineProperty(panels, "scrollHeight", { configurable: true, value: 220 });
+
+  try {
+    setAuthTab(root, "signup");
+    assert.equal(root.querySelector('[data-auth-tab-panel="signin"]').hidden, true);
+    assert.equal(root.querySelector('[data-auth-tab-panel="signup"]').hidden, false);
+    assert.equal(root.querySelector('[data-auth-tab-trigger="signin"]').getAttribute("aria-selected"), "false");
+    assert.equal(root.querySelector('[data-auth-tab-trigger="signup"]').getAttribute("aria-selected"), "true");
+    assert.equal(dom.window.document.activeElement, root.querySelector('input[name="display_name"]'));
+    assert.equal(panels.style.height, "220px");
+    panels.dispatchEvent(new dom.window.Event("transitionend"));
+
+    setAuthTab(root, "signin");
+    assert.equal(root.querySelector('[data-auth-tab-panel="signin"]').hidden, false);
+    assert.equal(root.querySelector('[data-auth-tab-panel="signup"]').hidden, true);
+    assert.equal(root.querySelector('[data-auth-tab-trigger="signin"]').getAttribute("aria-selected"), "true");
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("window", originalWindow);
+    dom.window.close();
+  }
+});
+
+test("setAuthTab ignores incomplete auth markup", () => {
+  const dom = new JSDOM("<section></section>");
+  assert.doesNotThrow(() => setAuthTab(dom.window.document.querySelector("section"), "signup"));
+  dom.window.close();
+});
+
 function createListRoot() {
   const dom = new JSDOM(`
     <section data-list-detail data-list-id="list-1">
@@ -148,12 +302,26 @@ function createListRoot() {
       <div data-item-edit-category-radios></div>
       <div data-item-empty></div>
       <div data-item-list></div>
+      <div data-list-settings-category-list></div>
     </section>
   `, { url: "https://example.test/lists/list-1" });
   return {
     document: dom.window.document,
     root: dom.window.document.querySelector("[data-list-detail]"),
     window: dom.window,
+  };
+}
+
+function createDashboardRoot() {
+  const dom = new JSDOM(`
+    <section data-dashboard>
+      <div data-dashboard-empty></div>
+      <div data-household-list></div>
+    </section>
+  `);
+  return {
+    document: dom.window.document,
+    root: dom.window.document.querySelector("[data-dashboard]"),
   };
 }
 
@@ -177,8 +345,8 @@ function createDemoListRoot() {
   const demoPayload = {
     list: { id: "demo-list", name: "Saturday Groceries" },
     categories: [
-      { id: "produce", name: "Produce", color: "#8f7a62" },
-      { id: "pantry", name: "Pantry", color: "#8b6b4f" },
+      { id: "produce", name: "Produce", color: "#6bbf59" },
+      { id: "pantry", name: "Pantry", color: "#f59e0b" },
     ],
     category_order: [
       { category_id: "produce", sort_order: 0 },
@@ -289,6 +457,28 @@ test("renderItems only shows loaded checked items before loading more", () => {
   assert.equal(document.querySelector(".checked-items-load-more .item-category-meta").textContent, "110 older items not loaded");
 });
 
+test("renderHouseholds shows open item counts on list links", () => {
+  const { document, root } = createDashboardRoot();
+
+  renderHouseholds(
+    root,
+    [{ id: "household-1", name: "Home" }],
+    new Map([
+      [
+        "household-1",
+        [
+          { id: "list-1", name: "Weekly", open_item_count: 1 },
+          { id: "list-2", name: "Hardware", open_item_count: 3 },
+        ],
+      ],
+    ]),
+  );
+
+  assert.equal(document.querySelector('[href="/lists/list-1"] small').textContent, "1 open item");
+  assert.equal(document.querySelector('[href="/lists/list-2"] small').textContent, "3 open items");
+  assert.equal(document.body.textContent.includes("Open list"), false);
+});
+
 test("renderItems uses brown fallback swatches for uncategorized and checked groups", () => {
   const { document, root } = createListRoot();
   const activeItem = {
@@ -308,6 +498,35 @@ test("renderItems uses brown fallback swatches for uncategorized and checked gro
   const swatches = document.querySelectorAll(".item-category-swatch");
   assert.match(swatches[0].getAttribute("style") || "", /217, 197, 179|#d9c5b3/);
   assert.match(swatches[1].getAttribute("style") || "", /181, 150, 118|#b59676/);
+});
+
+test("category swatches preserve configured colors in list and settings views", () => {
+  const { document, root } = createListRoot();
+  const activeItem = {
+    id: "active-item",
+    name: "Paprika",
+    checked: false,
+    checked_at: null,
+    category_id: "cat-1",
+    note: null,
+    quantity_text: null,
+    sort_order: 0,
+  };
+  const state = createState([activeItem]);
+  state.categories.set("cat-1", { id: "cat-1", name: "Gemuese", color: "#7ed957" });
+  state.categoryOrder.set("cat-1", 0);
+
+  renderItems(root, state);
+  renderCategoryOrderSettings(root, state);
+
+  const listSwatchStyle = document
+    .querySelector(".item-category-group .item-category-swatch")
+    .getAttribute("style") || "";
+  const settingsSwatchStyle = document
+    .querySelector(".settings-category-row .item-category-swatch")
+    .getAttribute("style") || "";
+  assert.match(listSwatchStyle, /126, 217, 87|#7ed957/);
+  assert.match(settingsSwatchStyle, /126, 217, 87|#7ed957/);
 });
 
 test("loadMoreCheckedItems fetches one hundred older checked items per page", async () => {

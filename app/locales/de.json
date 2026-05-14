@@ -23,12 +23,12 @@
   "auth": {
     "login": {
       "title": "Anmelden",
-      "intro": "Konten bleiben privat, bis du dich mit einem Passkey aus deinem Browser oder Passwortmanager anmeldest.",
+      "intro": "Planini hält Einkaufslisten im Haushalt synchron, übersichtlich und immer griffbereit.",
       "capabilities_link": "Interaktive Vorschau ausprobieren",
       "passkey_only_title": "Nur-Passkey-Anmeldung",
       "passkey_only_body": "Die Anmeldung funktioniert ohne Kontenauswahl, daher fragt diese Seite nicht nach dir, bevor dein Passkey es tut.",
-      "tabs_aria": "Authentifizierung",
-      "sign_in_tab": "Anmelden",
+      "tabs_aria": "Authentifizierungsmodus",
+      "sign_in_tab": "Passkey nutzen",
       "create_account_tab": "Konto erstellen",
       "localhost_hint_prefix": "Für lokale Passkeys öffne diese Seite mit",
       "localhost_hint_middle": "statt",
@@ -113,7 +113,10 @@
     "create_invite_link": "Einladungslink erstellen",
     "share_invite_hint": "Diesen Link innerhalb von 24 Stunden teilen:",
     "no_lists_yet": "Noch keine Listen. Füge die erste Liste für diesen Haushalt hinzu.",
-    "open_list": "Liste öffnen",
+    "open_item_count": {
+      "one": "{count} offener Artikel",
+      "other": "{count} offene Artikel"
+    },
     "invite_link_created": "Einladungslink erstellt. Er bleibt 24 Stunden gültig.",
     "invite_link_create_failed": "Der Einladungslink konnte nicht erstellt werden.",
     "invite_link_copied": "Einladungslink kopiert.",
@@ -157,6 +160,9 @@
     "delete_this_passkey": "Diesen Passkey löschen?",
     "delete_help_generic": "Authentifiziere dich mit einem anderen Passkey, um zu bestätigen, dass danach noch ein funktionierender Passkey vorhanden ist.",
     "delete_help": "Um {name} zu löschen, musst du dich mit einem anderen Passkey authentifizieren und bestätigen, dass danach noch ein funktionierender Passkey vorhanden ist.",
+    "delete_help_prefix": "Um {name} zu löschen, musst du dich mit einem ",
+    "delete_help_emphasis": "anderen",
+    "delete_help_suffix": " Passkey authentifizieren und bestätigen, dass danach noch ein funktionierender Passkey vorhanden ist.",
     "continue_to_verification": "Weiter zur Verifizierung",
     "added_on": "Hinzugefügt {date}",
     "last_used": "Zuletzt verwendet {date}",
