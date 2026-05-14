@@ -280,6 +280,22 @@ async function assertLoginPageTabs(page) {
   assert.equal(layout.panelTextAlign, "left", "Expected auth panel text to be left aligned inside the card");
 }
 
+async function assertFaviconAsset(page, requestContext) {
+  logStep("Checking favicon link uses checked-in PNG asset");
+  const favicon = page.locator('head link[rel="icon"]').first();
+  await favicon.waitFor({ state: "attached" });
+  assert.equal(await favicon.getAttribute("type"), "image/png");
+  const href = await favicon.getAttribute("href");
+  assert.equal(href, "/static/img/Favicon.png");
+
+  const response = await requestContext.fetch(new URL(href, baseUrl).toString());
+  assert(response.ok(), `Expected favicon asset to load, got ${response.status()}`);
+  assert(
+    response.headers()["content-type"]?.startsWith("image/png"),
+    "Expected favicon asset to be served as image/png",
+  );
+}
+
 async function screenshot(page, name) {
   await page.screenshot({ path: path.join(artifactDir, `${name}.png`), fullPage: true });
 }
@@ -971,6 +987,7 @@ async function main() {
     await installSeededPasskey(authenticator, owner, rpId);
     logStep("Signing in with the seeded owner passkey");
     await loginFromRoot(page, owner, "Households and Lists");
+    await assertFaviconAsset(page, context.request);
     await assertHeaderActionsFitTranslatedLabels(page);
     await runAdminPasskeyAddLinkFlow(page, seed, rpId);
     await runPasskeyManagementFlow(page, context, owner, rpId, authenticator);

@@ -386,9 +386,15 @@ def test_pwa_assets_are_exposed(client) -> None:
     assert 'name="twitter:card" content="summary"' in login_page.text
     assert 'rel="manifest" href="/manifest.webmanifest"' in login_page.text
     assert 'name="theme-color" content="#6b4f3b"' in login_page.text
+    assert 'rel="icon" type="image/png" href="/static/img/Favicon.png"' in login_page.text
     assert 'rel="apple-touch-icon" href="/static/img/apple-touch-icon.png"' in login_page.text
     assert 'rel="stylesheet" href="/static/app.css?v=' in login_page.text
     assert 'type="module" src="/static/app.js?v=' in login_page.text
+
+    favicon = client.get("/static/img/Favicon.png")
+    assert favicon.status_code == 200
+    assert favicon.headers["content-type"].startswith("image/png")
+    assert favicon.content.startswith(b"\x89PNG\r\n\x1a\n")
 
     manifest = client.get("/manifest.webmanifest")
     assert manifest.status_code == 200
