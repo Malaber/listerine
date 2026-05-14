@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +11,8 @@ from app.core.database import get_db
 from app.models import Category, GroceryItem, User
 from app.schemas.domain import (
     GroceryItemCreate,
+    GroceryItemOfflineSyncIn,
+    GroceryItemOfflineSyncOut,
     GroceryItemOut,
     GroceryItemsWindowOut,
     GroceryItemUpdate,
@@ -33,6 +36,40 @@ async def _broadcast(event_type: str, user_id: UUID, item: GroceryItem) -> None:
             "payload": {"item": GroceryItemOut.model_validate(item).model_dump(mode="json")},
         },
     )
+
+
+async def _broadcast_deleted(list_id: UUID, user_id: UUID, item_id: UUID) -> None:
+    await hub.broadcast(
+        list_id,
+        {
+            "type": "item_deleted",
+            "list_id": str(list_id),
+            "timestamp": datetime.now(UTC).isoformat(),
+            "actor_user_id": str(user_id),
+            "payload": {"item": {"id": str(item_id)}},
+        },
+    )
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _payload_model(model, payload: dict[str, object | None] | None):
+    try:
+        return model.model_validate(payload or {})
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=exc.errors(),
+        ) from exc
+
+
+def _checked_state_recorded_at(item: GroceryItem) -> datetime:
+    fallback = datetime.min.replace(tzinfo=UTC)
+    return _as_utc(item.checked_state_recorded_at or item.checked_at or item.updated_at or fallback)
 
 
 async def _validate_category_id(db: AsyncSession, category_id: UUID | None) -> None:
@@ -72,6 +109,31 @@ async def _checked_items_page(
     return list(result.scalars().all())
 
 
+async def _sync_item_for_mutation(
+    db: AsyncSession,
+    list_id: UUID,
+    item_id: UUID | str | None,
+    client_item_ids: dict[str, UUID],
+) -> GroceryItem | None:
+    if item_id is None:
+        return None
+
+    resolved_item_id = client_item_ids.get(str(item_id))
+    if resolved_item_id is None:
+        try:
+            resolved_item_id = UUID(str(item_id))
+        except ValueError:
+            return None
+
+    result = await db.execute(
+        select(GroceryItem).where(
+            GroceryItem.id == resolved_item_id,
+            GroceryItem.list_id == list_id,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
 @router.post("/lists/{list_id}/items", response_model=GroceryItemOut)
 async def create_item(
     list_id: UUID,
@@ -90,6 +152,7 @@ async def create_item(
         sort_order=payload.sort_order,
         created_by=user.id,
         updated_by=user.id,
+        checked_state_recorded_at=datetime.now(UTC),
     )
     db.add(item)
     await db.commit()
@@ -168,7 +231,9 @@ async def check_item(
     item = result.scalar_one()
     await get_list_for_user(db, item.list_id, user.id)
     item.checked = True
-    item.checked_at = datetime.now(UTC)
+    recorded_at = datetime.now(UTC)
+    item.checked_at = recorded_at
+    item.checked_state_recorded_at = recorded_at
     item.checked_by = user.id
     item.updated_by = user.id
     await db.commit()
@@ -186,12 +251,144 @@ async def uncheck_item(
     await get_list_for_user(db, item.list_id, user.id)
     item.checked = False
     item.checked_at = None
+    item.checked_state_recorded_at = datetime.now(UTC)
     item.checked_by = None
     item.updated_by = user.id
     await db.commit()
     await db.refresh(item)
     await _broadcast("item_unchecked", user.id, item)
     return item
+
+
+@router.post("/lists/{list_id}/items/sync", response_model=GroceryItemOfflineSyncOut)
+async def sync_offline_items(
+    list_id: UUID,
+    payload: GroceryItemOfflineSyncIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> GroceryItemOfflineSyncOut:
+    await get_list_for_user(db, list_id, user.id)
+    client_item_ids: dict[str, UUID] = {}
+    changed_items: dict[UUID, GroceryItem] = {}
+    deleted_item_ids: list[str] = []
+    deleted_item_id_set: set[UUID] = set()
+    broadcasts: list[tuple[str, GroceryItem | UUID]] = []
+    seen_mutation_ids: set[str] = set()
+    applied_mutation_ids: list[str] = []
+
+    for mutation in payload.mutations:
+        if mutation.mutation_id in seen_mutation_ids:
+            continue
+        seen_mutation_ids.add(mutation.mutation_id)
+        recorded_at = _as_utc(mutation.recorded_at)
+        event_type: str | None = None
+        item: GroceryItem | None = None
+
+        if mutation.type == "create":
+            create_payload = _payload_model(GroceryItemCreate, mutation.payload)
+            await _validate_category_id(db, create_payload.category_id)
+            if mutation.client_item_id:
+                existing_result = await db.execute(
+                    select(GroceryItem).where(
+                        GroceryItem.list_id == list_id,
+                        GroceryItem.client_created_id == mutation.client_item_id,
+                    )
+                )
+                item = existing_result.scalar_one_or_none()
+            if item is None:
+                item = GroceryItem(
+                    list_id=list_id,
+                    name=create_payload.name,
+                    quantity_text=create_payload.quantity_text,
+                    note=create_payload.note,
+                    category_id=create_payload.category_id,
+                    sort_order=create_payload.sort_order,
+                    created_by=user.id,
+                    updated_by=user.id,
+                    checked_state_recorded_at=recorded_at,
+                    client_created_id=mutation.client_item_id,
+                )
+                db.add(item)
+                await db.flush()
+                event_type = "item_created"
+            if mutation.client_item_id:
+                client_item_ids[mutation.client_item_id] = item.id
+            changed_items[item.id] = item
+
+        elif mutation.type == "update":
+            update_payload = _payload_model(GroceryItemUpdate, mutation.payload)
+            await _validate_category_id(
+                db,
+                (
+                    update_payload.category_id
+                    if "category_id" in update_payload.model_fields_set
+                    else None
+                ),
+            )
+            item = await _sync_item_for_mutation(db, list_id, mutation.item_id, client_item_ids)
+            if item is not None:
+                for key, value in update_payload.model_dump(exclude_unset=True).items():
+                    setattr(item, key, value)
+                item.updated_by = user.id
+                changed_items[item.id] = item
+                event_type = "item_updated"
+
+        elif mutation.type == "set_checked":
+            if mutation.checked is None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="Offline checked mutations require a checked value.",
+                )
+            item = await _sync_item_for_mutation(db, list_id, mutation.item_id, client_item_ids)
+            if item is not None:
+                changed_items[item.id] = item
+                if recorded_at >= _checked_state_recorded_at(item):
+                    item.checked = mutation.checked
+                    item.checked_at = recorded_at if mutation.checked else None
+                    item.checked_state_recorded_at = recorded_at
+                    item.checked_by = user.id if mutation.checked else None
+                    item.updated_by = user.id
+                    event_type = "item_checked" if mutation.checked else "item_unchecked"
+
+        elif mutation.type == "delete":
+            item = await _sync_item_for_mutation(db, list_id, mutation.item_id, client_item_ids)
+            if item is not None:
+                deleted_item_id_set.add(item.id)
+                deleted_item_ids.append(str(item.id))
+                broadcasts.append(("item_deleted", item.id))
+                await db.delete(item)
+
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unknown offline mutation type: {mutation.type}",
+            )
+
+        if event_type is not None and item is not None:
+            broadcasts.append((event_type, item))
+        applied_mutation_ids.append(mutation.mutation_id)
+
+    await db.commit()
+
+    synced_items: list[GroceryItemOut] = []
+    for item_id, item in changed_items.items():
+        if item_id in deleted_item_id_set:
+            continue
+        await db.refresh(item)
+        synced_items.append(GroceryItemOut.model_validate(item))
+
+    for event_type, event_payload in broadcasts:
+        if event_type == "item_deleted" and isinstance(event_payload, UUID):
+            await _broadcast_deleted(list_id, user.id, event_payload)
+        elif isinstance(event_payload, GroceryItem) and event_payload.id not in deleted_item_id_set:
+            await _broadcast(event_type, user.id, event_payload)
+
+    return GroceryItemOfflineSyncOut(
+        items=synced_items,
+        deleted_item_ids=deleted_item_ids,
+        client_item_ids=client_item_ids,
+        applied_mutation_ids=applied_mutation_ids,
+    )
 
 
 @router.delete("/items/{item_id}")
@@ -203,14 +400,5 @@ async def delete_item(
     await get_list_for_user(db, item.list_id, user.id)
     await db.delete(item)
     await db.commit()
-    await hub.broadcast(
-        item.list_id,
-        {
-            "type": "item_deleted",
-            "list_id": str(item.list_id),
-            "timestamp": datetime.now(UTC).isoformat(),
-            "actor_user_id": str(user.id),
-            "payload": {"item": {"id": str(item.id)}},
-        },
-    )
+    await _broadcast_deleted(item.list_id, user.id, item.id)
     return {"message": "deleted"}

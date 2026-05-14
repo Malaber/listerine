@@ -634,6 +634,42 @@ async function runCheckedStressListFlow(page, stressListUrl) {
   assert.equal(await checkedGroup.locator(".checked-items-load-more").count(), 0);
 }
 
+async function runOfflineSyncFlow(page, requestContext, listId) {
+  logStep("Checking offline list item save and resync");
+  const offlineName = `Fresh thing offline ${Date.now()}`;
+  const addForm = page.locator("[data-item-form]");
+
+  await page.context().setOffline(true);
+  try {
+    await page.getByRole("button", { name: "Add item" }).click();
+    await addForm.getByLabel("Item name").fill(offlineName);
+    await page.locator(".add-item-save-button").click();
+    await expectVisible(
+      page.locator("[data-list-error]", { hasText: "Offline. Changes saved locally" }),
+      "Offline add should show local-only error",
+    );
+    const offlineCard = itemCard(page, offlineName);
+    await expectVisible(offlineCard, "Offline-created item should render immediately");
+    await offlineCard.getByRole("button").first().click();
+    await expectVisible(
+      page.locator("[data-list-error]", { hasText: "Offline. Changes saved locally" }),
+      "Offline check should keep local-only error",
+    );
+  } finally {
+    await page.context().setOffline(false);
+  }
+
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expectVisible(
+    page.locator("[data-list-success]", { hasText: "Saved offline changes synced." }),
+    "Offline changes should sync after reconnect",
+  );
+  const items = await apiJson(requestContext, `/api/v1/lists/${listId}/items`);
+  const syncedItem = items.find((item) => item.name === offlineName);
+  assert(syncedItem, "Expected offline-created item to exist after sync");
+  assert.equal(syncedItem.checked, true, "Expected offline checked state to sync");
+}
+
 function extractInviteToken(inviteUrl) {
   const invitePath = new URL(inviteUrl).pathname;
   return invitePath.split("/").filter(Boolean).at(-1);
@@ -1038,6 +1074,8 @@ async function main() {
     await expectVisible(toast, "Expected temporary undo toast");
     await page.waitForTimeout(10500);
     await expectHidden(toast, "Undo toast should disappear after timeout");
+
+    await runOfflineSyncFlow(page, context.request, scenario.listId);
 
     await runCheckedStressListFlow(page, checkedStressListUrl);
 
