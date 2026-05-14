@@ -3363,6 +3363,34 @@ async function handlePasskeyLoginClick(root, loginForm) {
   }
 }
 
+function transitionAuthPanels(root, updatePanels) {
+  const panelGroup = root.querySelector("[data-auth-panels]");
+  if (!(panelGroup instanceof HTMLElement)) {
+    updatePanels();
+    return;
+  }
+
+  const beforeHeight = panelGroup.getBoundingClientRect().height;
+  updatePanels();
+  const afterHeight = panelGroup.scrollHeight;
+  if (!beforeHeight || !afterHeight || beforeHeight === afterHeight) {
+    return;
+  }
+
+  panelGroup.style.height = `${beforeHeight}px`;
+  panelGroup.style.overflow = "hidden";
+  panelGroup.getBoundingClientRect();
+  panelGroup.style.height = `${afterHeight}px`;
+
+  const settle = () => {
+    panelGroup.style.height = "";
+    panelGroup.style.overflow = "";
+    panelGroup.removeEventListener("transitionend", settle);
+  };
+  panelGroup.addEventListener("transitionend", settle, { once: true });
+  window.setTimeout(settle, 240);
+}
+
 function setAuthTab(root, tab) {
   const panels = root.querySelectorAll("[data-auth-tab-panel]");
   const triggers = root.querySelectorAll("[data-auth-tab-trigger]");
@@ -3370,9 +3398,12 @@ function setAuthTab(root, tab) {
     return;
   }
 
-  panels.forEach((panel) => {
-    panel.hidden = panel.getAttribute("data-auth-tab-panel") !== tab;
+  transitionAuthPanels(root, () => {
+    panels.forEach((panel) => {
+      panel.hidden = panel.getAttribute("data-auth-tab-panel") !== tab;
+    });
   });
+
   triggers.forEach((trigger) => {
     trigger.setAttribute(
       "aria-selected",
@@ -3717,6 +3748,8 @@ export {
   loginWithPasskey,
   addPasskeyWithLink,
   handlePasskeyLoginClick,
+  transitionAuthPanels,
+  setAuthTab,
   setSettingsMessage,
   initPasskeyAuth,
   initPasskeyAddLink,

@@ -244,18 +244,40 @@ async function assertHeaderActionsFitTranslatedLabels(page) {
 }
 
 async function assertLoginPageTabs(page) {
-  const signInTab = page.getByRole("tab", { name: "Sign In" });
-  const createAccountTab = page.getByRole("tab", { name: "Create Account" });
-  await expectVisible(signInTab, "Expected the Sign In tab on the login page");
-  await expectVisible(createAccountTab, "Expected the Create Account tab on the login page");
+  const signInTab = page.getByRole("tab", { name: "Use passkey" });
+  const createAccountTab = page.getByRole("tab", { name: "Create account" });
+  const signInButton = page.getByRole("button", { name: "Sign in with passkey" });
+  await expectVisible(signInTab, "Expected the passkey mode switch on the login page");
+  await expectVisible(createAccountTab, "Expected the create-account mode switch on the login page");
   await expectVisible(
     page.getByRole("heading", { name: "Sign In" }),
     "Expected the sign-in heading inside the active auth panel",
   );
-  await expectVisible(
-    page.getByRole("button", { name: "Sign in with passkey" }),
-    "Expected the passkey sign-in button on the login page",
+  await expectInViewport(
+    signInButton,
+    "Expected the passkey sign-in button to be visible before scrolling on the login page",
   );
+  const layout = await page.evaluate(() => {
+    const shell = document.querySelector(".auth-shell");
+    const copy = document.querySelector(".auth-copy");
+    const panel = document.querySelector('[data-auth-tab-panel="signin"]');
+    if (!(shell instanceof HTMLElement) || !(copy instanceof HTMLElement) || !(panel instanceof HTMLElement)) {
+      throw new Error("Expected login shell, copy, and active panel");
+    }
+    const shellRect = shell.getBoundingClientRect();
+    return {
+      shellCenterOffset: Math.abs(shellRect.left + shellRect.width / 2 - window.innerWidth / 2),
+      viewportWidth: window.innerWidth,
+      copyTextAlign: getComputedStyle(copy).textAlign,
+      panelTextAlign: getComputedStyle(panel).textAlign,
+    };
+  });
+  assert(
+    layout.shellCenterOffset <= Math.max(4, layout.viewportWidth * 0.02),
+    "Expected the login widget to stay centered in the viewport",
+  );
+  assert.equal(layout.copyTextAlign, "left", "Expected login copy to be left aligned inside the centered widget");
+  assert.equal(layout.panelTextAlign, "left", "Expected auth panel text to be left aligned inside the card");
 }
 
 async function assertFaviconAsset(page, requestContext) {
