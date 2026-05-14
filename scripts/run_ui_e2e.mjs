@@ -599,8 +599,10 @@ async function registerAccountFromLogin(page, { displayName, email }, expectedUr
   );
   await page.locator('[data-passkey-register] input[name="display_name"]').fill(displayName);
   await page.locator('[data-passkey-register] input[name="email"]').fill(email);
-  await page.locator("[data-passkey-register-button]").click();
-  await page.waitForURL(expectedUrlPattern, { waitUntil: "commit", timeout: 10_000 });
+  await Promise.all([
+    page.waitForURL(expectedUrlPattern, { waitUntil: "commit", timeout: 10_000 }),
+    page.locator("[data-passkey-register-button]").click(),
+  ]);
 }
 
 async function loginAsAdmin(page, user) {
@@ -1375,21 +1377,109 @@ async function main() {
       editForm.locator(".category-radio-option .category-radio-copy span"),
     );
     assert(!aliasTexts.some((text) => text.includes("Also found as")), "Alias helper text should stay hidden");
+    await expectHidden(
+      editForm.getByRole("button", { name: "Save changes" }),
+      "Edit modal should live-save without a save button",
+    );
     await editForm.locator(".category-radio-option", { hasText: "Backwaren" }).click();
     await editForm.locator('input[name="quantity_text"]').fill("4 loaves");
-    await editForm.locator('input[name="note"]').fill("for the weekend");
-    await editForm.getByRole("button", { name: "Save changes" }).click();
     await expectVisible(
-      page.locator("[data-list-success]", { hasText: "Item updated." }),
-      "Expected item update success before closing the edit modal",
+      editForm.locator("[data-item-edit-status]", { hasText: "Saved." }),
+      "Expected quantity edit to live-save after debounce",
     );
+    await editForm.locator('input[name="note"]').fill("for the weekend");
     await page.locator("[data-item-edit-panel] .add-item-close[data-item-edit-close]").click();
-    await expectHidden(page.locator("[data-item-edit-overlay]"), "Edit modal should close before opening settings");
+    await expectHidden(page.locator("[data-item-edit-overlay]"), "Immediate close should flush pending edit");
+    await expectVisible(
+      itemCard(page, "Tomaten").locator(".item-meta", { hasText: "for the weekend" }),
+      "Close-triggered save should keep note edit",
+    );
     await expectVisible(itemCard(page, "Tomaten"), "Updated item should remain visible");
     await expectVisible(
       itemCard(page, "Tomaten").locator(".item-meta", { hasText: "4 loaves" }),
       "Updated quantity should render",
     );
+    await itemCard(page, "Tomaten").click();
+    await expectVisible(
+      page.locator("[data-item-edit-panel]").getByRole("heading", { name: "Tomaten" }),
+      "Expected Tomaten edit modal before undoing a live edit",
+    );
+    await expectVisible(
+      page.locator("[data-item-edit-header-actions]"),
+      "Edit history controls and close button should stay in the sticky header",
+    );
+    const editHeaderMetrics = await page.locator("[data-item-edit-panel] .add-item-panel-header").evaluate((header) => {
+      const panel = header.closest("[data-item-edit-panel]");
+      const undo = header.querySelector("[data-item-edit-undo]");
+      const icon = undo?.querySelector(".item-edit-history-icon");
+      if (!(panel instanceof HTMLElement) || !(undo instanceof HTMLElement) || !(icon instanceof Element)) {
+        return null;
+      }
+      const headerRect = header.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      const undoRect = undo.getBoundingClientRect();
+      const iconRect = icon.getBoundingClientRect();
+      return {
+        backgroundColor: window.getComputedStyle(header).backgroundColor,
+        headerLeft: headerRect.left,
+        headerRight: headerRect.right,
+        headerTop: headerRect.top,
+        iconHeight: iconRect.height,
+        iconWidth: iconRect.width,
+        panelLeft: panelRect.left,
+        panelRight: panelRect.right,
+        panelTop: panelRect.top,
+        undoHeight: undoRect.height,
+        undoWidth: undoRect.width,
+      };
+    });
+    assert(editHeaderMetrics, "Expected measurable edit header controls");
+    assert(
+      editHeaderMetrics.headerLeft <= editHeaderMetrics.panelLeft + 1
+        && editHeaderMetrics.headerRight >= editHeaderMetrics.panelRight - 1,
+      "Edit sticky header background should reach the panel edges",
+    );
+    assert(
+      editHeaderMetrics.headerTop <= editHeaderMetrics.panelTop + 2,
+      "Edit sticky header background should cover the panel top edge",
+    );
+    assert(
+      editHeaderMetrics.backgroundColor !== "rgba(0, 0, 0, 0)",
+      "Edit sticky header should have a visible background",
+    );
+    assert(
+      editHeaderMetrics.undoWidth <= 44
+        && editHeaderMetrics.undoHeight <= 40
+        && editHeaderMetrics.iconWidth <= 18
+        && editHeaderMetrics.iconHeight <= 18,
+      "Edit history icons should stay compact",
+    );
+    await editForm.locator('input[name="quantity_text"]').fill("wrong amount");
+    await expectVisible(
+      editForm.locator("[data-item-edit-status]", { hasText: "Saved." }),
+      "Expected wrong quantity to live-save before undo",
+    );
+    await page.getByRole("button", { name: "Undo last edit" }).click();
+    await page.waitForFunction(
+      () => document.querySelector('[data-item-edit-form] input[name="quantity_text"]')?.value === "4 loaves",
+      { timeout: 5000 },
+    );
+    await expectVisible(
+      itemCard(page, "Tomaten").locator(".item-meta", { hasText: "4 loaves" }),
+      "Undo should restore previous live-saved quantity",
+    );
+    await page.getByRole("button", { name: "Redo edit" }).click();
+    await page.waitForFunction(
+      () => document.querySelector('[data-item-edit-form] input[name="quantity_text"]')?.value === "wrong amount",
+      { timeout: 5000 },
+    );
+    await page.getByRole("button", { name: "Undo last edit" }).click();
+    await page.waitForFunction(
+      () => document.querySelector('[data-item-edit-form] input[name="quantity_text"]')?.value === "4 loaves",
+      { timeout: 5000 },
+    );
+    await page.locator("[data-item-edit-panel] .add-item-close[data-item-edit-close]").click();
+    await expectHidden(page.locator("[data-item-edit-overlay]"), "Edit modal should close before opening settings");
 
     await page.getByRole("button", { name: "Open list settings" }).click();
     await expectVisible(page.getByRole("heading", { name: "Category order" }), "Expected settings modal");
