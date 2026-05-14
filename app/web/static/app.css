@@ -1584,6 +1584,21 @@ main {
   flex-wrap: wrap;
 }
 
+.settings-list-name-form {
+  margin-top: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-list-name-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.settings-subsection-heading {
+  margin-top: 1.25rem;
+}
+
 .item-edit-live-status {
   display: flex;
   align-items: center;

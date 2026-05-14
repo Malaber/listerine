@@ -1483,6 +1483,18 @@ async function main() {
 
     await page.getByRole("button", { name: "Open list settings" }).click();
     await expectVisible(page.getByRole("heading", { name: "Category order" }), "Expected settings modal");
+    const settingsPanel = page.locator("[data-list-settings-panel]");
+    const renamedListName = `E2E Market ${Date.now()}`;
+    await settingsPanel.getByLabel("List name").fill(renamedListName);
+    await settingsPanel.getByRole("button", { name: "Save list name" }).click();
+    await expectVisible(
+      page.locator("[data-list-success]", { hasText: "List name saved." }),
+      "Expected list rename success",
+    );
+    await expectVisible(page.getByRole("heading", { name: renamedListName }), "List title should update");
+    const renamedList = await apiJson(context.request, `/api/v1/lists/${scenario.listId}`);
+    assert.equal(renamedList.name, renamedListName, "List rename should persist through the API");
+    scenario.listName = renamedListName;
     await assertSeedSettingsCategoryColors(page);
     const topCategoryBefore = (
       await textList(page.locator(".item-category-group > .item-category-header h3"))
@@ -1548,7 +1560,6 @@ async function main() {
 
     await page.getByRole("button", { name: "Open list settings" }).click();
     await expectVisible(page.getByRole("heading", { name: "Category order" }), "Expected settings modal");
-    const settingsPanel = page.locator("[data-list-settings-panel]");
     const backwarenDisableRow = settingsPanel.locator(".settings-category-row", { hasText: "Backwaren" });
     await dragCategoryAfter(page, "Backwaren", "Nudeln");
     await backwarenDisableRow.getByRole("button", { name: /Disable Backwaren/i }).click();

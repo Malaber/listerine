@@ -142,11 +142,35 @@
       <div class="add-item-panel-header">
         <div>
           <p class="dashboard-label">{{ t("list_detail.list_settings") }}</p>
-          <h2>{{ t("list_detail.category_order") }}</h2>
+          <h2>{{ t("list_detail.list_settings") }}</h2>
         </div>
         <button class="add-item-close" type="button" aria-label="{{ t("list_detail.close_list_settings") }}" data-list-settings-close>
           &times;
         </button>
+      </div>
+      <form class="dashboard-form settings-list-name-form" data-list-name-form>
+        <label class="dashboard-field">
+          <span>{{ t("list_detail.list_name") }}</span>
+          <input
+            type="text"
+            name="name"
+            maxlength="255"
+            required
+            autocomplete="off"
+            data-list-name-input
+          />
+        </label>
+        <div class="settings-list-name-actions">
+          <button type="submit" class="primary-button" data-list-name-submit>
+            {{ t("list_detail.save_list_name") }}
+          </button>
+        </div>
+      </form>
+      <div class="dashboard-section-heading settings-subsection-heading">
+        <div>
+          <p class="dashboard-label">{{ t("list_detail.categories_label") }}</p>
+          <h3>{{ t("list_detail.category_order") }}</h3>
+        </div>
       </div>
       <p class="dashboard-helper">{{ t("list_detail.category_order_body") }}</p>
       <div class="settings-category-list" data-list-settings-category-list></div>
