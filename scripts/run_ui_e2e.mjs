@@ -599,8 +599,10 @@ async function registerAccountFromLogin(page, { displayName, email }, expectedUr
   );
   await page.locator('[data-passkey-register] input[name="display_name"]').fill(displayName);
   await page.locator('[data-passkey-register] input[name="email"]').fill(email);
-  await page.locator("[data-passkey-register-button]").click();
-  await page.waitForURL(expectedUrlPattern, { waitUntil: "commit", timeout: 10_000 });
+  await Promise.all([
+    page.waitForURL(expectedUrlPattern, { waitUntil: "commit", timeout: 10_000 }),
+    page.locator("[data-passkey-register-button]").click(),
+  ]);
 }
 
 async function loginAsAdmin(page, user) {
@@ -1331,6 +1333,46 @@ async function main() {
     await expectVisible(
       page.locator("[data-item-edit-header-actions]"),
       "Edit history controls and close button should stay in the sticky header",
+    );
+    const editHeaderMetrics = await page.locator("[data-item-edit-panel] .add-item-panel-header").evaluate((header) => {
+      const panel = header.closest("[data-item-edit-panel]");
+      const undo = header.querySelector("[data-item-edit-undo]");
+      const icon = undo?.querySelector(".item-edit-history-icon");
+      if (!(panel instanceof HTMLElement) || !(undo instanceof HTMLElement) || !(icon instanceof Element)) {
+        return null;
+      }
+      const headerRect = header.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      const undoRect = undo.getBoundingClientRect();
+      const iconRect = icon.getBoundingClientRect();
+      return {
+        backgroundColor: window.getComputedStyle(header).backgroundColor,
+        headerLeft: headerRect.left,
+        headerRight: headerRect.right,
+        iconHeight: iconRect.height,
+        iconWidth: iconRect.width,
+        panelLeft: panelRect.left,
+        panelRight: panelRect.right,
+        undoHeight: undoRect.height,
+        undoWidth: undoRect.width,
+      };
+    });
+    assert(editHeaderMetrics, "Expected measurable edit header controls");
+    assert(
+      editHeaderMetrics.headerLeft <= editHeaderMetrics.panelLeft + 1
+        && editHeaderMetrics.headerRight >= editHeaderMetrics.panelRight - 1,
+      "Edit sticky header background should reach the panel edges",
+    );
+    assert(
+      editHeaderMetrics.backgroundColor !== "rgba(0, 0, 0, 0)",
+      "Edit sticky header should have a visible background",
+    );
+    assert(
+      editHeaderMetrics.undoWidth <= 44
+        && editHeaderMetrics.undoHeight <= 40
+        && editHeaderMetrics.iconWidth <= 18
+        && editHeaderMetrics.iconHeight <= 18,
+      "Edit history icons should stay compact",
     );
     await editForm.locator('input[name="quantity_text"]').fill("wrong amount");
     await expectVisible(

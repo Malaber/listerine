@@ -170,7 +170,10 @@
               aria-label="{{ t("list_detail.undo_item_edit") }}"
               disabled
             >
-              ←
+              <svg class="item-edit-history-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M9 14 4 9l5-5" />
+                <path d="M4 9h10.5a5.5 5.5 0 1 1-3.9 9.4" />
+              </svg>
             </button>
             <button
               type="button"
@@ -179,7 +182,10 @@
               aria-label="{{ t("list_detail.redo_item_edit") }}"
               disabled
             >
-              →
+              <svg class="item-edit-history-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="m15 14 5-5-5-5" />
+                <path d="M20 9H9.5a5.5 5.5 0 1 0 3.9 9.4" />
+              </svg>
             </button>
           </div>
           <button class="add-item-close" type="button" aria-label="{{ t("list_detail.close_item_editor") }}" data-item-edit-close>
