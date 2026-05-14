@@ -19,6 +19,7 @@ import {
   normalizeLanguagePreference,
   registerServiceWorker,
   bindListSwitcher,
+  renderCategoryOrderSettings,
   renderHouseholds,
   renderPasskeys,
   renderItems,
@@ -36,6 +37,9 @@ import {
   syncLanguageSettings,
   updateDemoItem,
   connectListSocket,
+  boundedEditDistance,
+  fuzzyItemNameDistance,
+  itemSuggestionMatch,
   offlineListStorageKey,
   loadOfflineListState,
   persistOfflineListState,
@@ -310,6 +314,7 @@ function createListRoot() {
       <div data-item-edit-category-radios></div>
       <div data-item-empty></div>
       <div data-item-list></div>
+      <div data-list-settings-category-list></div>
     </section>
   `, { url: "https://example.test/lists/list-1" });
   return {
@@ -352,8 +357,8 @@ function createDemoListRoot() {
   const demoPayload = {
     list: { id: "demo-list", name: "Saturday Groceries" },
     categories: [
-      { id: "produce", name: "Produce", color: "#8f7a62" },
-      { id: "pantry", name: "Pantry", color: "#8b6b4f" },
+      { id: "produce", name: "Produce", color: "#6bbf59" },
+      { id: "pantry", name: "Pantry", color: "#f59e0b" },
     ],
     category_order: [
       { category_id: "produce", sort_order: 0 },
@@ -626,6 +631,35 @@ test("renderItems uses brown fallback swatches for uncategorized and checked gro
   const swatches = document.querySelectorAll(".item-category-swatch");
   assert.match(swatches[0].getAttribute("style") || "", /217, 197, 179|#d9c5b3/);
   assert.match(swatches[1].getAttribute("style") || "", /181, 150, 118|#b59676/);
+});
+
+test("category swatches preserve configured colors in list and settings views", () => {
+  const { document, root } = createListRoot();
+  const activeItem = {
+    id: "active-item",
+    name: "Paprika",
+    checked: false,
+    checked_at: null,
+    category_id: "cat-1",
+    note: null,
+    quantity_text: null,
+    sort_order: 0,
+  };
+  const state = createState([activeItem]);
+  state.categories.set("cat-1", { id: "cat-1", name: "Gemuese", color: "#7ed957" });
+  state.categoryOrder.set("cat-1", 0);
+
+  renderItems(root, state);
+  renderCategoryOrderSettings(root, state);
+
+  const listSwatchStyle = document
+    .querySelector(".item-category-group .item-category-swatch")
+    .getAttribute("style") || "";
+  const settingsSwatchStyle = document
+    .querySelector(".settings-category-row .item-category-swatch")
+    .getAttribute("style") || "";
+  assert.match(listSwatchStyle, /126, 217, 87|#7ed957/);
+  assert.match(settingsSwatchStyle, /126, 217, 87|#7ed957/);
 });
 
 test("loadMoreCheckedItems fetches one hundred older checked items per page", async () => {
@@ -1069,6 +1103,139 @@ test("renderItemSuggestions adds category color strips for categorized matches",
     assert.equal(suggestions[0].style.getPropertyValue("--suggestion-category-color"), "#ff3b30");
     assert.equal(suggestions[1].classList.contains("has-category"), false);
     assert.equal(suggestions[1].style.getPropertyValue("--suggestion-category-color"), "");
+  } finally {
+    setGlobalProperty("HTMLElement", originalHTMLElement);
+    setGlobalProperty("HTMLInputElement", originalHTMLInputElement);
+  }
+});
+
+test("item suggestion fuzzy matching tolerates short typos", () => {
+  assert.equal(boundedEditDistance("milch", "milvh", 1), 1);
+  assert.equal(boundedEditDistance("milch", "tomate", 1), 2);
+  assert.equal(boundedEditDistance("milch", "salz", 1), 2);
+  assert.equal(fuzzyItemNameDistance("milch", "mi"), null);
+  assert.equal(fuzzyItemNameDistance("brot", "broz"), 1);
+  assert.equal(fuzzyItemNameDistance("spaghetti", "spaghetty"), 1);
+  assert.equal(fuzzyItemNameDistance("hafermilch", "milch"), 0);
+  assert.equal(fuzzyItemNameDistance("milch", "kaffee"), null);
+  assert.deepEqual(itemSuggestionMatch("Milch", "milch"), { distance: 0, rank: 0 });
+  assert.deepEqual(itemSuggestionMatch("Milchreis", "milch"), { distance: 0, rank: 1 });
+  assert.deepEqual(itemSuggestionMatch("Hafermilch", "milch"), { distance: 0, rank: 2 });
+  assert.deepEqual(itemSuggestionMatch("Milch", "Milvh"), { distance: 1, rank: 3 });
+  assert.equal(itemSuggestionMatch("Brot", "reis"), null);
+});
+
+test("renderItemSuggestions shows fuzzy item matches", () => {
+  const { document, root, window } = createSuggestionRoot();
+  const originalHTMLElement = globalThis.HTMLElement;
+  const originalHTMLInputElement = globalThis.HTMLInputElement;
+  setGlobalProperty("HTMLElement", window.HTMLElement);
+  setGlobalProperty("HTMLInputElement", window.HTMLInputElement);
+  document.querySelector("[data-item-name-input]").value = "Milvh";
+  const state = createState([
+    {
+      id: "item-1",
+      name: "Milch",
+      checked: false,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+    },
+    {
+      id: "item-2",
+      name: "Mehl",
+      checked: false,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+    },
+  ]);
+
+  try {
+    renderItemSuggestions(root, state);
+
+    const suggestions = document.querySelectorAll(".item-suggestion");
+    assert.equal(suggestions.length, 1);
+    assert.equal(suggestions[0].querySelector(".item-name").textContent, "Milch");
+    assert.equal(document.querySelector("[data-item-suggestions-slot]").classList.contains("is-active"), true);
+  } finally {
+    setGlobalProperty("HTMLElement", originalHTMLElement);
+    setGlobalProperty("HTMLInputElement", originalHTMLInputElement);
+  }
+});
+
+test("renderItemSuggestions keeps unchanged matches mounted", () => {
+  const { document, root, window } = createSuggestionRoot();
+  const originalHTMLElement = globalThis.HTMLElement;
+  const originalHTMLInputElement = globalThis.HTMLInputElement;
+  setGlobalProperty("HTMLElement", window.HTMLElement);
+  setGlobalProperty("HTMLInputElement", window.HTMLInputElement);
+  const input = document.querySelector("[data-item-name-input]");
+  input.value = "Papri";
+  const state = createState([
+    {
+      id: "item-1",
+      name: "Paprika",
+      checked: false,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+    },
+  ]);
+
+  try {
+    renderItemSuggestions(root, state);
+    const firstSuggestion = document.querySelector(".item-suggestion");
+
+    input.value = "Paprik";
+    renderItemSuggestions(root, state);
+
+    assert.equal(document.querySelector(".item-suggestion"), firstSuggestion);
+    assert.equal(document.querySelector(".item-name").textContent, "Paprika");
+  } finally {
+    setGlobalProperty("HTMLElement", originalHTMLElement);
+    setGlobalProperty("HTMLInputElement", originalHTMLInputElement);
+  }
+});
+
+test("renderItemSuggestions keeps surviving matches mounted when narrowed", () => {
+  const { document, root, window } = createSuggestionRoot();
+  const originalHTMLElement = globalThis.HTMLElement;
+  const originalHTMLInputElement = globalThis.HTMLInputElement;
+  setGlobalProperty("HTMLElement", window.HTMLElement);
+  setGlobalProperty("HTMLInputElement", window.HTMLInputElement);
+  const input = document.querySelector("[data-item-name-input]");
+  input.value = "To";
+  const state = createState([
+    {
+      id: "item-1",
+      name: "Tofu",
+      checked: false,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+    },
+    {
+      id: "item-2",
+      name: "Tomate",
+      checked: false,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+    },
+  ]);
+
+  try {
+    renderItemSuggestions(root, state);
+    const firstSuggestion = document.querySelector(".item-suggestion");
+    assert.equal(firstSuggestion.querySelector(".item-name").textContent, "Tofu");
+    assert.equal(document.querySelectorAll(".item-suggestion").length, 2);
+
+    input.value = "Tofu";
+    renderItemSuggestions(root, state);
+
+    assert.equal(document.querySelector(".item-suggestion"), firstSuggestion);
+    assert.equal(document.querySelectorAll(".item-suggestion").length, 1);
   } finally {
     setGlobalProperty("HTMLElement", originalHTMLElement);
     setGlobalProperty("HTMLInputElement", originalHTMLInputElement);

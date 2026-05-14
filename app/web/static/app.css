@@ -634,7 +634,12 @@ main {
   justify-content: space-between;
   gap: 0.65rem;
   width: 100%;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+}
+
+.list-kicker-row .dashboard-kicker {
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .list-title-row {
@@ -675,7 +680,7 @@ main {
   font-weight: 700;
   line-height: 1;
   min-height: 2.35rem;
-  padding: 0.55rem 0.95rem;
+  padding: 0.55rem 0.8rem;
 }
 
 .list-settings-button:hover {
@@ -722,6 +727,8 @@ main {
 }
 
 .back-link {
+  display: inline-flex;
+  align-items: center;
   color: var(--text-muted);
   font-size: 0.9rem;
   font-weight: 700;
@@ -1612,6 +1619,8 @@ main {
   }
 
   .list-hero-actions {
+    flex: 0 0 auto;
+    gap: 0.38rem;
     justify-content: flex-end;
     margin-left: auto;
     min-width: 0;
@@ -1634,14 +1643,16 @@ main {
   }
 
   .list-settings-button {
-    min-height: 2.35rem;
-    padding: 0.45rem 0.8rem;
-    font-size: 0.84rem;
+    min-height: 2.05rem;
+    padding: 0.36rem 0.55rem;
+    font-size: 0.76rem;
   }
 
   .back-link {
     align-self: flex-start;
-    padding: 0.45rem 0.75rem;
+    font-size: 0.76rem;
+    min-height: 2.05rem;
+    padding: 0.36rem 0.45rem;
   }
 
   .dashboard-card {

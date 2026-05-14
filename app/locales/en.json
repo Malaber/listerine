@@ -256,6 +256,7 @@
     "more_fields": "More",
     "more_fields_hint": "Category and note",
     "list_settings": "List settings",
+    "list_settings_short": "Settings",
     "category_order": "Category order",
     "category_order_body": "Put categories in your store order here. Categories you have not moved yet will stay alphabetical.",
     "close_list_settings": "Close list settings",
