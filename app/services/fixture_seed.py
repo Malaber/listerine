@@ -263,6 +263,7 @@ async def _seed_list_items(
         item.note = item_payload.get("note") and str(item_payload["note"])
         item.category_id = category.id if category else None
         item.checked = bool(item_payload.get("checked", False))
+        item.hidden_until = None
         item.sort_order = index
         item.updated_by = updated_by.id
         if item.checked:

@@ -7,10 +7,13 @@ import {
   cloneDemoItem,
   createDemoItem,
   formatInviteExpiry,
+  formatHiddenUntilLabel,
   formatPasskeyDate,
   getDemoPayload,
   getPreferredLocale,
+  hideItemForLater,
   initUserSettings,
+  isItemHidden,
   isDemoList,
   languagePreferenceLabel,
   loadListDetail,
@@ -53,6 +56,7 @@ import {
   setItemCheckedWithOfflineFallback,
   applyOfflineSyncResult,
   flushOfflineMutations,
+  restoreHiddenItem,
   transitionAuthPanels,
   setAuthTab,
 } from "./app.js";
@@ -299,6 +303,11 @@ function createListRoot() {
       <div data-list-error hidden></div>
       <div data-list-success hidden></div>
       <p data-list-sync-status></p>
+      <div data-list-toast hidden>
+        <p data-list-toast-message></p>
+        <button type="button" data-list-toast-undo>Undo</button>
+        <div data-list-toast-timer></div>
+      </div>
       <input data-item-category-search value="" />
       <input data-item-edit-category-search value="" />
       <div data-item-suggestions-slot><div data-item-suggestions></div></div>
@@ -543,6 +552,65 @@ test("renderItems uses brown fallback swatches for uncategorized and checked gro
   const swatches = document.querySelectorAll(".item-category-swatch");
   assert.match(swatches[0].getAttribute("style") || "", /217, 197, 179|#d9c5b3/);
   assert.match(swatches[1].getAttribute("style") || "", /181, 150, 118|#b59676/);
+});
+
+test("renderItems hides active items until their hidden_until time", () => {
+  const { document, root } = createListRoot();
+  const originalDateNow = Date.now;
+  const nowMs = Date.parse("2026-05-14T10:00:00.000Z");
+  const visibleItem = {
+    id: "visible-item",
+    name: "Visible item",
+    checked: false,
+    checked_at: null,
+    category_id: null,
+    note: null,
+    quantity_text: null,
+    sort_order: 0,
+  };
+  const hiddenItem = {
+    ...visibleItem,
+    id: "hidden-item",
+    name: "Hidden item",
+    hidden_until: "2026-05-14T14:00:00.000Z",
+    sort_order: 1,
+  };
+  const expiredHiddenItem = {
+    ...visibleItem,
+    id: "expired-hidden-item",
+    name: "Expired hidden item",
+    hidden_until: "2026-05-14T09:59:59.000Z",
+    sort_order: 2,
+  };
+
+  Date.now = () => nowMs;
+  try {
+    assert.equal(isItemHidden(hiddenItem, nowMs), true);
+    assert.equal(isItemHidden(expiredHiddenItem, nowMs), false);
+    assert.equal(isItemHidden(visibleItem, nowMs), false);
+    assert.equal(formatHiddenUntilLabel(hiddenItem, nowMs), "4h");
+    assert.equal(
+      formatHiddenUntilLabel({ ...hiddenItem, hidden_until: "2026-05-14T10:10:00.000Z" }, nowMs),
+      "10m",
+    );
+    assert.equal(formatHiddenUntilLabel(visibleItem, nowMs), "");
+
+    const state = createState([visibleItem, hiddenItem, expiredHiddenItem, createCheckedItem(0)]);
+    state.openItemMenuId = "visible-item";
+    renderItems(root, state);
+  } finally {
+    Date.now = originalDateNow;
+  }
+
+  const cardNames = [...document.querySelectorAll(".item-card .item-name")].map(
+    (node) => node.textContent,
+  );
+  assert.deepEqual(cardNames, ["Visible item", "Expired hidden item", "Hidden item", "Checked item 0"]);
+  assert.equal(document.querySelector(".item-hidden-group h3").textContent, "Hidden for 4h");
+  assert.equal(document.querySelector('[data-item-unhide="hidden-item"]').textContent, "4h");
+  assert.equal(document.querySelector('[data-item-menu-toggle="visible-item"]').textContent, "⋯");
+  assert.equal(document.querySelector('[data-item-hide="visible-item"]').textContent, "Hide item for 4h");
+  assert.equal(document.querySelector('[data-item-hide="visible-item"]').closest(".item-more-menu").hidden, false);
 });
 
 test("category quick add buttons open the add form with the category selected", () => {
@@ -944,6 +1012,69 @@ test("offline item helpers use network while online and fall back on fetch TypeE
   }
 });
 
+test("hideItemForLater hides for four hours and restoreHiddenItem clears it", async () => {
+  const { document, root, window } = createListRoot();
+  const originals = {
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    document: globalThis.document,
+    fetch: globalThis.fetch,
+    window: globalThis.window,
+  };
+  const state = createState([
+    {
+      id: "item-1",
+      list_id: "list-1",
+      name: "Milk",
+      checked: false,
+      checked_at: null,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+      sort_order: 0,
+    },
+  ]);
+  const calls = [];
+
+  setDomGlobals({ window });
+  setGlobalProperty("document", document);
+  setGlobalProperty("window", window);
+  setGlobalProperty("fetch", async (url, options) => {
+    const payload = JSON.parse(options.body);
+    calls.push([url, options.method, payload]);
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ...state.items.get("item-1"), hidden_until: payload.hidden_until }),
+    };
+  });
+
+  try {
+    const hidden = await hideItemForLater(root, state, "item-1", Date.parse("2026-05-14T10:00:00.000Z"));
+    assert.equal(hidden.hidden_until, "2026-05-14T14:00:00.000Z");
+    assert.equal(document.querySelectorAll(".item-card").length, 1);
+    assert.equal(document.querySelector(".item-hidden-group h3").textContent, "Hidden for 4h");
+    assert.equal(document.querySelector('[data-item-unhide="item-1"]').textContent, "4h");
+    assert.equal(document.querySelector("[data-list-toast-message]").textContent, "Milk hidden for 4 hours.");
+
+    const restored = await restoreHiddenItem(root, state, "item-1");
+    assert.equal(restored.hidden_until, null);
+    assert.equal(document.querySelector(".item-card .item-name").textContent, "Milk");
+    assert.equal(document.querySelector(".item-hidden-group"), null);
+  } finally {
+    window.clearTimeout(state.undoTimerId);
+    restoreDomGlobals(originals);
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("fetch", originals.fetch);
+    setGlobalProperty("window", originals.window);
+  }
+
+  assert.deepEqual(calls, [
+    ["/api/v1/items/item-1", "PATCH", { hidden_until: "2026-05-14T14:00:00.000Z" }],
+    ["/api/v1/items/item-1", "PATCH", { hidden_until: null }],
+  ]);
+});
+
 test("flushOfflineMutations clears applied mutations and reports sync failures", async () => {
   const { document, root, window } = createListRoot();
   const originals = {
@@ -1053,6 +1184,7 @@ test("renderItemSuggestions adds category color strips for categorized matches",
   const { document, root, window } = createSuggestionRoot();
   const originalHTMLElement = globalThis.HTMLElement;
   const originalHTMLInputElement = globalThis.HTMLInputElement;
+  const originalDateNow = Date.now;
   setGlobalProperty("HTMLElement", window.HTMLElement);
   setGlobalProperty("HTMLInputElement", window.HTMLInputElement);
   const state = createState([
@@ -1072,9 +1204,19 @@ test("renderItemSuggestions adds category color strips for categorized matches",
       note: null,
       quantity_text: null,
     },
+    {
+      id: "item-3",
+      name: "Milch",
+      checked: false,
+      hidden_until: "2026-05-14T14:00:00.000Z",
+      category_id: null,
+      note: null,
+      quantity_text: null,
+    },
   ]);
   state.categories.set("cat-1", { id: "cat-1", name: "Backzutaten", color: "#ff3b30" });
 
+  Date.now = () => Date.parse("2026-05-14T10:00:00.000Z");
   try {
     renderItemSuggestions(root, state);
 
@@ -1085,6 +1227,7 @@ test("renderItemSuggestions adds category color strips for categorized matches",
     assert.equal(suggestions[1].classList.contains("has-category"), false);
     assert.equal(suggestions[1].style.getPropertyValue("--suggestion-category-color"), "");
   } finally {
+    Date.now = originalDateNow;
     setGlobalProperty("HTMLElement", originalHTMLElement);
     setGlobalProperty("HTMLInputElement", originalHTMLInputElement);
   }
