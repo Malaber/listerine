@@ -15,9 +15,9 @@
       "display_name": "Planini Admin",
       "is_admin": true,
       "passkey": {
-        "credential_id": "KOsO6JsnTl-cxewqIv2zZg",
+        "credential_id": "rfQtSiCsTAuqtJpva0-SHQ",
         "name": "Bitwarden - Planini PR Admin",
-        "public_key_b64": "pQECAyYgASFYIKls1uvkBI7r5JxeJv0R/Hv+P2Hr5xrqM9oJ5uJfQQ0bIlggn4nomxrsGEfDvgfiPqNeDQnRCTEnTk0AzcdhRXtefD8=",
+        "public_key_b64": "pQECAyYgASFYINZfiOk8k7cvlvkqxDT4TmcAd18mBRSXeVuTW0Pfnd59IlggBoKNFKiABum6lKLkre+9UErWcyYxW7iO2AmlLLVygh4=",
         "sign_count": 0
       }
     },
@@ -26,9 +26,9 @@
       "display_name": "Planini User",
       "is_admin": false,
       "passkey": {
-        "credential_id": "ELRITAXBSdmGqV3B50JvSQ",
+        "credential_id": "hBGPAsmMQnyLQ4mn_iL3cg",
         "name": "Bitwarden - Planini PR",
-        "public_key_b64": "pQECAyYgASFYIK+2e1axC/AMSd42viJwVvoWY01sI69uv4y17bqLibp1IlggegsKGeFtWqFHbAdzKigDMAn3ChBgU95j9B/hjaba7+0=",
+        "public_key_b64": "pQECAyYgASFYIAPI11bwm6seVeg6iEBHBwNtIgklb6T13PxVunpQhZtJIlggkOnBnd5Jma1qQsHOpsuFGaqosHwdZvqQ5jIK5Z6Uv6E=",
         "sign_count": 0
       }
     },
