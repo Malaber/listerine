@@ -277,6 +277,7 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
 
   const originalPasskeys = await passkeysFromSession(context.request);
   assert.equal(originalPasskeys.length, 1, "Expected one seeded passkey before adding another");
+  const originalPasskeyName = originalPasskeys[0].name;
 
   const seededCredential = (await authenticatorCredentials(authenticator))[0];
   assert(seededCredential, "Expected seeded credential in the virtual authenticator");
@@ -357,12 +358,17 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
   await openSettingsPage(page);
   logStep("Deleting the original passkey using the second passkey as confirmation");
   await page.locator(".passkey-row").nth(0).getByRole("button", { name: "Delete" }).click();
+  const deletePanel = page.locator("[data-passkey-delete-panel]");
   await expectVisible(
-    page.locator("[data-passkey-delete-panel]", {
+    deletePanel.filter({
       hasText:
-        "You must authenticate with another passkey to confirm you still have a working Passkey after deleting one.",
+        `To delete ${originalPasskeyName}, you must authenticate with another passkey to confirm you still have a working Passkey after deleting one.`,
     }),
     "Expected passkey delete confirmation modal",
+  );
+  await expectVisible(
+    deletePanel.locator("strong", { hasText: "another" }),
+    "Expected the delete confirmation to emphasize another passkey",
   );
   await page.getByRole("button", { name: "Continue to verification" }).click();
   await expectVisible(

@@ -761,7 +761,6 @@ function syncPasskeyManagementModalState(root) {
 function setPasskeyDeleteConfirmState(root, state) {
   const overlay = root.querySelector("[data-passkey-delete-overlay]");
   const panel = root.querySelector("[data-passkey-delete-panel]");
-  const nameNode = root.querySelector("[data-passkey-delete-name]");
   const confirmButton = root.querySelector("[data-passkey-delete-confirm]");
   const copyNode = root.querySelector("[data-passkey-delete-copy]");
   if (
@@ -775,15 +774,27 @@ function setPasskeyDeleteConfirmState(root, state) {
   const isOpen = Boolean(state);
   overlay.hidden = !isOpen;
   panel.hidden = !isOpen;
-  if (nameNode instanceof HTMLElement) {
-    nameNode.textContent = state?.name || translate("settings.delete_target_fallback", {}, "this passkey");
-  }
+  const passkeyName = state?.name || translate("settings.delete_target_fallback", {}, "this passkey");
   if (copyNode instanceof HTMLElement) {
-    copyNode.childNodes[0].textContent = `${translate(
-      "settings.delete_help_generic",
-      {},
-      "You must authenticate with another passkey to confirm you still have a working Passkey after deleting one."
-    )} `;
+    const emphasisNode = document.createElement("strong");
+    emphasisNode.textContent = translate("settings.delete_help_emphasis", {}, "another");
+    copyNode.replaceChildren(
+      document.createTextNode(
+        translate(
+          "settings.delete_help_prefix",
+          { name: passkeyName },
+          "To delete {name}, you must authenticate with "
+        )
+      ),
+      emphasisNode,
+      document.createTextNode(
+        translate(
+          "settings.delete_help_suffix",
+          {},
+          " passkey to confirm you still have a working Passkey after deleting one."
+        )
+      )
+    );
   }
   confirmButton.dataset.passkeyId = state?.passkeyId || "";
   syncPasskeyManagementModalState(root);
