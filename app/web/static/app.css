@@ -1202,6 +1202,7 @@ main {
   width: min(100%, 38rem);
   max-height: min(100vh - 3rem, 52rem);
   margin: 0;
+  padding-top: 0;
   z-index: 1;
   overflow: auto;
   transform-origin: top center;
@@ -1225,8 +1226,8 @@ main {
   position: sticky;
   top: 0;
   z-index: 2;
-  margin: -1.25rem -1.4rem 1.05rem;
-  padding: 1rem 1.4rem 0.9rem;
+  margin: 0 -1.4rem 1.05rem;
+  padding: 1.25rem 1.4rem 0.9rem;
   border-top-left-radius: inherit;
   border-top-right-radius: inherit;
   background: var(--surface-muted);

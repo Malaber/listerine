@@ -1423,10 +1423,12 @@ async function main() {
         backgroundColor: window.getComputedStyle(header).backgroundColor,
         headerLeft: headerRect.left,
         headerRight: headerRect.right,
+        headerTop: headerRect.top,
         iconHeight: iconRect.height,
         iconWidth: iconRect.width,
         panelLeft: panelRect.left,
         panelRight: panelRect.right,
+        panelTop: panelRect.top,
         undoHeight: undoRect.height,
         undoWidth: undoRect.width,
       };
@@ -1436,6 +1438,10 @@ async function main() {
       editHeaderMetrics.headerLeft <= editHeaderMetrics.panelLeft + 1
         && editHeaderMetrics.headerRight >= editHeaderMetrics.panelRight - 1,
       "Edit sticky header background should reach the panel edges",
+    );
+    assert(
+      editHeaderMetrics.headerTop <= editHeaderMetrics.panelTop + 2,
+      "Edit sticky header background should cover the panel top edge",
     );
     assert(
       editHeaderMetrics.backgroundColor !== "rgba(0, 0, 0, 0)",
