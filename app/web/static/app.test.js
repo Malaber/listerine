@@ -17,6 +17,7 @@ import {
   loadMoreCheckedItems,
   normalizeLanguagePreference,
   registerServiceWorker,
+  renderPasskeys,
   renderItems,
   renderItemSuggestions,
   restoreCheckedSuggestion,
@@ -31,6 +32,21 @@ import {
   syncLanguageSettings,
   updateDemoItem,
   connectListSocket,
+  offlineListStorageKey,
+  loadOfflineListState,
+  persistOfflineListState,
+  applyOfflineListState,
+  showOfflineSavedMessage,
+  isBrowserOffline,
+  isOfflineRequestError,
+  shouldQueueItemMutation,
+  createOfflineItem,
+  applyLocalCheckedState,
+  createItemWithOfflineFallback,
+  updateItemWithOfflineFallback,
+  setItemCheckedWithOfflineFallback,
+  applyOfflineSyncResult,
+  flushOfflineMutations,
 } from "./app.js";
 
 function setGlobalProperty(name, value) {
@@ -121,13 +137,23 @@ test("registerServiceWorker registers the root service worker when available", a
 function createListRoot() {
   const dom = new JSDOM(`
     <section data-list-detail data-list-id="list-1">
+      <h1 data-list-title>Weekly</h1>
+      <div data-list-error hidden></div>
+      <div data-list-success hidden></div>
+      <p data-list-sync-status></p>
+      <input data-item-category-search value="" />
+      <input data-item-edit-category-search value="" />
+      <div data-item-suggestions-slot><div data-item-suggestions></div></div>
+      <div data-item-category-radios></div>
+      <div data-item-edit-category-radios></div>
       <div data-item-empty></div>
       <div data-item-list></div>
     </section>
-  `);
+  `, { url: "https://example.test/lists/list-1" });
   return {
     document: dom.window.document,
     root: dom.window.document.querySelector("[data-list-detail]"),
+    window: dom.window,
   };
 }
 
@@ -151,8 +177,8 @@ function createDemoListRoot() {
   const demoPayload = {
     list: { id: "demo-list", name: "Saturday Groceries" },
     categories: [
-      { id: "produce", name: "Produce", color: "#6bbf59" },
-      { id: "pantry", name: "Pantry", color: "#f59e0b" },
+      { id: "produce", name: "Produce", color: "#8f7a62" },
+      { id: "pantry", name: "Pantry", color: "#8b6b4f" },
     ],
     category_order: [
       { category_id: "produce", sort_order: 0 },
@@ -223,7 +249,11 @@ function createState(items) {
     categories: new Map(),
     checkedRemainingCount: 0,
     editingItemId: null,
+    highlightedItemId: null,
+    highlightTimers: new Map(),
     items: new Map(items.map((item) => [item.id, item])),
+    offlineSyncInFlight: null,
+    pendingMutations: [],
   };
 }
 
@@ -259,6 +289,27 @@ test("renderItems only shows loaded checked items before loading more", () => {
   assert.equal(document.querySelector(".checked-items-load-more .item-category-meta").textContent, "110 older items not loaded");
 });
 
+test("renderItems uses brown fallback swatches for uncategorized and checked groups", () => {
+  const { document, root } = createListRoot();
+  const activeItem = {
+    id: "active-item",
+    name: "Loose item",
+    checked: false,
+    checked_at: null,
+    category_id: null,
+    note: null,
+    quantity_text: null,
+    sort_order: 0,
+  };
+  const state = createState([activeItem, createCheckedItem(0)]);
+
+  renderItems(root, state);
+
+  const swatches = document.querySelectorAll(".item-category-swatch");
+  assert.match(swatches[0].getAttribute("style") || "", /217, 197, 179|#d9c5b3/);
+  assert.match(swatches[1].getAttribute("style") || "", /181, 150, 118|#b59676/);
+});
+
 test("loadMoreCheckedItems fetches one hundred older checked items per page", async () => {
   const { document, root } = createListRoot();
   const originalFetch = globalThis.fetch;
@@ -289,6 +340,380 @@ test("loadMoreCheckedItems fetches one hundred older checked items per page", as
   assert.equal(document.querySelector(".item-category-header .item-category-meta").textContent, "120 items");
   assert.equal(document.querySelector(".checked-items-load-more button").textContent, "Load 10 more");
   assert.equal(document.querySelector(".checked-items-load-more .item-category-meta").textContent, "10 older items not loaded");
+});
+
+test("offline list cache helpers persist local state and merge sync results", () => {
+  const { document, root, window } = createListRoot();
+  const originals = {
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    document: globalThis.document,
+    window: globalThis.window,
+  };
+  const state = createState([
+    {
+      id: "local-item-1",
+      list_id: "list-1",
+      name: "Offline apples",
+      checked: false,
+      checked_at: null,
+      category_id: "cat-1",
+      note: null,
+      quantity_text: "2",
+      sort_order: 1,
+    },
+    {
+      id: "delete-me",
+      list_id: "list-1",
+      name: "Delete me",
+      checked: false,
+      checked_at: null,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+      sort_order: 2,
+    },
+  ]);
+  state.categories.set("cat-1", { id: "cat-1", name: "Produce", color: "#22c55e" });
+  state.categoryOrder.set("cat-1", 0);
+  state.pendingMutations.push({ mutation_id: "m1", type: "create" });
+
+  assert.equal(loadOfflineListState("no-window"), null);
+  assert.equal(loadOfflineListState(""), null);
+  setDomGlobals({ window });
+  setGlobalProperty("document", document);
+  setGlobalProperty("window", window);
+
+  try {
+    assert.equal(offlineListStorageKey("list-1"), "planini:list-offline:list-1");
+    assert.equal(loadOfflineListState(""), null);
+    assert.equal(loadOfflineListState("list-1"), null);
+    window.localStorage.setItem(offlineListStorageKey("bad-json"), "{");
+    assert.equal(loadOfflineListState("bad-json"), null);
+    window.localStorage.setItem(offlineListStorageKey("not-object"), "false");
+    assert.equal(loadOfflineListState("not-object"), null);
+
+    persistOfflineListState(root, state);
+    persistOfflineListState(document.createElement("section"), state);
+    const cached = loadOfflineListState("list-1");
+    assert.equal(cached.title, "Weekly");
+    assert.equal(cached.items.length, 2);
+    assert.equal(cached.categories[0].name, "Produce");
+    assert.equal(cached.pendingMutations[0].mutation_id, "m1");
+
+    const nextState = createState([]);
+    applyOfflineListState(root, nextState, cached);
+    assert.equal(nextState.items.get("local-item-1").name, "Offline apples");
+    assert.equal(document.querySelectorAll(".item-card").length, 2);
+    applyOfflineListState(root, nextState, { items: [], pendingMutations: [] });
+    assert.equal(document.querySelector("[data-list-title]").textContent, "Weekly");
+
+    const localItem = createOfflineItem(
+      nextState,
+      "list-1",
+      "local-item-2",
+      { name: "Offline pears", quantity_text: "3" },
+      "2026-05-14T10:00:00.000Z",
+    );
+    assert.equal(localItem.sort_order, 0);
+    assert.equal(localItem.checked_state_recorded_at, "2026-05-14T10:00:00.000Z");
+
+    const checkedItem = applyLocalCheckedState(localItem, true, "2026-05-14T10:05:00.000Z");
+    assert.equal(checkedItem.checked, true);
+    assert.equal(checkedItem.checked_at, "2026-05-14T10:05:00.000Z");
+
+    nextState.items.set("local-item-1", { ...checkedItem, id: "local-item-1" });
+    applyOfflineSyncResult(nextState, {
+      client_item_ids: { "local-item-1": "server-item-1" },
+      deleted_item_ids: ["delete-me"],
+      items: [{ ...checkedItem, id: "server-item-1", checked_at: "2026-05-14T10:05:00.000Z" }],
+      applied_mutation_ids: ["m1"],
+    });
+    assert.equal(nextState.items.has("local-item-1"), false);
+    assert.equal(nextState.items.has("delete-me"), false);
+    assert.equal(nextState.items.get("server-item-1").checked, true);
+    assert.equal(nextState.pendingMutations.length, 0);
+
+    showOfflineSavedMessage(root);
+    assert.equal(document.querySelector("[data-list-error]").textContent, "Offline. Changes saved locally and will sync when connection returns.");
+    assert.equal(document.querySelector("[data-list-sync-status]").textContent, "Changes saved locally.");
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("window", originals.window);
+  }
+});
+
+test("offline item mutations save locally when browser or request is offline", async () => {
+  const { document, root, window } = createListRoot();
+  const originals = {
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    document: globalThis.document,
+    fetch: globalThis.fetch,
+    navigator: globalThis.navigator,
+    window: globalThis.window,
+  };
+  const state = createState([
+    {
+      id: "item-1",
+      list_id: "list-1",
+      name: "Milk",
+      checked: false,
+      checked_at: null,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+      sort_order: 0,
+    },
+  ]);
+
+  setDomGlobals({ window });
+  setGlobalProperty("document", document);
+  setGlobalProperty("window", window);
+  setGlobalProperty("navigator", { onLine: false });
+  setGlobalProperty("fetch", async () => {
+    throw new Error("offline helpers should not fetch while navigator is offline");
+  });
+
+  try {
+    assert.equal(isBrowserOffline(), true);
+    assert.equal(isOfflineRequestError(new Error("regular")), true);
+    assert.equal(shouldQueueItemMutation(state), true);
+
+    const created = await createItemWithOfflineFallback(root, state, "list-1", { name: "Bananas" });
+    assert.equal(created.id.startsWith("local-item-"), true);
+    assert.equal(state.pendingMutations[0].type, "create");
+    assert.equal(state.items.get(created.id).name, "Bananas");
+
+    const updated = await updateItemWithOfflineFallback(root, state, created.id, { note: "ripe" });
+    assert.equal(updated.note, "ripe");
+    assert.equal(state.pendingMutations[1].type, "update");
+
+    const checked = await setItemCheckedWithOfflineFallback(root, state, created.id, true);
+    assert.equal(checked.checked, true);
+    assert.equal(state.pendingMutations[2].checked, true);
+    assert.equal(window.localStorage.getItem(offlineListStorageKey("list-1")).includes("Bananas"), true);
+    assert.equal(document.querySelector("[data-list-error]").textContent, "Offline. Changes saved locally and will sync when connection returns.");
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("fetch", originals.fetch);
+    setGlobalProperty("navigator", originals.navigator);
+    setGlobalProperty("window", originals.window);
+  }
+});
+
+test("offline item helpers use network while online and fall back on fetch TypeError", async () => {
+  const { root, window } = createListRoot();
+  const originals = {
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    document: globalThis.document,
+    fetch: globalThis.fetch,
+    navigator: globalThis.navigator,
+    window: globalThis.window,
+  };
+  const state = createState([
+    {
+      id: "item-1",
+      list_id: "list-1",
+      name: "Milk",
+      checked: false,
+      checked_at: null,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+      sort_order: 0,
+    },
+  ]);
+  const calls = [];
+
+  setDomGlobals({ window });
+  setGlobalProperty("document", window.document);
+  setGlobalProperty("window", window);
+  setGlobalProperty("navigator", { onLine: true });
+  setGlobalProperty("fetch", async (url, options) => {
+    calls.push([url, options?.method || "GET"]);
+    if (url === "/api/v1/lists/list-1/items") {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          id: "server-created",
+          list_id: "list-1",
+          name: "Eggs",
+          checked: false,
+          checked_at: null,
+          category_id: null,
+          note: null,
+          quantity_text: null,
+          sort_order: 1,
+        }),
+      };
+    }
+    if (url === "/api/v1/items/item-1" && options?.method === "PATCH") {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          ...state.items.get("item-1"),
+          note: "organic",
+        }),
+      };
+    }
+    throw new TypeError("network down");
+  });
+
+  try {
+    assert.equal(isBrowserOffline(), false);
+    assert.equal(isOfflineRequestError(new TypeError("network down")), true);
+    assert.equal(isOfflineRequestError(new Error("server rejected")), false);
+    assert.equal(shouldQueueItemMutation(state, "item-1"), false);
+
+    const created = await createItemWithOfflineFallback(root, state, "list-1", { name: "Eggs" });
+    assert.equal(created.id, "server-created");
+    assert.deepEqual(calls[0], ["/api/v1/lists/list-1/items", "POST"]);
+
+    const updated = await updateItemWithOfflineFallback(root, state, "item-1", { note: "organic" });
+    assert.equal(updated.note, "organic");
+    assert.deepEqual(calls[1], ["/api/v1/items/item-1", "PATCH"]);
+
+    const checked = await setItemCheckedWithOfflineFallback(root, state, "item-1", true);
+    assert.equal(checked.id, "item-1");
+    assert.equal(checked.checked, true);
+    assert.equal(state.pendingMutations[0].type, "set_checked");
+
+    state.pendingMutations = [];
+    setGlobalProperty("fetch", async () => ({
+      ok: false,
+      status: 400,
+      json: async () => ({ detail: "Bad item." }),
+    }));
+    await assert.rejects(
+      () => createItemWithOfflineFallback(root, state, "list-1", { name: "Bad" }),
+      /Bad item\./,
+    );
+    await assert.rejects(
+      () => updateItemWithOfflineFallback(root, state, "item-1", { note: "bad" }),
+      /Bad item\./,
+    );
+    await assert.rejects(
+      () => setItemCheckedWithOfflineFallback(root, state, "item-1", true),
+      /Bad item\./,
+    );
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("fetch", originals.fetch);
+    setGlobalProperty("navigator", originals.navigator);
+    setGlobalProperty("window", originals.window);
+  }
+});
+
+test("flushOfflineMutations clears applied mutations and reports sync failures", async () => {
+  const { document, root, window } = createListRoot();
+  const originals = {
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    document: globalThis.document,
+    fetch: globalThis.fetch,
+    navigator: globalThis.navigator,
+    window: globalThis.window,
+  };
+  const state = createState([
+    {
+      id: "local-item-1",
+      list_id: "list-1",
+      name: "Offline apples",
+      checked: false,
+      checked_at: null,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+      sort_order: 0,
+    },
+  ]);
+  state.pendingMutations = [{ mutation_id: "m1", type: "create" }];
+  const calls = [];
+
+  setDomGlobals({ window });
+  setGlobalProperty("document", document);
+  setGlobalProperty("window", window);
+  setGlobalProperty("navigator", { onLine: true });
+  setGlobalProperty("fetch", async (url, options) => {
+    calls.push([url, JSON.parse(options.body).mutations.length]);
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        client_item_ids: { "local-item-1": "server-item-1" },
+        deleted_item_ids: [],
+        items: [{
+          id: "server-item-1",
+          list_id: "list-1",
+          name: "Offline apples",
+          checked: false,
+          checked_at: null,
+          category_id: null,
+          note: null,
+          quantity_text: null,
+          sort_order: 0,
+        }],
+        applied_mutation_ids: ["m1"],
+      }),
+    };
+  });
+
+  try {
+    const firstFlush = flushOfflineMutations(root, state);
+    const inFlightFlush = flushOfflineMutations(root, state);
+    assert.equal(firstFlush, inFlightFlush);
+    await firstFlush;
+    assert.deepEqual(calls, [["/api/v1/lists/list-1/items/sync", 1]]);
+    assert.equal(state.pendingMutations.length, 0);
+    assert.equal(state.items.has("local-item-1"), false);
+    assert.equal(state.items.has("server-item-1"), true);
+    assert.equal(document.querySelector("[data-list-success]").textContent, "Saved offline changes synced.");
+    assert.equal(await flushOfflineMutations(root, state), null);
+
+    state.pendingMutations = [{ mutation_id: "m1-left", type: "update" }];
+    setGlobalProperty("fetch", async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        client_item_ids: {},
+        deleted_item_ids: [],
+        items: [],
+        applied_mutation_ids: [],
+      }),
+    }));
+    await flushOfflineMutations(root, state);
+    assert.equal(state.pendingMutations.length, 1);
+    assert.equal(document.querySelector("[data-list-error]").textContent, "Offline. Changes saved locally and will sync when connection returns.");
+
+    state.pendingMutations = [{ mutation_id: "m2", type: "update" }];
+    setGlobalProperty("fetch", async () => {
+      throw new TypeError("offline");
+    });
+    await flushOfflineMutations(root, state);
+    assert.equal(state.pendingMutations.length, 1);
+    assert.equal(document.querySelector("[data-list-error]").textContent, "Offline. Changes saved locally and will sync when connection returns.");
+
+    setGlobalProperty("fetch", async () => ({
+      ok: false,
+      status: 500,
+      json: async () => ({ detail: "Server rejected sync." }),
+    }));
+    await flushOfflineMutations(root, state);
+    assert.equal(document.querySelector("[data-list-error]").textContent, "Server rejected sync.");
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("fetch", originals.fetch);
+    setGlobalProperty("navigator", originals.navigator);
+    setGlobalProperty("window", originals.window);
+  }
 });
 
 test("renderItemSuggestions adds category color strips for categorized matches", () => {
@@ -376,6 +801,8 @@ test("demo list helpers reuse the real list page with local data", async () => {
     state.items.set(createdItem.id, createdItem);
     const updatedItem = updateDemoItem(state, "demo-item-3", { note: "Big box" });
     assert.equal(updatedItem.note, "Big box");
+    const updatedViaFallback = await updateItemWithOfflineFallback(root, state, "demo-item-3", { note: "Fallback box" });
+    assert.equal(updatedViaFallback.note, "Fallback box");
 
     const checkedItem = setDemoItemChecked(state, "demo-item-1", true);
     assert.equal(checkedItem.checked, true);
@@ -399,6 +826,7 @@ test("demo list helpers reuse the real list page with local data", async () => {
 
     connectListSocket(root, state);
     assert.equal(document.querySelector("[data-list-sync-status]").textContent, "Interactive demo running locally.");
+    assert.equal(await flushOfflineMutations(root, state), null);
     setListSyncStatus(root, "Manual sync text");
     assert.equal(document.querySelector("[data-list-sync-status]").textContent, "Manual sync text");
   } finally {
@@ -568,6 +996,60 @@ test("date formatters use the stored language preference", () => {
     assert.equal(formatPasskeyDate(null), "Never used yet");
     assert.match(formatPasskeyDate("2026-04-06T12:30:00Z"), /06\.04\.2026|06\. Apr\. 2026/);
     assert.match(formatInviteExpiry("2026-04-06T12:30:00Z"), /06\.04\.2026|06\. Apr\. 2026/);
+  } finally {
+    setGlobalProperty("document", originalDocument);
+    setGlobalProperty("navigator", originalNavigator);
+    setGlobalProperty("window", originalWindow);
+  }
+});
+
+test("renderPasskeys only shows the empty state when no passkeys exist", () => {
+  const originalDocument = globalThis.document;
+  const originalNavigator = globalThis.navigator;
+  const originalWindow = globalThis.window;
+  const dom = new JSDOM(
+    `<!doctype html>
+    <html>
+      <body>
+        <section data-passkey-management>
+          <div class="dashboard-empty" data-passkey-empty hidden>
+            <h3>No passkeys loaded</h3>
+          </div>
+          <div data-passkey-list></div>
+        </section>
+      </body>
+    </html>`,
+    { url: "https://example.test/settings" },
+  );
+
+  setGlobalProperty("document", dom.window.document);
+  setGlobalProperty("navigator", { language: "en-US" });
+  setGlobalProperty("window", dom.window);
+
+  try {
+    const root = dom.window.document.querySelector("[data-passkey-management]");
+    const emptyState = root.querySelector("[data-passkey-empty]");
+    const list = root.querySelector("[data-passkey-list]");
+
+    renderPasskeys(root, [
+      {
+        id: "passkey-1",
+        name: "Bitwarden - Listerine",
+        created_at: "2026-03-18T18:09:00Z",
+        last_used_at: "2026-05-12T18:13:00Z",
+      },
+    ]);
+
+    assert.equal(emptyState.hidden, true);
+    assert.equal(emptyState.style.display, "none");
+    assert.equal(list.querySelectorAll(".passkey-row").length, 1);
+    assert.match(list.textContent, /Bitwarden - Listerine/);
+
+    renderPasskeys(root, []);
+
+    assert.equal(emptyState.hidden, false);
+    assert.equal(emptyState.style.display, "");
+    assert.equal(list.querySelectorAll(".passkey-row").length, 0);
   } finally {
     setGlobalProperty("document", originalDocument);
     setGlobalProperty("navigator", originalNavigator);

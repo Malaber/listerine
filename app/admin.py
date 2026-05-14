@@ -43,7 +43,10 @@ class UserAdmin(ModelView, model=User):
     name_plural = "Users"
     icon = "fa-solid fa-user"
     column_list = [User.email, User.display_name, User.is_admin, User.is_active, User.created_at]
+    column_sortable_list = column_list
     form_columns = [User.email, User.display_name, User.is_admin, User.is_active]
+    page_size = 50
+    page_size_options = [50, 100, 200]
     can_create = False
     edit_template = "planini_admin/user_edit.html"
 
@@ -75,8 +78,11 @@ class CategoryAdmin(ModelView, model=Category):
     name_plural = "Categories"
     icon = "fa-solid fa-tag"
     column_list = [Category.name, Category.color, Category.aliases_text]
+    column_sortable_list = column_list
     form_columns = [Category.name, Category.color, Category.aliases_text]
     column_labels = {Category.aliases_text: "Aliases"}
+    page_size = 50
+    page_size_options = [50, 100, 200]
     form_widget_args = {
         "color": {"type": "color"},
         "aliases_text": {
