@@ -1090,6 +1090,63 @@ main {
   flex: 0 0 auto;
 }
 
+.item-edit-panel .add-item-panel-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: -0.1rem -0.1rem 0.85rem;
+  padding: 0.1rem 0.1rem 0.65rem;
+  background: linear-gradient(180deg, rgba(255, 250, 242, 0.98), rgba(255, 250, 242, 0.92));
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.item-edit-header-actions,
+.item-edit-history-actions {
+  display: flex;
+  align-items: center;
+}
+
+.item-edit-header-actions {
+  gap: 0.65rem;
+  flex: 0 0 auto;
+}
+
+.item-edit-history-actions {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-strong);
+}
+
+.item-edit-history-button {
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 1.25rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.item-edit-history-button:last-child {
+  border-right: 0;
+}
+
+.item-edit-history-button:hover:not(:disabled) {
+  background: var(--brand-aqua-soft);
+}
+
+.item-edit-history-button:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
 .add-item-save-button {
   border: 0;
   border-radius: 999px;
@@ -1382,25 +1439,6 @@ main {
   align-items: center;
   gap: 0.75rem;
   flex-wrap: wrap;
-}
-
-.dashboard-form .item-edit-undo-button {
-  border: 1px solid var(--border);
-  background: var(--surface-strong);
-  color: var(--text);
-}
-
-.dashboard-form .item-edit-undo-button:hover {
-  border-color: var(--border-strong);
-  background: var(--brand-aqua-soft);
-}
-
-.dashboard-form .item-edit-undo-button:disabled {
-  border-color: var(--border);
-  background: var(--surface-muted);
-  color: var(--text-muted);
-  cursor: not-allowed;
-  opacity: 1;
 }
 
 .item-edit-live-status {

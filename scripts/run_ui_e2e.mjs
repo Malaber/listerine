@@ -1149,12 +1149,16 @@ async function main() {
       page.locator("[data-item-edit-panel]").getByRole("heading", { name: "Tomaten" }),
       "Expected Tomaten edit modal before undoing a live edit",
     );
+    await expectVisible(
+      page.locator("[data-item-edit-header-actions]"),
+      "Edit history controls and close button should stay in the sticky header",
+    );
     await editForm.locator('input[name="quantity_text"]').fill("wrong amount");
     await expectVisible(
       editForm.locator("[data-item-edit-status]", { hasText: "Saved." }),
       "Expected wrong quantity to live-save before undo",
     );
-    await editForm.locator("[data-item-edit-undo]").click();
+    await page.getByRole("button", { name: "Undo last edit" }).click();
     await page.waitForFunction(
       () => document.querySelector('[data-item-edit-form] input[name="quantity_text"]')?.value === "4 loaves",
       { timeout: 5000 },
@@ -1162,6 +1166,16 @@ async function main() {
     await expectVisible(
       itemCard(page, "Tomaten").locator(".item-meta", { hasText: "4 loaves" }),
       "Undo should restore previous live-saved quantity",
+    );
+    await page.getByRole("button", { name: "Redo edit" }).click();
+    await page.waitForFunction(
+      () => document.querySelector('[data-item-edit-form] input[name="quantity_text"]')?.value === "wrong amount",
+      { timeout: 5000 },
+    );
+    await page.getByRole("button", { name: "Undo last edit" }).click();
+    await page.waitForFunction(
+      () => document.querySelector('[data-item-edit-form] input[name="quantity_text"]')?.value === "4 loaves",
+      { timeout: 5000 },
     );
     await page.locator("[data-item-edit-panel] .add-item-close[data-item-edit-close]").click();
     await expectHidden(page.locator("[data-item-edit-overlay]"), "Edit modal should close before opening settings");

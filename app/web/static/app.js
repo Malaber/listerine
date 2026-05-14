@@ -1243,6 +1243,10 @@ function itemEditHistoryStorageKey(listId) {
   return `planini:item-edit-history:${listId}`;
 }
 
+function itemEditRedoHistoryStorageKey(listId) {
+  return `planini:item-edit-redo-history:${listId}`;
+}
+
 function normalizeNullableItemEditValue(value) {
   const normalized = String(value || "").trim();
   return normalized || null;
@@ -1307,11 +1311,44 @@ function loadItemEditHistory(listId) {
   }
 }
 
+function loadItemEditRedoHistory(listId) {
+  if (typeof window === "undefined" || !listId) {
+    return new Map();
+  }
+
+  const raw = window.localStorage?.getItem(itemEditRedoHistoryStorageKey(listId));
+  if (!raw) {
+    return new Map();
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return new Map();
+    }
+    return new Map(
+      Object.entries(parsed).map(([itemId, snapshots]) => [
+        itemId,
+        Array.isArray(snapshots) ? snapshots.slice(0, ITEM_EDIT_HISTORY_LIMIT) : [],
+      ]),
+    );
+  } catch {
+    return new Map();
+  }
+}
+
 function ensureItemEditHistory(root, state) {
   if (!(state.itemEditHistory instanceof Map)) {
     state.itemEditHistory = loadItemEditHistory(root.dataset.listId || "");
   }
   return state.itemEditHistory;
+}
+
+function ensureItemEditRedoHistory(root, state) {
+  if (!(state.itemEditRedoHistory instanceof Map)) {
+    state.itemEditRedoHistory = loadItemEditRedoHistory(root.dataset.listId || "");
+  }
+  return state.itemEditRedoHistory;
 }
 
 function persistItemEditHistory(root, state) {
@@ -1334,6 +1371,26 @@ function persistItemEditHistory(root, state) {
   window.localStorage?.setItem(itemEditHistoryStorageKey(listId), JSON.stringify(serialized));
 }
 
+function persistItemEditRedoHistory(root, state) {
+  if (typeof window === "undefined" || isDemoList(root)) {
+    return;
+  }
+
+  const listId = root.dataset.listId;
+  if (!listId) {
+    return;
+  }
+
+  const history = ensureItemEditRedoHistory(root, state);
+  const serialized = {};
+  history.forEach((snapshots, itemId) => {
+    if (snapshots.length > 0) {
+      serialized[itemId] = snapshots.slice(0, ITEM_EDIT_HISTORY_LIMIT);
+    }
+  });
+  window.localStorage?.setItem(itemEditRedoHistoryStorageKey(listId), JSON.stringify(serialized));
+}
+
 function pushItemEditHistory(root, state, itemId, item) {
   const snapshot = cloneItemEditHistoryItem(item);
   if (!itemId || !snapshot) {
@@ -1350,6 +1407,22 @@ function pushItemEditHistory(root, state, itemId, item) {
   persistItemEditHistory(root, state);
 }
 
+function pushItemEditRedoHistory(root, state, itemId, item) {
+  const snapshot = cloneItemEditHistoryItem(item);
+  if (!itemId || !snapshot) {
+    return;
+  }
+
+  const history = ensureItemEditRedoHistory(root, state);
+  const snapshots = history.get(itemId) || [];
+  if (snapshots[0] && itemEditPayloadsEqual(itemEditPayloadFromItem(snapshots[0]), itemEditPayloadFromItem(snapshot))) {
+    return;
+  }
+
+  history.set(itemId, [snapshot, ...snapshots].slice(0, ITEM_EDIT_HISTORY_LIMIT));
+  persistItemEditRedoHistory(root, state);
+}
+
 function popItemEditHistory(root, state, itemId) {
   const history = ensureItemEditHistory(root, state);
   const snapshots = history.get(itemId) || [];
@@ -1361,6 +1434,28 @@ function popItemEditHistory(root, state, itemId) {
   }
   persistItemEditHistory(root, state);
   return snapshot;
+}
+
+function popItemEditRedoHistory(root, state, itemId) {
+  const history = ensureItemEditRedoHistory(root, state);
+  const snapshots = history.get(itemId) || [];
+  const snapshot = snapshots.shift() || null;
+  if (snapshots.length > 0) {
+    history.set(itemId, snapshots);
+  } else {
+    history.delete(itemId);
+  }
+  persistItemEditRedoHistory(root, state);
+  return snapshot;
+}
+
+function clearItemEditRedoHistory(root, state, itemId) {
+  if (!itemId) {
+    return;
+  }
+  const history = ensureItemEditRedoHistory(root, state);
+  history.delete(itemId);
+  persistItemEditRedoHistory(root, state);
 }
 
 function readItemEditFormPayload(root) {
@@ -1420,14 +1515,21 @@ function isItemEditDraftDirty(root, state) {
 }
 
 function updateItemEditUndoButton(root, state) {
-  const button = root.querySelector("[data-item-edit-undo]");
-  if (!button) {
+  const undoButton = root.querySelector("[data-item-edit-undo]");
+  const redoButton = root.querySelector("[data-item-edit-redo]");
+  if (!undoButton && !redoButton) {
     return;
   }
 
   const itemId = state.editingItemId;
   const history = itemId ? ensureItemEditHistory(root, state).get(itemId) || [] : [];
-  button.disabled = Boolean(state.itemEditSaveInFlight) || (!isItemEditDraftDirty(root, state) && history.length === 0);
+  const redoHistory = itemId ? ensureItemEditRedoHistory(root, state).get(itemId) || [] : [];
+  if (undoButton) {
+    undoButton.disabled = Boolean(state.itemEditSaveInFlight) || (!isItemEditDraftDirty(root, state) && history.length === 0);
+  }
+  if (redoButton) {
+    redoButton.disabled = Boolean(state.itemEditSaveInFlight) || redoHistory.length === 0;
+  }
 }
 
 function cancelItemEditSaveTimer(state) {
@@ -1466,6 +1568,7 @@ async function applyItemEditPayload(root, state, itemId, payload, { recordHistor
     const updatedItem = await updateItemWithOfflineFallback(root, state, itemId, normalized);
     if (recordHistory) {
       pushItemEditHistory(root, state, itemId, previousItem);
+      clearItemEditRedoHistory(root, state, itemId);
     }
     upsertItem(state, updatedItem);
     state.itemEditLastSavedPayload = itemEditPayloadFromItem(updatedItem);
@@ -1558,6 +1661,7 @@ async function undoItemEdit(root, state) {
   const currentPayload = currentItem ? itemEditPayloadFromItem(currentItem) : null;
   const draftPayload = readItemEditFormPayload(root);
   if (currentPayload && draftPayload && !itemEditPayloadsEqual(currentPayload, draftPayload)) {
+    pushItemEditRedoHistory(root, state, itemId, { ...currentItem, ...draftPayload });
     setItemEditFormValues(root, state, currentItem);
     state.itemEditLastSavedPayload = currentPayload;
     setItemEditStatus(root, "saved", translate("list_detail.item_saved", {}, "Saved."));
@@ -1577,16 +1681,61 @@ async function undoItemEdit(root, state) {
     state,
     itemId,
     itemEditPayloadFromItem(previousItem),
-    { recordHistory: true },
+    { recordHistory: false },
   );
   if (restored) {
     const nextItem = state.items.get(itemId);
     if (nextItem) {
       setItemEditFormValues(root, state, nextItem);
     }
+    if (currentItem) {
+      pushItemEditRedoHistory(root, state, itemId, currentItem);
+    }
     setListMessage(root, "success", translate("list_detail.item_edit_undone", {}, "Edit undone."));
   } else {
     pushItemEditHistory(root, state, itemId, previousItem);
+  }
+  updateItemEditUndoButton(root, state);
+  return restored;
+}
+
+async function redoItemEdit(root, state) {
+  const itemId = state.editingItemId;
+  if (!itemId) {
+    return false;
+  }
+
+  cancelItemEditSaveTimer(state);
+  if (state.itemEditSaveInFlight) {
+    await state.itemEditSaveInFlight;
+  }
+
+  const nextItem = popItemEditRedoHistory(root, state, itemId);
+  if (!nextItem) {
+    setItemEditStatus(root, "error", translate("list_detail.item_edit_redo_empty", {}, "No edits to redo."));
+    updateItemEditUndoButton(root, state);
+    return false;
+  }
+
+  const currentItem = state.items.get(itemId);
+  const restored = await applyItemEditPayload(
+    root,
+    state,
+    itemId,
+    itemEditPayloadFromItem(nextItem),
+    { recordHistory: false },
+  );
+  if (restored) {
+    const updatedItem = state.items.get(itemId);
+    if (updatedItem) {
+      setItemEditFormValues(root, state, updatedItem);
+    }
+    if (currentItem) {
+      pushItemEditHistory(root, state, itemId, currentItem);
+    }
+    setListMessage(root, "success", translate("list_detail.item_edit_redone", {}, "Edit redone."));
+  } else {
+    pushItemEditRedoHistory(root, state, itemId, nextItem);
   }
   updateItemEditUndoButton(root, state);
   return restored;
@@ -3230,6 +3379,7 @@ async function initListDetail() {
     itemEditHistory: loadItemEditHistory(listId),
     itemEditLastSavedPayload: null,
     itemEditNeedsSave: false,
+    itemEditRedoHistory: loadItemEditRedoHistory(listId),
     itemEditSaveInFlight: null,
     itemEditSaveTimerId: null,
     items: new Map(),
@@ -3375,7 +3525,7 @@ async function initListDetail() {
     const relatedTarget = event.relatedTarget;
     if (
       relatedTarget instanceof HTMLElement &&
-      relatedTarget.closest("[data-item-edit-close], [data-item-edit-delete], [data-item-edit-undo]")
+      relatedTarget.closest("[data-item-edit-close], [data-item-edit-delete], [data-item-edit-redo], [data-item-edit-undo]")
     ) {
       return;
     }
@@ -3401,6 +3551,10 @@ async function initListDetail() {
 
   root.querySelector("[data-item-edit-undo]")?.addEventListener("click", () => {
     void undoItemEdit(root, state);
+  });
+
+  root.querySelector("[data-item-edit-redo]")?.addEventListener("click", () => {
+    void redoItemEdit(root, state);
   });
 
   if (typeof window !== "undefined") {
@@ -3926,12 +4080,16 @@ export {
   setListMessage,
   setListSyncStatus,
   itemEditHistoryStorageKey,
+  itemEditRedoHistoryStorageKey,
   normalizeItemEditPayload,
   itemEditPayloadFromItem,
   itemEditPayloadsEqual,
   loadItemEditHistory,
+  loadItemEditRedoHistory,
   pushItemEditHistory,
+  pushItemEditRedoHistory,
   popItemEditHistory,
+  popItemEditRedoHistory,
   readItemEditFormPayload,
   setItemEditFormValues,
   setItemEditStatus,
@@ -3944,6 +4102,7 @@ export {
   flushItemEditSave,
   closeItemEditPanel,
   undoItemEdit,
+  redoItemEdit,
   offlineListStorageKey,
   loadOfflineListState,
   createOfflineId,

@@ -35,6 +35,7 @@ import {
   flushItemEditSave,
   closeItemEditPanel,
   undoItemEdit,
+  redoItemEdit,
   storeLanguagePreference,
   syncLanguageSettings,
   updateDemoItem,
@@ -194,6 +195,7 @@ function createEditListRoot() {
               <span data-item-edit-status-text></span>
             </div>
             <button type="button" data-item-edit-undo disabled>Undo</button>
+            <button type="button" data-item-edit-redo disabled>Redo</button>
           </form>
         </section>
       </div>
@@ -303,6 +305,7 @@ function createState(items) {
     itemEditHistory: new Map(),
     itemEditLastSavedPayload: null,
     itemEditNeedsSave: false,
+    itemEditRedoHistory: new Map(),
     itemEditSaveInFlight: null,
     itemEditSaveTimerId: null,
     items: new Map(items.map((item) => [item.id, item])),
@@ -719,8 +722,10 @@ test("live item editing debounces saves, flushes before close, and undoes local 
     setItemEditPanelOpen(root, state, "item-1");
     const form = document.querySelector("[data-item-edit-form]");
     const undoButton = document.querySelector("[data-item-edit-undo]");
+    const redoButton = document.querySelector("[data-item-edit-redo]");
     assert.equal(readItemEditFormPayload(root).name, "Milk");
     assert.equal(undoButton.disabled, true);
+    assert.equal(redoButton.disabled, true);
 
     form.elements.namedItem("note").value = "organic";
     scheduleItemEditSave(root, state, 20);
@@ -747,6 +752,7 @@ test("live item editing debounces saves, flushes before close, and undoes local 
     assert.equal(await undoItemEdit(root, state), true);
     assert.equal(calls.length, 1);
     assert.equal(form.elements.namedItem("quantity_text").value, "");
+    assert.equal(redoButton.disabled, false);
 
     form.elements.namedItem("quantity_text").value = "2 cartons";
     assert.equal(await closeItemEditPanel(root, state), true);
@@ -762,6 +768,13 @@ test("live item editing debounces saves, flushes before close, and undoes local 
     assert.equal(calls[2].payload.quantity_text, null);
     assert.equal(form.elements.namedItem("quantity_text").value, "");
     assert.equal(document.querySelector("[data-list-success]").textContent, "Edit undone.");
+    assert.equal(redoButton.disabled, false);
+
+    assert.equal(await redoItemEdit(root, state), true);
+    assert.equal(calls.length, 4);
+    assert.equal(calls[3].payload.quantity_text, "2 cartons");
+    assert.equal(form.elements.namedItem("quantity_text").value, "2 cartons");
+    assert.equal(document.querySelector("[data-list-success]").textContent, "Edit redone.");
   } finally {
     restoreDomGlobals(originals);
     setGlobalProperty("document", originals.document);
