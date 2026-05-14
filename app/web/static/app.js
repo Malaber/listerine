@@ -2,6 +2,9 @@ const LANGUAGE_COOKIE_NAME = "planini_locale";
 const OFFLINE_LIST_STORAGE_PREFIX = "planini:list-offline:";
 const OFFLINE_ITEM_ID_PREFIX = "local-item-";
 const OFFLINE_MUTATION_ID_PREFIX = "local-mutation-";
+const ITEM_HIDE_DURATION_MS = 4 * 60 * 60 * 1000;
+const ITEM_SWIPE_TRIGGER_PX = 72;
+const ITEM_SWIPE_LIMIT_PX = 132;
 const SUPPORTED_LANGUAGE_OPTIONS = [
   { value: "", label: "Browser default" },
   { value: "en", label: "English" },
@@ -9,6 +12,24 @@ const SUPPORTED_LANGUAGE_OPTIONS = [
 ];
 const CATEGORY_SWATCH_FALLBACK_COLOR = "#d9c5b3";
 const CHECKED_CATEGORY_SWATCH_COLOR = "#b59676";
+
+function isItemHidden(item, nowMs = Date.now()) {
+  const hiddenUntilMs = Date.parse(item.hidden_until || "");
+  return Number.isFinite(hiddenUntilMs) && hiddenUntilMs > nowMs;
+}
+
+function formatHiddenUntilLabel(item, nowMs = Date.now()) {
+  const hiddenUntilMs = Date.parse(item.hidden_until || "");
+  if (!Number.isFinite(hiddenUntilMs) || hiddenUntilMs <= nowMs) {
+    return "";
+  }
+
+  const remainingMinutes = Math.ceil((hiddenUntilMs - nowMs) / 60000);
+  if (remainingMinutes >= 60) {
+    return `${Math.ceil(remainingMinutes / 60)}h`;
+  }
+  return `${remainingMinutes}m`;
+}
 
 function base64UrlToBytes(value) {
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
@@ -585,11 +606,12 @@ function renderHouseholds(root, households, listsByHousehold) {
       card.appendChild(listGrid);
     } else {
       lists.forEach((list) => {
+        const openItemCount = Number.isInteger(list.open_item_count) ? list.open_item_count : 0;
         const item = document.createElement("li");
         item.innerHTML = `
           <a href="/lists/${list.id}">
             <strong>${list.name}</strong>
-            <small>${translate("dashboard.open_list", {}, "Open list")}</small>
+            <small>${translatePlural("dashboard.open_item_count", openItemCount, {}, { one: "{count} open item", other: "{count} open items" })}</small>
           </a>
         `;
         listGrid.appendChild(item);
@@ -768,7 +790,6 @@ function syncPasskeyManagementModalState(root) {
 function setPasskeyDeleteConfirmState(root, state) {
   const overlay = root.querySelector("[data-passkey-delete-overlay]");
   const panel = root.querySelector("[data-passkey-delete-panel]");
-  const nameNode = root.querySelector("[data-passkey-delete-name]");
   const confirmButton = root.querySelector("[data-passkey-delete-confirm]");
   const copyNode = root.querySelector("[data-passkey-delete-copy]");
   if (
@@ -782,15 +803,27 @@ function setPasskeyDeleteConfirmState(root, state) {
   const isOpen = Boolean(state);
   overlay.hidden = !isOpen;
   panel.hidden = !isOpen;
-  if (nameNode instanceof HTMLElement) {
-    nameNode.textContent = state?.name || translate("settings.delete_target_fallback", {}, "this passkey");
-  }
+  const passkeyName = state?.name || translate("settings.delete_target_fallback", {}, "this passkey");
   if (copyNode instanceof HTMLElement) {
-    copyNode.childNodes[0].textContent = `${translate(
-      "settings.delete_help_generic",
-      {},
-      "You must authenticate with another passkey to confirm you still have a working Passkey after deleting one."
-    )} `;
+    const emphasisNode = document.createElement("strong");
+    emphasisNode.textContent = translate("settings.delete_help_emphasis", {}, "another");
+    copyNode.replaceChildren(
+      document.createTextNode(
+        translate(
+          "settings.delete_help_prefix",
+          { name: passkeyName },
+          "To delete {name}, you must authenticate with "
+        )
+      ),
+      emphasisNode,
+      document.createTextNode(
+        translate(
+          "settings.delete_help_suffix",
+          {},
+          " passkey to confirm you still have a working Passkey after deleting one."
+        )
+      )
+    );
   }
   confirmButton.dataset.passkeyId = state?.passkeyId || "";
   syncPasskeyManagementModalState(root);
@@ -1484,6 +1517,76 @@ function normalizeSearchText(value) {
     .toLowerCase();
 }
 
+function boundedEditDistance(left, right, maxDistance) {
+  if (Math.abs(left.length - right.length) > maxDistance) {
+    return maxDistance + 1;
+  }
+
+  let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    const current = [leftIndex];
+    let rowBest = current[0];
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+      const substitutionCost = left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1;
+      const value = Math.min(
+        previous[rightIndex] + 1,
+        current[rightIndex - 1] + 1,
+        previous[rightIndex - 1] + substitutionCost
+      );
+      current[rightIndex] = value;
+      rowBest = Math.min(rowBest, value);
+    }
+    if (rowBest > maxDistance) {
+      return maxDistance + 1;
+    }
+    previous = current;
+  }
+  return previous[right.length];
+}
+
+function fuzzyItemNameDistance(itemName, query) {
+  if (query.length < 3) {
+    return null;
+  }
+
+  const maxDistance = query.length <= 4 ? 1 : 2;
+  let bestDistance = boundedEditDistance(itemName, query, maxDistance);
+  const minWindowLength = Math.max(1, query.length - maxDistance);
+  const maxWindowLength = Math.min(itemName.length, query.length + maxDistance);
+
+  for (let startIndex = 0; startIndex < itemName.length; startIndex += 1) {
+    for (let windowLength = minWindowLength; windowLength <= maxWindowLength; windowLength += 1) {
+      const candidate = itemName.slice(startIndex, startIndex + windowLength);
+      if (candidate.length < minWindowLength) {
+        continue;
+      }
+      bestDistance = Math.min(bestDistance, boundedEditDistance(candidate, query, maxDistance));
+      if (bestDistance === 0) {
+        return bestDistance;
+      }
+    }
+  }
+
+  return bestDistance <= maxDistance ? bestDistance : null;
+}
+
+function itemSuggestionMatch(itemName, query) {
+  const normalizedName = normalizeSearchText(itemName);
+  const normalizedQuery = normalizeSearchText(query);
+  if (normalizedName === normalizedQuery) {
+    return { distance: 0, rank: 0 };
+  }
+  if (normalizedName.startsWith(normalizedQuery)) {
+    return { distance: 0, rank: 1 };
+  }
+  if (normalizedName.includes(normalizedQuery)) {
+    return { distance: 0, rank: 2 };
+  }
+
+  const distance = fuzzyItemNameDistance(normalizedName, normalizedQuery);
+  return distance === null ? null : { distance, rank: 3 };
+}
+
 function syncModalState(root) {
   const addOverlay = root.querySelector("[data-item-panel-overlay]");
   const editOverlay = root.querySelector("[data-item-edit-overlay]");
@@ -1543,6 +1646,18 @@ function setItemPanelOpen(root, isOpen) {
       nameInput.focus();
     }, 0);
   }
+}
+
+function openItemPanelForCategory(root, state, categoryId) {
+  const selectedCategoryId = categoryId && state.categories.has(categoryId) ? categoryId : "";
+  const categorySearch = root.querySelector("[data-item-category-search]");
+  if (categorySearch instanceof HTMLInputElement) {
+    categorySearch.value = "";
+  }
+  setItemPanelOpen(root, true);
+  syncCategoryRadioGroups(root, state);
+  setCategoryRadioValue(root, 'input[name="category_id"]', selectedCategoryId);
+  renderItemSuggestions(root, state);
 }
 
 function formatSuggestionMeta(state, item) {
@@ -1730,7 +1845,7 @@ function getOrderedCategoryIds(state) {
 function getDisplayedCategoryIds(state) {
   const itemCategoryIds = new Set(
     [...state.items.values()]
-      .filter((item) => !item.checked)
+      .filter((item) => !item.checked && !isItemHidden(item))
       .map((item) => item.category_id)
       .filter((categoryId) => categoryId && state.categories.has(categoryId))
   );
@@ -1788,6 +1903,7 @@ function cloneDemoItem(item) {
     checked: Boolean(item.checked),
     checked_at: item.checked_at || null,
     checked_state_recorded_at: item.checked_state_recorded_at || item.checked_at || null,
+    hidden_until: item.hidden_until || null,
     sort_order: Number(item.sort_order || 0),
   };
 }
@@ -1848,6 +1964,7 @@ function createOfflineItem(state, listId, clientItemId, payload, recordedAt) {
     checked: false,
     checked_at: null,
     checked_state_recorded_at: recordedAt,
+    hidden_until: null,
     sort_order: payload.sort_order ?? getNextDemoSortOrder(state),
   };
 }
@@ -1858,6 +1975,7 @@ function applyLocalCheckedState(item, checked, recordedAt) {
     checked,
     checked_at: checked ? recordedAt : null,
     checked_state_recorded_at: recordedAt,
+    hidden_until: null,
   };
 }
 
@@ -2184,87 +2302,111 @@ function renderItemSuggestions(root, state) {
     return;
   }
 
-  const query = normalizeItemName(nameInput.value);
-  suggestionsNode.innerHTML = "";
+  const query = normalizeSearchText(nameInput.value);
   if (!query) {
+    suggestionsNode.innerHTML = "";
     suggestionsSlot.classList.remove("is-active");
     return;
   }
 
   const matches = [...state.items.values()]
-    .filter((item) => normalizeItemName(item.name).includes(query))
+    .filter((item) => !isItemHidden(item))
+    .map((item) => ({ item, match: itemSuggestionMatch(item.name, query) }))
+    .filter(({ match }) => match !== null)
     .sort((left, right) => {
-      const leftName = normalizeItemName(left.name);
-      const rightName = normalizeItemName(right.name);
-      const leftExact = Number(leftName === query);
-      const rightExact = Number(rightName === query);
-      if (leftExact !== rightExact) {
-        return rightExact - leftExact;
+      if (left.match.rank !== right.match.rank) {
+        return left.match.rank - right.match.rank;
       }
-      const leftStarts = Number(leftName.startsWith(query));
-      const rightStarts = Number(rightName.startsWith(query));
-      if (leftStarts !== rightStarts) {
-        return rightStarts - leftStarts;
+      if (left.match.distance !== right.match.distance) {
+        return left.match.distance - right.match.distance;
       }
-      if (left.checked !== right.checked) {
-        return Number(left.checked) - Number(right.checked);
+      if (left.item.checked !== right.item.checked) {
+        return Number(left.item.checked) - Number(right.item.checked);
       }
-      return left.name.localeCompare(right.name);
+      return left.item.name.localeCompare(right.item.name);
     })
+    .map(({ item }) => item)
     .slice(0, 4);
 
   if (matches.length === 0) {
+    suggestionsNode.innerHTML = "";
     suggestionsSlot.classList.remove("is-active");
     return;
   }
 
+  const previousMatchIds = [...suggestionsNode.querySelectorAll("[data-item-reuse]")]
+    .map((button) => button.dataset.itemReuse || "")
+    .join("\u001f");
+  const nextMatchIds = matches.map((item) => item.id).join("\u001f");
+  if (previousMatchIds === nextMatchIds) {
+    suggestionsSlot.classList.add("is-active");
+    return;
+  }
+
+  const reusableSuggestions = new Map();
+  suggestionsNode.querySelectorAll(".item-suggestion").forEach((suggestion) => {
+    const itemId = suggestion.querySelector("[data-item-reuse]").dataset.itemReuse;
+    reusableSuggestions.set(itemId, suggestion);
+  });
+  const staleSuggestions = new Set(reusableSuggestions.values());
+
   matches.forEach((item, index) => {
-    const wrapper = document.createElement("article");
-    wrapper.className = `item-card item-suggestion${item.checked ? " is-checked" : ""}`;
-    wrapper.style.setProperty("--suggestion-delay", `${index * 24}ms`);
-    const categoryColor = item.category_id ? state.categories.get(item.category_id)?.color || "" : "";
-    if (categoryColor) {
-      wrapper.classList.add("has-category");
-      wrapper.style.setProperty("--suggestion-category-color", categoryColor);
+    let wrapper = reusableSuggestions.get(item.id);
+    if (wrapper instanceof HTMLElement) {
+      staleSuggestions.delete(wrapper);
+    } else {
+      wrapper = document.createElement("article");
+      wrapper.className = `item-card item-suggestion${item.checked ? " is-checked" : ""}`;
+      wrapper.style.setProperty("--suggestion-delay", `${index * 24}ms`);
+      const categoryColor = item.category_id ? state.categories.get(item.category_id)?.color || "" : "";
+      if (categoryColor) {
+        wrapper.classList.add("has-category");
+        wrapper.style.setProperty("--suggestion-category-color", categoryColor);
+      }
+
+      const main = document.createElement("div");
+      main.className = "item-main";
+
+      const checkmark = document.createElement("span");
+      checkmark.className = `item-check item-suggestion-check${item.checked ? " is-checked" : ""}`;
+      checkmark.setAttribute("aria-hidden", "true");
+      main.appendChild(checkmark);
+
+      const copy = document.createElement("div");
+      copy.className = "item-copy item-suggestion-copy";
+
+      const title = document.createElement("strong");
+      title.className = "item-name";
+      title.textContent = item.name;
+      copy.appendChild(title);
+
+      const meta = document.createElement("span");
+      meta.textContent = formatSuggestionMeta(state, item);
+      copy.appendChild(meta);
+
+      main.appendChild(copy);
+      wrapper.appendChild(main);
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.itemReuse = item.id;
+      button.setAttribute(
+        "aria-label",
+        item.checked
+          ? translate("list_detail.suggestion_add_back", { name: item.name }, "Add {name} back to the list")
+          : translate("list_detail.suggestion_jump_to", { name: item.name }, "Jump to {name} in the list")
+      );
+      button.textContent = "+";
+
+      wrapper.appendChild(button);
     }
 
-    const main = document.createElement("div");
-    main.className = "item-main";
-
-    const checkmark = document.createElement("span");
-    checkmark.className = `item-check item-suggestion-check${item.checked ? " is-checked" : ""}`;
-    checkmark.setAttribute("aria-hidden", "true");
-    main.appendChild(checkmark);
-
-    const copy = document.createElement("div");
-    copy.className = "item-copy item-suggestion-copy";
-
-    const title = document.createElement("strong");
-    title.className = "item-name";
-    title.textContent = item.name;
-    copy.appendChild(title);
-
-    const meta = document.createElement("span");
-    meta.textContent = formatSuggestionMeta(state, item);
-    copy.appendChild(meta);
-
-    main.appendChild(copy);
-    wrapper.appendChild(main);
-
-    const button = document.createElement("button");
-    button.type = "button";
-    button.dataset.itemReuse = item.id;
-    button.setAttribute(
-      "aria-label",
-      item.checked
-        ? translate("list_detail.suggestion_add_back", { name: item.name }, "Add {name} back to the list")
-        : translate("list_detail.suggestion_jump_to", { name: item.name }, "Jump to {name} in the list")
-    );
-    button.textContent = "+";
-
-    wrapper.appendChild(button);
-    suggestionsNode.appendChild(wrapper);
+    const referenceNode = suggestionsNode.children[index] || null;
+    if (referenceNode !== wrapper) {
+      suggestionsNode.insertBefore(wrapper, referenceNode);
+    }
   });
+  staleSuggestions.forEach((suggestion) => suggestion.remove());
 
   suggestionsSlot.classList.add("is-active");
 }
@@ -2362,16 +2504,20 @@ function renderItems(root, state) {
     return;
   }
 
+  const renderNow = Date.now();
   const decoratedItems = [...state.items.values()].map((item) => decorateItem(state, item));
   const activeItems = decoratedItems
-    .filter((item) => !item.checked)
+    .filter((item) => !item.checked && !isItemHidden(item, renderNow))
+    .sort((left, right) => compareActiveItems(state, left, right));
+  const hiddenItems = decoratedItems
+    .filter((item) => !item.checked && isItemHidden(item, renderNow))
     .sort((left, right) => compareActiveItems(state, left, right));
   const checkedItems = decoratedItems
     .filter((item) => item.checked)
     .sort(compareCheckedItems);
 
   container.innerHTML = "";
-  const hasItems = decoratedItems.length > 0;
+  const hasItems = activeItems.length > 0 || hiddenItems.length > 0 || checkedItems.length > 0;
   emptyState.hidden = hasItems;
   emptyState.style.display = hasItems ? "none" : "";
   if (!hasItems) {
@@ -2410,8 +2556,27 @@ function renderItems(root, state) {
     const headingMeta = document.createElement("p");
     headingMeta.className = "item-category-meta";
     headingMeta.textContent = translatePlural("list_detail.item_count", items.length, {}, { one: "{count} item", other: "{count} items" });
-    headingCopy.appendChild(headingMeta);
     heading.appendChild(headingCopy);
+
+    const headingActions = document.createElement("div");
+    headingActions.className = "item-category-actions";
+
+    const quickAddButton = document.createElement("button");
+    quickAddButton.className = "item-category-quick-add";
+    quickAddButton.type = "button";
+    quickAddButton.dataset.itemQuickAddCategory = category?.id || "";
+    const quickAddLabel = category
+      ? translate("list_detail.quick_add_category", { name: category.name }, "Quick add to {name}")
+      : translate("list_detail.quick_add_uncategorized", {}, "Quick add uncategorized item");
+    quickAddButton.setAttribute("aria-label", quickAddLabel);
+    quickAddButton.title = quickAddLabel;
+    const quickAddIcon = document.createElement("span");
+    quickAddIcon.setAttribute("aria-hidden", "true");
+    quickAddIcon.textContent = "+";
+    quickAddButton.appendChild(quickAddIcon);
+    headingActions.appendChild(quickAddButton);
+    headingActions.appendChild(headingMeta);
+    heading.appendChild(headingActions);
 
     section.appendChild(heading);
 
@@ -2422,6 +2587,15 @@ function renderItems(root, state) {
       }`;
       article.dataset.itemCard = item.id;
       article.dataset.itemEdit = item.id;
+
+      const swipeAction = document.createElement("div");
+      swipeAction.className = "item-swipe-action";
+      swipeAction.setAttribute("aria-hidden", "true");
+      swipeAction.textContent = translate("list_detail.hide_for_later_short", {}, "Later 4h");
+      article.appendChild(swipeAction);
+
+      const cardContent = document.createElement("div");
+      cardContent.className = "item-card-content";
 
       const main = document.createElement("div");
       main.className = "item-main";
@@ -2461,12 +2635,122 @@ function renderItems(root, state) {
       }
 
       main.appendChild(copy);
-      article.appendChild(main);
+      cardContent.appendChild(main);
+
+      const actions = document.createElement("div");
+      actions.className = "item-actions";
+
+      const menuButton = document.createElement("button");
+      menuButton.type = "button";
+      menuButton.className = "item-more-button";
+      menuButton.dataset.itemMenuToggle = item.id;
+      menuButton.setAttribute(
+        "aria-label",
+        translate("list_detail.more_item_actions", { name: item.name }, "More actions for {name}")
+      );
+      menuButton.setAttribute("aria-expanded", String(state.openItemMenuId === item.id));
+      menuButton.textContent = "⋯";
+      actions.appendChild(menuButton);
+      cardContent.appendChild(actions);
+
+      article.appendChild(cardContent);
+
+      const menu = document.createElement("div");
+      menu.className = "item-more-menu";
+      menu.hidden = state.openItemMenuId !== item.id;
+
+      const hideButton = document.createElement("button");
+      hideButton.type = "button";
+      hideButton.dataset.itemHide = item.id;
+      hideButton.textContent = translate("list_detail.hide_item_for_later_menu", {}, "Hide item for 4h");
+      menu.appendChild(hideButton);
+      article.appendChild(menu);
       section.appendChild(article);
     });
 
     container.appendChild(section);
   });
+
+  if (hiddenItems.length > 0) {
+    const section = document.createElement("section");
+    section.className = "item-category-group item-hidden-group";
+
+    const heading = document.createElement("div");
+    heading.className = "item-category-header";
+
+    const swatch = document.createElement("span");
+    swatch.className = "item-category-swatch";
+    swatch.style.background = CATEGORY_SWATCH_FALLBACK_COLOR;
+    heading.appendChild(swatch);
+
+    const headingCopy = document.createElement("div");
+    headingCopy.className = "item-category-copy";
+    const headingTitle = document.createElement("h3");
+    headingTitle.textContent = translate("list_detail.hidden_for_later", {}, "Hidden for 4h");
+    headingCopy.appendChild(headingTitle);
+
+    const headingMeta = document.createElement("p");
+    headingMeta.className = "item-category-meta";
+    headingMeta.textContent = translatePlural("list_detail.item_count", hiddenItems.length, {}, { one: "{count} item", other: "{count} items" });
+    headingCopy.appendChild(headingMeta);
+    heading.appendChild(headingCopy);
+    section.appendChild(heading);
+
+    hiddenItems.forEach((item) => {
+      const article = document.createElement("article");
+      article.className = `item-card is-hidden${
+        state.highlightedItemId === item.id ? " is-highlighted" : ""
+      }`;
+      article.dataset.itemCard = item.id;
+      article.dataset.itemEdit = item.id;
+
+      const cardContent = document.createElement("div");
+      cardContent.className = "item-card-content";
+
+      const main = document.createElement("div");
+      main.className = "item-main";
+
+      const unhideButton = document.createElement("button");
+      unhideButton.className = "item-check item-hidden-clock";
+      unhideButton.type = "button";
+      unhideButton.dataset.itemUnhide = item.id;
+      unhideButton.setAttribute(
+        "aria-label",
+        translate("list_detail.show_hidden_item", { name: item.name }, "Show {name} now")
+      );
+      unhideButton.textContent = formatHiddenUntilLabel(item, renderNow);
+      main.appendChild(unhideButton);
+
+      const copy = document.createElement("div");
+      copy.className = "item-copy";
+
+      const title = document.createElement("h3");
+      title.className = "item-name";
+      title.textContent = item.name;
+      copy.appendChild(title);
+
+      if (item.quantity_text) {
+        const quantity = document.createElement("p");
+        quantity.className = "item-meta";
+        quantity.textContent = translate("list_detail.quantity_prefix", { quantity: item.quantity_text }, "Qty: {quantity}");
+        copy.appendChild(quantity);
+      }
+
+      if (item.note) {
+        const note = document.createElement("p");
+        note.className = "item-meta";
+        note.textContent = item.note;
+        copy.appendChild(note);
+      }
+
+      main.appendChild(copy);
+      cardContent.appendChild(main);
+      article.appendChild(cardContent);
+      section.appendChild(article);
+    });
+
+    container.appendChild(section);
+  }
 
   if (checkedItems.length > 0) {
     const checkedTotalCount = checkedItems.length + (state.checkedRemainingCount || 0);
@@ -2490,8 +2774,11 @@ function renderItems(root, state) {
     const headingMeta = document.createElement("p");
     headingMeta.className = "item-category-meta";
     headingMeta.textContent = translatePlural("list_detail.item_count", checkedTotalCount, {}, { one: "{count} item", other: "{count} items" });
-    headingCopy.appendChild(headingMeta);
     heading.appendChild(headingCopy);
+    const headingActions = document.createElement("div");
+    headingActions.className = "item-category-actions";
+    headingActions.appendChild(headingMeta);
+    heading.appendChild(headingActions);
     section.appendChild(heading);
 
     checkedItems.forEach((item) => {
@@ -2501,6 +2788,9 @@ function renderItems(root, state) {
       }`;
       article.dataset.itemCard = item.id;
       article.dataset.itemEdit = item.id;
+
+      const cardContent = document.createElement("div");
+      cardContent.className = "item-card-content";
 
       const main = document.createElement("div");
       main.className = "item-main";
@@ -2538,7 +2828,8 @@ function renderItems(root, state) {
       }
 
       main.appendChild(copy);
-      article.appendChild(main);
+      cardContent.appendChild(main);
+      article.appendChild(cardContent);
       section.appendChild(article);
     });
 
@@ -2607,6 +2898,32 @@ async function loadMoreCheckedItems(root, state) {
   state.checkedRemainingCount = Math.max((state.checkedRemainingCount || 0) - olderItems.length, 0);
   renderItems(root, state);
   return olderItems;
+}
+
+async function setItemHiddenUntil(root, state, itemId, hiddenUntil) {
+  const updatedItem = await updateItemWithOfflineFallback(root, state, itemId, {
+    hidden_until: hiddenUntil,
+  });
+  upsertItem(state, updatedItem);
+  renderItems(root, state);
+  persistOfflineListState(root, state);
+  return updatedItem;
+}
+
+async function restoreHiddenItem(root, state, itemId) {
+  return setItemHiddenUntil(root, state, itemId, null);
+}
+
+async function hideItemForLater(root, state, itemId, nowMs = Date.now()) {
+  const hiddenUntil = new Date(nowMs + ITEM_HIDE_DURATION_MS).toISOString();
+  const updatedItem = await setItemHiddenUntil(root, state, itemId, hiddenUntil);
+  showUndoToast(
+    root,
+    state,
+    translate("list_detail.item_hidden_named", { name: updatedItem.name }, "{name} hidden for 4 hours."),
+    restoreHiddenItem.bind(null, root, state, itemId),
+  );
+  return updatedItem;
 }
 
 async function restoreCheckedSuggestion(root, state, reuseItemId) {
@@ -2913,7 +3230,10 @@ async function initListDetail() {
     items: new Map(),
     lists: [],
     nextDemoId: 1,
+    openItemMenuId: null,
     socket: null,
+    suppressNextClick: false,
+    swipeGesture: null,
     undoAction: null,
     undoTimerId: null,
   };
@@ -3043,6 +3363,105 @@ async function initListDetail() {
     });
   }
 
+  root.addEventListener("pointerdown", (event) => {
+    if (!(event.target instanceof HTMLElement) || event.target.closest("button")) {
+      return;
+    }
+
+    const card = event.target.closest("[data-item-card]");
+    if (
+      !(card instanceof HTMLElement) ||
+      card.classList.contains("is-checked") ||
+      card.classList.contains("is-hidden")
+    ) {
+      return;
+    }
+
+    state.swipeGesture = {
+      card,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      offsetX: 0,
+      locked: false,
+    };
+    try {
+      card.setPointerCapture?.(event.pointerId);
+    } catch {
+      // Synthetic pointer events in browser tests do not always register as active pointers.
+    }
+  });
+
+  root.addEventListener("pointermove", (event) => {
+    const gesture = state.swipeGesture;
+    if (!gesture || gesture.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const deltaX = Math.max(0, event.clientX - gesture.startX);
+    const deltaY = Math.abs(event.clientY - gesture.startY);
+    if (!gesture.locked && deltaY > 64 && deltaY > deltaX * 1.5) {
+      gesture.card.style.removeProperty("--item-swipe-x");
+      gesture.card.classList.remove("is-swiping", "is-swipe-ready");
+      state.swipeGesture = null;
+      return;
+    }
+
+    if (deltaX <= 4) {
+      return;
+    }
+
+    if (deltaX > 16) {
+      gesture.locked = true;
+    }
+    gesture.offsetX = Math.min(deltaX, ITEM_SWIPE_LIMIT_PX);
+    gesture.card.style.setProperty("--item-swipe-x", `${gesture.offsetX}px`);
+    gesture.card.classList.add("is-swiping");
+    gesture.card.classList.toggle("is-swipe-ready", gesture.offsetX >= ITEM_SWIPE_TRIGGER_PX);
+    event.preventDefault();
+  });
+
+  root.addEventListener("pointerup", async (event) => {
+    const gesture = state.swipeGesture;
+    if (!gesture || gesture.pointerId !== event.pointerId) {
+      return;
+    }
+
+    state.swipeGesture = null;
+    try {
+      gesture.card.releasePointerCapture?.(event.pointerId);
+    } catch {
+      // Matching the tolerant capture path above.
+    }
+    gesture.card.classList.remove("is-swiping", "is-swipe-ready");
+    gesture.card.style.removeProperty("--item-swipe-x");
+
+    if (gesture.offsetX < ITEM_SWIPE_TRIGGER_PX) {
+      return;
+    }
+
+    state.suppressNextClick = true;
+    window.setTimeout(() => {
+      state.suppressNextClick = false;
+    }, 0);
+    try {
+      await hideItemForLater(root, state, gesture.card.dataset.itemCard);
+    } catch (error) {
+      setListMessage(root, "error", error instanceof Error ? error.message : translate("list_detail.list_action_failed", {}, "List action failed."));
+    }
+  });
+
+  root.addEventListener("pointercancel", (event) => {
+    const gesture = state.swipeGesture;
+    if (!gesture || gesture.pointerId !== event.pointerId) {
+      return;
+    }
+
+    state.swipeGesture = null;
+    gesture.card.classList.remove("is-swiping", "is-swipe-ready");
+    gesture.card.style.removeProperty("--item-swipe-x");
+  });
+
   itemForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const formData = new FormData(itemForm);
@@ -3155,17 +3574,32 @@ async function initListDetail() {
     }
 
     const toggleId = target.dataset.itemToggle;
+    const hideId = target.dataset.itemHide;
+    const unhideId = target.dataset.itemUnhide;
+    const menuToggleId = target.dataset.itemMenuToggle;
     const reuseItemId = target.dataset.itemReuse;
     const categoryMove = target.dataset.settingsCategoryMove;
     const categoryId = target.dataset.categoryId;
+    const quickAddButton = target.closest("[data-item-quick-add-category]");
     const editCard = target.closest("[data-item-edit]");
+
+    if (state.suppressNextClick) {
+      state.suppressNextClick = false;
+      return;
+    }
+
+    if (quickAddButton instanceof HTMLElement) {
+      event.preventDefault();
+      openItemPanelForCategory(root, state, quickAddButton.dataset.itemQuickAddCategory || "");
+      return;
+    }
 
     if (editCard && !target.closest("button")) {
       setItemEditPanelOpen(root, state, editCard.dataset.itemEdit || null);
       return;
     }
 
-    if (!toggleId && !reuseItemId && !categoryMove) {
+    if (!toggleId && !hideId && !unhideId && !menuToggleId && !reuseItemId && !categoryMove) {
       return;
     }
 
@@ -3191,6 +3625,24 @@ async function initListDetail() {
         setCategoryOrder(state, deriveManualCategoryIds(state, nextOrderedCategoryIds));
         await saveCategoryOrder(root, state);
         renderItems(root, state);
+        return;
+      }
+
+      if (menuToggleId) {
+        state.openItemMenuId = state.openItemMenuId === menuToggleId ? null : menuToggleId;
+        renderItems(root, state);
+        return;
+      }
+
+      if (hideId) {
+        state.openItemMenuId = null;
+        await hideItemForLater(root, state, hideId);
+        return;
+      }
+
+      if (unhideId) {
+        const restoredItem = await restoreHiddenItem(root, state, unhideId);
+        highlightItem(root, state, restoredItem.id);
         return;
       }
 
@@ -3333,6 +3785,34 @@ async function handlePasskeyLoginClick(root, loginForm) {
   }
 }
 
+function transitionAuthPanels(root, updatePanels) {
+  const panelGroup = root.querySelector("[data-auth-panels]");
+  if (!(panelGroup instanceof HTMLElement)) {
+    updatePanels();
+    return;
+  }
+
+  const beforeHeight = panelGroup.getBoundingClientRect().height;
+  updatePanels();
+  const afterHeight = panelGroup.scrollHeight;
+  if (!beforeHeight || !afterHeight || beforeHeight === afterHeight) {
+    return;
+  }
+
+  panelGroup.style.height = `${beforeHeight}px`;
+  panelGroup.style.overflow = "hidden";
+  panelGroup.getBoundingClientRect();
+  panelGroup.style.height = `${afterHeight}px`;
+
+  const settle = () => {
+    panelGroup.style.height = "";
+    panelGroup.style.overflow = "";
+    panelGroup.removeEventListener("transitionend", settle);
+  };
+  panelGroup.addEventListener("transitionend", settle, { once: true });
+  window.setTimeout(settle, 240);
+}
+
 function setAuthTab(root, tab) {
   const panels = root.querySelectorAll("[data-auth-tab-panel]");
   const triggers = root.querySelectorAll("[data-auth-tab-trigger]");
@@ -3340,9 +3820,12 @@ function setAuthTab(root, tab) {
     return;
   }
 
-  panels.forEach((panel) => {
-    panel.hidden = panel.getAttribute("data-auth-tab-panel") !== tab;
+  transitionAuthPanels(root, () => {
+    panels.forEach((panel) => {
+      panel.hidden = panel.getAttribute("data-auth-tab-panel") !== tab;
+    });
   });
+
   triggers.forEach((trigger) => {
     trigger.setAttribute(
       "aria-selected",
@@ -3579,6 +4062,8 @@ export {
   interpolateTranslation,
   translate,
   translatePlural,
+  isItemHidden,
+  formatHiddenUntilLabel,
   publicKeyFromJSON,
   credentialToJSON,
   normalizeLanguagePreference,
@@ -3631,8 +4116,12 @@ export {
   showUndoToast,
   normalizeItemName,
   normalizeSearchText,
+  boundedEditDistance,
+  fuzzyItemNameDistance,
+  itemSuggestionMatch,
   syncModalState,
   setItemPanelOpen,
+  openItemPanelForCategory,
   formatSuggestionMeta,
   categorySortKey,
   decorateItem,
@@ -3673,6 +4162,9 @@ export {
   upsertItem,
   removeItem,
   loadMoreCheckedItems,
+  setItemHiddenUntil,
+  restoreHiddenItem,
+  hideItemForLater,
   restoreToggledItem,
   restoreCheckedSuggestion,
   restoreDeletedItem,
@@ -3686,6 +4178,8 @@ export {
   loginWithPasskey,
   addPasskeyWithLink,
   handlePasskeyLoginClick,
+  transitionAuthPanels,
+  setAuthTab,
   setSettingsMessage,
   initPasskeyAuth,
   initPasskeyAddLink,

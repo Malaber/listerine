@@ -7,16 +7,22 @@ import {
   cloneDemoItem,
   createDemoItem,
   formatInviteExpiry,
+  formatHiddenUntilLabel,
   formatPasskeyDate,
   getDemoPayload,
   getPreferredLocale,
+  hideItemForLater,
   initUserSettings,
+  isItemHidden,
   isDemoList,
   languagePreferenceLabel,
   loadListDetail,
   loadMoreCheckedItems,
   normalizeLanguagePreference,
+  openItemPanelForCategory,
   registerServiceWorker,
+  renderCategoryOrderSettings,
+  renderHouseholds,
   renderPasskeys,
   renderItems,
   renderItemSuggestions,
@@ -32,6 +38,9 @@ import {
   syncLanguageSettings,
   updateDemoItem,
   connectListSocket,
+  boundedEditDistance,
+  fuzzyItemNameDistance,
+  itemSuggestionMatch,
   offlineListStorageKey,
   loadOfflineListState,
   persistOfflineListState,
@@ -50,6 +59,9 @@ import {
   setItemEditPanelOpen,
   applyOfflineSyncResult,
   flushOfflineMutations,
+  restoreHiddenItem,
+  transitionAuthPanels,
+  setAuthTab,
 } from "./app.js";
 
 function setGlobalProperty(name, value) {
@@ -139,6 +151,156 @@ test("registerServiceWorker registers the root service worker when available", a
   }
 });
 
+test("transitionAuthPanels applies and clears height animation styles", () => {
+  const dom = new JSDOM(`
+    <section>
+      <div data-auth-panels></div>
+    </section>
+  `);
+  const originals = {
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    HTMLSelectElement: globalThis.HTMLSelectElement,
+  };
+  const originalWindow = globalThis.window;
+  const root = dom.window.document.querySelector("section");
+  const panels = dom.window.document.querySelector("[data-auth-panels]");
+  let didUpdate = false;
+
+  setDomGlobals(dom);
+  setGlobalProperty("window", dom.window);
+  panels.getBoundingClientRect = () => ({ height: 120 });
+  Object.defineProperty(panels, "scrollHeight", { configurable: true, value: 220 });
+
+  try {
+    transitionAuthPanels(root, () => {
+      didUpdate = true;
+    });
+    assert.equal(didUpdate, true);
+    assert.equal(panels.style.height, "220px");
+    assert.equal(panels.style.overflow, "hidden");
+
+    panels.dispatchEvent(new dom.window.Event("transitionend"));
+    assert.equal(panels.style.height, "");
+    assert.equal(panels.style.overflow, "");
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("window", originalWindow);
+    dom.window.close();
+  }
+});
+
+test("transitionAuthPanels updates without animation when no wrapper exists", () => {
+  const dom = new JSDOM("<section></section>");
+  const originals = {
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    HTMLSelectElement: globalThis.HTMLSelectElement,
+  };
+  let didUpdate = false;
+
+  setDomGlobals(dom);
+
+  try {
+    transitionAuthPanels(dom.window.document.querySelector("section"), () => {
+      didUpdate = true;
+    });
+    assert.equal(didUpdate, true);
+  } finally {
+    restoreDomGlobals(originals);
+    dom.window.close();
+  }
+});
+
+test("transitionAuthPanels skips styles when panel height is stable", () => {
+  const dom = new JSDOM(`
+    <section>
+      <div data-auth-panels></div>
+    </section>
+  `);
+  const originals = {
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    HTMLSelectElement: globalThis.HTMLSelectElement,
+  };
+  const originalWindow = globalThis.window;
+  const root = dom.window.document.querySelector("section");
+  const panels = dom.window.document.querySelector("[data-auth-panels]");
+
+  setDomGlobals(dom);
+  setGlobalProperty("window", dom.window);
+  panels.getBoundingClientRect = () => ({ height: 120 });
+  Object.defineProperty(panels, "scrollHeight", { configurable: true, value: 120 });
+
+  try {
+    transitionAuthPanels(root, () => undefined);
+    assert.equal(panels.style.height, "");
+    assert.equal(panels.style.overflow, "");
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("window", originalWindow);
+    dom.window.close();
+  }
+});
+
+test("setAuthTab toggles panels, selected state, focus, and panel height", () => {
+  const dom = new JSDOM(`
+    <section data-passkey-auth>
+      <div data-auth-panels>
+        <div data-auth-tab-panel="signin">
+          <form data-passkey-login></form>
+        </div>
+        <div data-auth-tab-panel="signup" hidden>
+          <form data-passkey-register>
+            <input name="display_name" />
+          </form>
+        </div>
+      </div>
+      <button data-auth-tab-trigger="signin" aria-selected="true"></button>
+      <button data-auth-tab-trigger="signup" aria-selected="false"></button>
+    </section>
+  `);
+  const originals = {
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    HTMLSelectElement: globalThis.HTMLSelectElement,
+  };
+  const originalWindow = globalThis.window;
+  const root = dom.window.document.querySelector("[data-passkey-auth]");
+  const panels = dom.window.document.querySelector("[data-auth-panels]");
+
+  setDomGlobals(dom);
+  setGlobalProperty("window", dom.window);
+  panels.getBoundingClientRect = () => ({ height: 120 });
+  Object.defineProperty(panels, "scrollHeight", { configurable: true, value: 220 });
+
+  try {
+    setAuthTab(root, "signup");
+    assert.equal(root.querySelector('[data-auth-tab-panel="signin"]').hidden, true);
+    assert.equal(root.querySelector('[data-auth-tab-panel="signup"]').hidden, false);
+    assert.equal(root.querySelector('[data-auth-tab-trigger="signin"]').getAttribute("aria-selected"), "false");
+    assert.equal(root.querySelector('[data-auth-tab-trigger="signup"]').getAttribute("aria-selected"), "true");
+    assert.equal(dom.window.document.activeElement, root.querySelector('input[name="display_name"]'));
+    assert.equal(panels.style.height, "220px");
+    panels.dispatchEvent(new dom.window.Event("transitionend"));
+
+    setAuthTab(root, "signin");
+    assert.equal(root.querySelector('[data-auth-tab-panel="signin"]').hidden, false);
+    assert.equal(root.querySelector('[data-auth-tab-panel="signup"]').hidden, true);
+    assert.equal(root.querySelector('[data-auth-tab-trigger="signin"]').getAttribute("aria-selected"), "true");
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("window", originalWindow);
+    dom.window.close();
+  }
+});
+
+test("setAuthTab ignores incomplete auth markup", () => {
+  const dom = new JSDOM("<section></section>");
+  assert.doesNotThrow(() => setAuthTab(dom.window.document.querySelector("section"), "signup"));
+  dom.window.close();
+});
+
 function createListRoot() {
   const dom = new JSDOM(`
     <section data-list-detail data-list-id="list-1">
@@ -146,6 +308,11 @@ function createListRoot() {
       <div data-list-error hidden></div>
       <div data-list-success hidden></div>
       <p data-list-sync-status></p>
+      <div data-list-toast hidden>
+        <p data-list-toast-message></p>
+        <button type="button" data-list-toast-undo>Undo</button>
+        <div data-list-toast-timer></div>
+      </div>
       <input data-item-category-search value="" />
       <input data-item-edit-category-search value="" />
       <label data-item-edit-list-field hidden><select name="list_id" data-item-edit-list-select></select></label>
@@ -154,12 +321,67 @@ function createListRoot() {
       <div data-item-edit-category-radios></div>
       <div data-item-empty></div>
       <div data-item-list></div>
+      <div data-list-settings-category-list></div>
     </section>
   `, { url: "https://example.test/lists/list-1" });
   return {
     document: dom.window.document,
     root: dom.window.document.querySelector("[data-list-detail]"),
     window: dom.window,
+  };
+}
+
+function createQuickAddRoot() {
+  const dom = new JSDOM(`
+    <!doctype html>
+    <html>
+      <body>
+        <section data-list-detail data-list-id="list-1">
+          <button type="button" data-item-form-toggle aria-expanded="false">Add</button>
+          <div data-list-error hidden></div>
+          <div data-list-success hidden></div>
+          <div data-item-panel-overlay hidden>
+            <section data-item-panel hidden>
+              <form data-item-form>
+                <input data-item-name-input name="name" value="" />
+                <input data-item-category-search value="produce" />
+                <div data-item-category-radios></div>
+                <input name="quantity_text" value="" />
+                <input name="note" value="" />
+              </form>
+            </section>
+          </div>
+          <div data-item-edit-overlay hidden></div>
+          <section data-item-edit-panel hidden></section>
+          <div data-list-settings-overlay hidden></div>
+          <section data-list-settings-panel hidden></section>
+          <input data-item-edit-category-search value="" />
+          <div data-item-edit-category-radios></div>
+          <div data-item-suggestions-slot><div data-item-suggestions></div></div>
+          <div data-item-empty></div>
+          <div data-item-list></div>
+          <div data-list-settings-category-list></div>
+        </section>
+      </body>
+    </html>
+  `, { url: "https://example.test/lists/list-1" });
+  return {
+    document: dom.window.document,
+    root: dom.window.document.querySelector("[data-list-detail]"),
+    window: dom.window,
+  };
+}
+
+function createDashboardRoot() {
+  const dom = new JSDOM(`
+    <section data-dashboard>
+      <div data-dashboard-empty></div>
+      <div data-household-list></div>
+    </section>
+  `);
+  return {
+    document: dom.window.document,
+    root: dom.window.document.querySelector("[data-dashboard]"),
   };
 }
 
@@ -214,8 +436,8 @@ function createDemoListRoot() {
   const demoPayload = {
     list: { id: "demo-list", name: "Saturday Groceries" },
     categories: [
-      { id: "produce", name: "Produce", color: "#8f7a62" },
-      { id: "pantry", name: "Pantry", color: "#8b6b4f" },
+      { id: "produce", name: "Produce", color: "#6bbf59" },
+      { id: "pantry", name: "Pantry", color: "#f59e0b" },
     ],
     category_order: [
       { category_id: "produce", sort_order: 0 },
@@ -328,6 +550,28 @@ test("renderItems only shows loaded checked items before loading more", () => {
   assert.equal(document.querySelector(".checked-items-load-more .item-category-meta").textContent, "110 older items not loaded");
 });
 
+test("renderHouseholds shows open item counts on list links", () => {
+  const { document, root } = createDashboardRoot();
+
+  renderHouseholds(
+    root,
+    [{ id: "household-1", name: "Home" }],
+    new Map([
+      [
+        "household-1",
+        [
+          { id: "list-1", name: "Weekly", open_item_count: 1 },
+          { id: "list-2", name: "Hardware", open_item_count: 3 },
+        ],
+      ],
+    ]),
+  );
+
+  assert.equal(document.querySelector('[href="/lists/list-1"] small').textContent, "1 open item");
+  assert.equal(document.querySelector('[href="/lists/list-2"] small').textContent, "3 open items");
+  assert.equal(document.body.textContent.includes("Open list"), false);
+});
+
 test("renderItems uses brown fallback swatches for uncategorized and checked groups", () => {
   const { document, root } = createListRoot();
   const activeItem = {
@@ -347,6 +591,163 @@ test("renderItems uses brown fallback swatches for uncategorized and checked gro
   const swatches = document.querySelectorAll(".item-category-swatch");
   assert.match(swatches[0].getAttribute("style") || "", /217, 197, 179|#d9c5b3/);
   assert.match(swatches[1].getAttribute("style") || "", /181, 150, 118|#b59676/);
+});
+
+test("renderItems hides active items until their hidden_until time", () => {
+  const { document, root } = createListRoot();
+  const originalDateNow = Date.now;
+  const nowMs = Date.parse("2026-05-14T10:00:00.000Z");
+  const visibleItem = {
+    id: "visible-item",
+    name: "Visible item",
+    checked: false,
+    checked_at: null,
+    category_id: null,
+    note: null,
+    quantity_text: null,
+    sort_order: 0,
+  };
+  const hiddenItem = {
+    ...visibleItem,
+    id: "hidden-item",
+    name: "Hidden item",
+    hidden_until: "2026-05-14T14:00:00.000Z",
+    sort_order: 1,
+  };
+  const expiredHiddenItem = {
+    ...visibleItem,
+    id: "expired-hidden-item",
+    name: "Expired hidden item",
+    hidden_until: "2026-05-14T09:59:59.000Z",
+    sort_order: 2,
+  };
+
+  Date.now = () => nowMs;
+  try {
+    assert.equal(isItemHidden(hiddenItem, nowMs), true);
+    assert.equal(isItemHidden(expiredHiddenItem, nowMs), false);
+    assert.equal(isItemHidden(visibleItem, nowMs), false);
+    assert.equal(formatHiddenUntilLabel(hiddenItem, nowMs), "4h");
+    assert.equal(
+      formatHiddenUntilLabel({ ...hiddenItem, hidden_until: "2026-05-14T10:10:00.000Z" }, nowMs),
+      "10m",
+    );
+    assert.equal(formatHiddenUntilLabel(visibleItem, nowMs), "");
+
+    const state = createState([visibleItem, hiddenItem, expiredHiddenItem, createCheckedItem(0)]);
+    state.openItemMenuId = "visible-item";
+    renderItems(root, state);
+  } finally {
+    Date.now = originalDateNow;
+  }
+
+  const cardNames = [...document.querySelectorAll(".item-card .item-name")].map(
+    (node) => node.textContent,
+  );
+  assert.deepEqual(cardNames, ["Visible item", "Expired hidden item", "Hidden item", "Checked item 0"]);
+  assert.equal(document.querySelector(".item-hidden-group h3").textContent, "Hidden for 4h");
+  assert.equal(document.querySelector('[data-item-unhide="hidden-item"]').textContent, "4h");
+  assert.equal(document.querySelector('[data-item-menu-toggle="visible-item"]').textContent, "⋯");
+  assert.equal(document.querySelector('[data-item-hide="visible-item"]').textContent, "Hide item for 4h");
+  assert.equal(document.querySelector('[data-item-hide="visible-item"]').closest(".item-more-menu").hidden, false);
+});
+
+test("category quick add buttons open the add form with the category selected", () => {
+  const { document, root, window } = createQuickAddRoot();
+  const originals = {
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    HTMLSelectElement: globalThis.HTMLSelectElement,
+    document: globalThis.document,
+    window: globalThis.window,
+  };
+  const state = createState([
+    {
+      id: "active-item",
+      name: "Tomatoes",
+      checked: false,
+      checked_at: null,
+      category_id: "cat-1",
+      note: null,
+      quantity_text: null,
+      sort_order: 0,
+    },
+    {
+      id: "loose-item",
+      name: "Loose item",
+      checked: false,
+      checked_at: null,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+      sort_order: 1,
+    },
+    createCheckedItem(0),
+  ]);
+  state.categories.set("cat-1", { id: "cat-1", name: "Produce", color: "#22c55e" });
+  state.categoryOrder.set("cat-1", 0);
+  setDomGlobals({ window });
+  setGlobalProperty("document", document);
+  setGlobalProperty("window", window);
+
+  try {
+    renderItems(root, state);
+
+    const quickAddButtons = document.querySelectorAll(".item-category-quick-add");
+    const checkedHeader = [...document.querySelectorAll(".item-category-header")]
+      .find((header) => header.textContent.includes("Checked off"));
+    assert.equal(quickAddButtons.length, 2);
+    assert.equal(quickAddButtons[0].getAttribute("aria-label"), "Quick add uncategorized item");
+    assert.equal(quickAddButtons[1].getAttribute("aria-label"), "Quick add to Produce");
+    assert.equal(checkedHeader.querySelector(".item-category-quick-add"), null);
+
+    openItemPanelForCategory(root, state, "cat-1");
+    assert.equal(document.querySelector("[data-item-panel-overlay]").hidden, false);
+    assert.equal(document.querySelector("[data-item-panel]").hidden, false);
+    assert.equal(document.querySelector("[data-item-form-toggle]").getAttribute("aria-expanded"), "true");
+    assert.equal(document.querySelector("[data-item-category-search]").value, "");
+    assert.equal(document.querySelector('input[name="category_id"]:checked').value, "cat-1");
+
+    openItemPanelForCategory(root, state, "missing-cat");
+    assert.equal(document.querySelector('input[name="category_id"]:checked').value, "");
+  } finally {
+    restoreDomGlobals({
+      HTMLElement: originals.HTMLElement,
+      HTMLInputElement: originals.HTMLInputElement,
+      HTMLSelectElement: originals.HTMLSelectElement,
+    });
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("window", originals.window);
+  }
+});
+
+test("category swatches preserve configured colors in list and settings views", () => {
+  const { document, root } = createListRoot();
+  const activeItem = {
+    id: "active-item",
+    name: "Paprika",
+    checked: false,
+    checked_at: null,
+    category_id: "cat-1",
+    note: null,
+    quantity_text: null,
+    sort_order: 0,
+  };
+  const state = createState([activeItem]);
+  state.categories.set("cat-1", { id: "cat-1", name: "Gemuese", color: "#7ed957" });
+  state.categoryOrder.set("cat-1", 0);
+
+  renderItems(root, state);
+  renderCategoryOrderSettings(root, state);
+
+  const listSwatchStyle = document
+    .querySelector(".item-category-group .item-category-swatch")
+    .getAttribute("style") || "";
+  const settingsSwatchStyle = document
+    .querySelector(".settings-category-row .item-category-swatch")
+    .getAttribute("style") || "";
+  assert.match(listSwatchStyle, /126, 217, 87|#7ed957/);
+  assert.match(settingsSwatchStyle, /126, 217, 87|#7ed957/);
 });
 
 test("loadMoreCheckedItems fetches one hundred older checked items per page", async () => {
@@ -736,6 +1137,69 @@ test("offline item helpers use network while online and fall back on fetch TypeE
   }
 });
 
+test("hideItemForLater hides for four hours and restoreHiddenItem clears it", async () => {
+  const { document, root, window } = createListRoot();
+  const originals = {
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    document: globalThis.document,
+    fetch: globalThis.fetch,
+    window: globalThis.window,
+  };
+  const state = createState([
+    {
+      id: "item-1",
+      list_id: "list-1",
+      name: "Milk",
+      checked: false,
+      checked_at: null,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+      sort_order: 0,
+    },
+  ]);
+  const calls = [];
+
+  setDomGlobals({ window });
+  setGlobalProperty("document", document);
+  setGlobalProperty("window", window);
+  setGlobalProperty("fetch", async (url, options) => {
+    const payload = JSON.parse(options.body);
+    calls.push([url, options.method, payload]);
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ...state.items.get("item-1"), hidden_until: payload.hidden_until }),
+    };
+  });
+
+  try {
+    const hidden = await hideItemForLater(root, state, "item-1", Date.parse("2026-05-14T10:00:00.000Z"));
+    assert.equal(hidden.hidden_until, "2026-05-14T14:00:00.000Z");
+    assert.equal(document.querySelectorAll(".item-card").length, 1);
+    assert.equal(document.querySelector(".item-hidden-group h3").textContent, "Hidden for 4h");
+    assert.equal(document.querySelector('[data-item-unhide="item-1"]').textContent, "4h");
+    assert.equal(document.querySelector("[data-list-toast-message]").textContent, "Milk hidden for 4 hours.");
+
+    const restored = await restoreHiddenItem(root, state, "item-1");
+    assert.equal(restored.hidden_until, null);
+    assert.equal(document.querySelector(".item-card .item-name").textContent, "Milk");
+    assert.equal(document.querySelector(".item-hidden-group"), null);
+  } finally {
+    window.clearTimeout(state.undoTimerId);
+    restoreDomGlobals(originals);
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("fetch", originals.fetch);
+    setGlobalProperty("window", originals.window);
+  }
+
+  assert.deepEqual(calls, [
+    ["/api/v1/items/item-1", "PATCH", { hidden_until: "2026-05-14T14:00:00.000Z" }],
+    ["/api/v1/items/item-1", "PATCH", { hidden_until: null }],
+  ]);
+});
+
 test("flushOfflineMutations clears applied mutations and reports sync failures", async () => {
   const { document, root, window } = createListRoot();
   const originals = {
@@ -845,6 +1309,7 @@ test("renderItemSuggestions adds category color strips for categorized matches",
   const { document, root, window } = createSuggestionRoot();
   const originalHTMLElement = globalThis.HTMLElement;
   const originalHTMLInputElement = globalThis.HTMLInputElement;
+  const originalDateNow = Date.now;
   setGlobalProperty("HTMLElement", window.HTMLElement);
   setGlobalProperty("HTMLInputElement", window.HTMLInputElement);
   const state = createState([
@@ -864,9 +1329,19 @@ test("renderItemSuggestions adds category color strips for categorized matches",
       note: null,
       quantity_text: null,
     },
+    {
+      id: "item-3",
+      name: "Milch",
+      checked: false,
+      hidden_until: "2026-05-14T14:00:00.000Z",
+      category_id: null,
+      note: null,
+      quantity_text: null,
+    },
   ]);
   state.categories.set("cat-1", { id: "cat-1", name: "Backzutaten", color: "#ff3b30" });
 
+  Date.now = () => Date.parse("2026-05-14T10:00:00.000Z");
   try {
     renderItemSuggestions(root, state);
 
@@ -876,6 +1351,140 @@ test("renderItemSuggestions adds category color strips for categorized matches",
     assert.equal(suggestions[0].style.getPropertyValue("--suggestion-category-color"), "#ff3b30");
     assert.equal(suggestions[1].classList.contains("has-category"), false);
     assert.equal(suggestions[1].style.getPropertyValue("--suggestion-category-color"), "");
+  } finally {
+    Date.now = originalDateNow;
+    setGlobalProperty("HTMLElement", originalHTMLElement);
+    setGlobalProperty("HTMLInputElement", originalHTMLInputElement);
+  }
+});
+
+test("item suggestion fuzzy matching tolerates short typos", () => {
+  assert.equal(boundedEditDistance("milch", "milvh", 1), 1);
+  assert.equal(boundedEditDistance("milch", "tomate", 1), 2);
+  assert.equal(boundedEditDistance("milch", "salz", 1), 2);
+  assert.equal(fuzzyItemNameDistance("milch", "mi"), null);
+  assert.equal(fuzzyItemNameDistance("brot", "broz"), 1);
+  assert.equal(fuzzyItemNameDistance("spaghetti", "spaghetty"), 1);
+  assert.equal(fuzzyItemNameDistance("hafermilch", "milch"), 0);
+  assert.equal(fuzzyItemNameDistance("milch", "kaffee"), null);
+  assert.deepEqual(itemSuggestionMatch("Milch", "milch"), { distance: 0, rank: 0 });
+  assert.deepEqual(itemSuggestionMatch("Milchreis", "milch"), { distance: 0, rank: 1 });
+  assert.deepEqual(itemSuggestionMatch("Hafermilch", "milch"), { distance: 0, rank: 2 });
+  assert.deepEqual(itemSuggestionMatch("Milch", "Milvh"), { distance: 1, rank: 3 });
+  assert.equal(itemSuggestionMatch("Brot", "reis"), null);
+});
+
+test("renderItemSuggestions shows fuzzy item matches", () => {
+  const { document, root, window } = createSuggestionRoot();
+  const originalHTMLElement = globalThis.HTMLElement;
+  const originalHTMLInputElement = globalThis.HTMLInputElement;
+  setGlobalProperty("HTMLElement", window.HTMLElement);
+  setGlobalProperty("HTMLInputElement", window.HTMLInputElement);
+  document.querySelector("[data-item-name-input]").value = "Milvh";
+  const state = createState([
+    {
+      id: "item-1",
+      name: "Milch",
+      checked: false,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+    },
+    {
+      id: "item-2",
+      name: "Mehl",
+      checked: false,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+    },
+  ]);
+
+  try {
+    renderItemSuggestions(root, state);
+
+    const suggestions = document.querySelectorAll(".item-suggestion");
+    assert.equal(suggestions.length, 1);
+    assert.equal(suggestions[0].querySelector(".item-name").textContent, "Milch");
+    assert.equal(document.querySelector("[data-item-suggestions-slot]").classList.contains("is-active"), true);
+  } finally {
+    setGlobalProperty("HTMLElement", originalHTMLElement);
+    setGlobalProperty("HTMLInputElement", originalHTMLInputElement);
+  }
+});
+
+test("renderItemSuggestions keeps unchanged matches mounted", () => {
+  const { document, root, window } = createSuggestionRoot();
+  const originalHTMLElement = globalThis.HTMLElement;
+  const originalHTMLInputElement = globalThis.HTMLInputElement;
+  setGlobalProperty("HTMLElement", window.HTMLElement);
+  setGlobalProperty("HTMLInputElement", window.HTMLInputElement);
+  const input = document.querySelector("[data-item-name-input]");
+  input.value = "Papri";
+  const state = createState([
+    {
+      id: "item-1",
+      name: "Paprika",
+      checked: false,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+    },
+  ]);
+
+  try {
+    renderItemSuggestions(root, state);
+    const firstSuggestion = document.querySelector(".item-suggestion");
+
+    input.value = "Paprik";
+    renderItemSuggestions(root, state);
+
+    assert.equal(document.querySelector(".item-suggestion"), firstSuggestion);
+    assert.equal(document.querySelector(".item-name").textContent, "Paprika");
+  } finally {
+    setGlobalProperty("HTMLElement", originalHTMLElement);
+    setGlobalProperty("HTMLInputElement", originalHTMLInputElement);
+  }
+});
+
+test("renderItemSuggestions keeps surviving matches mounted when narrowed", () => {
+  const { document, root, window } = createSuggestionRoot();
+  const originalHTMLElement = globalThis.HTMLElement;
+  const originalHTMLInputElement = globalThis.HTMLInputElement;
+  setGlobalProperty("HTMLElement", window.HTMLElement);
+  setGlobalProperty("HTMLInputElement", window.HTMLInputElement);
+  const input = document.querySelector("[data-item-name-input]");
+  input.value = "To";
+  const state = createState([
+    {
+      id: "item-1",
+      name: "Tofu",
+      checked: false,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+    },
+    {
+      id: "item-2",
+      name: "Tomate",
+      checked: false,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+    },
+  ]);
+
+  try {
+    renderItemSuggestions(root, state);
+    const firstSuggestion = document.querySelector(".item-suggestion");
+    assert.equal(firstSuggestion.querySelector(".item-name").textContent, "Tofu");
+    assert.equal(document.querySelectorAll(".item-suggestion").length, 2);
+
+    input.value = "Tofu";
+    renderItemSuggestions(root, state);
+
+    assert.equal(document.querySelector(".item-suggestion"), firstSuggestion);
+    assert.equal(document.querySelectorAll(".item-suggestion").length, 1);
   } finally {
     setGlobalProperty("HTMLElement", originalHTMLElement);
     setGlobalProperty("HTMLInputElement", originalHTMLInputElement);

@@ -964,11 +964,12 @@ test("initUserSettings explains passkey deletion before WebAuthn and keeps last 
     await new Promise((resolve) => setTimeout(resolve, 0));
     assert.equal(root.querySelector("[data-passkey-delete-overlay]").hidden, false);
     assert.equal(root.querySelector("[data-passkey-delete-panel]").hidden, false);
-    assert.equal(root.querySelector("[data-passkey-delete-name]").textContent, "Phone");
+    const deleteCopy = root.querySelector("[data-passkey-delete-copy]");
     assert.match(
-      root.querySelector("[data-passkey-delete-copy]").textContent,
-      /working Passkey after deleting one/,
+      deleteCopy.textContent,
+      /To delete Phone, you must authenticate with another passkey to confirm you still have a working Passkey after deleting one\./,
     );
+    assert.equal(deleteCopy.querySelector("strong").textContent, "another");
     assert.deepEqual(
       fetchLog.filter(([url]) => url.includes("/delete/options")),
       [],
