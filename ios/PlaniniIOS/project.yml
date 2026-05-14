@@ -29,7 +29,7 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         SUPPORTS_MACCATALYST: NO
         CODE_SIGN_ENTITLEMENTS: App/Planini.entitlements
-        INFOPLIST_KEY_PlaniniBackendBaseURL: https://planini.malaber.de
+        INFOPLIST_KEY_PlaniniBackendBaseURL: https://planini.top
         GENERATE_INFOPLIST_FILE: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_CFBundleDisplayName: Planini
