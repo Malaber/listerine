@@ -2239,6 +2239,11 @@ def test_web_pages_require_login(client) -> None:
     assert "Create account" in response.text
     assert "Sign in with passkey" in response.text
     assert (
+        "Planini keeps household grocery lists shared, tidy, and ready wherever you shop."
+        in response.text
+    )
+    assert "Passkey-only authentication" not in response.text
+    assert (
         "Choose a passkey and your browser or password manager will identify the account for you."
         in response.text
     )

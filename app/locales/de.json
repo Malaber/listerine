@@ -23,7 +23,7 @@
   "auth": {
     "login": {
       "title": "Anmelden",
-      "intro": "Konten bleiben privat, bis du dich mit einem Passkey aus deinem Browser oder Passwortmanager anmeldest.",
+      "intro": "Planini hält Einkaufslisten im Haushalt synchron, übersichtlich und immer griffbereit.",
       "capabilities_link": "Interaktive Vorschau ausprobieren",
       "passkey_only_title": "Nur-Passkey-Anmeldung",
       "passkey_only_body": "Die Anmeldung funktioniert ohne Kontenauswahl, daher fragt diese Seite nicht nach dir, bevor dein Passkey es tut.",

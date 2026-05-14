@@ -23,7 +23,7 @@
   "auth": {
     "login": {
       "title": "Login",
-      "intro": "Accounts stay private until you sign in with a passkey from your browser or password manager.",
+      "intro": "Planini keeps household grocery lists shared, tidy, and ready wherever you shop.",
       "capabilities_link": "Try the interactive showcase",
       "passkey_only_title": "Passkey-only authentication",
       "passkey_only_body": "Sign-in is account-discovery free, so this page does not ask who you are before your passkey does.",
