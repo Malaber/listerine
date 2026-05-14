@@ -605,6 +605,15 @@ main {
   align-items: start;
 }
 
+.list-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: min(100%, 22rem);
+}
+
 .list-hero-copy {
   display: flex;
   flex-direction: column;
@@ -644,6 +653,41 @@ main {
 .list-settings-button:hover {
   background: var(--brand-aqua-soft);
   border-color: var(--border-strong);
+}
+
+.list-switcher {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.list-switcher[hidden] {
+  display: none;
+}
+
+.list-switcher label {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.list-switcher select {
+  width: min(13rem, 48vw);
+  min-height: 2.35rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--brand-navy);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  padding: 0.45rem 2rem 0.45rem 0.8rem;
+}
+
+.list-switcher select:focus {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .back-link {
@@ -1532,6 +1576,23 @@ main {
 
   .list-hero {
     gap: 0.55rem;
+  }
+
+  .list-hero-actions {
+    justify-content: flex-start;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .list-switcher {
+    width: 100%;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .list-switcher select {
+    width: min(100%, 20rem);
   }
 
   .list-title-row {

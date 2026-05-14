@@ -1230,6 +1230,66 @@ function setListSyncStatus(root, message) {
   }
 }
 
+function renderListSwitcher(root, groceryList, householdLists) {
+  const switcher = root.querySelector("[data-list-switcher]");
+  const select = root.querySelector("[data-list-switcher-select]");
+  if (!(switcher instanceof HTMLElement) || !(select instanceof HTMLSelectElement)) {
+    return;
+  }
+
+  const currentListId = groceryList?.id || root.dataset.listId || "";
+  const lists = Array.isArray(householdLists)
+    ? householdLists.filter((list) => list?.id && list?.name)
+    : [];
+  const hasOtherLists = lists.some((list) => list.id !== currentListId);
+
+  select.innerHTML = "";
+  switcher.hidden = !hasOtherLists;
+  select.disabled = !hasOtherLists;
+  if (!hasOtherLists) {
+    return;
+  }
+
+  lists.forEach((list) => {
+    const option = document.createElement("option");
+    option.value = list.id;
+    option.textContent = list.householdName ? `${list.name} - ${list.householdName}` : list.name;
+    select.appendChild(option);
+  });
+  select.value = currentListId;
+}
+
+async function loadListSwitchTargets() {
+  const households = await fetchJson("/api/v1/households");
+  const listResponses = await Promise.all(
+    households.map(async (household) => ({
+      householdName: household.name,
+      lists: await fetchJson(`/api/v1/households/${household.id}/lists`),
+    }))
+  );
+  return listResponses.flatMap((response) =>
+    response.lists.map((list) => ({
+      ...list,
+      householdName: response.householdName,
+    }))
+  );
+}
+
+function bindListSwitcher(root) {
+  const select = root.querySelector("[data-list-switcher-select]");
+  if (!(select instanceof HTMLSelectElement)) {
+    return;
+  }
+
+  select.addEventListener("change", () => {
+    const nextListId = select.value;
+    if (!nextListId || nextListId === root.dataset.listId) {
+      return;
+    }
+    navigateTo(`/lists/${nextListId}`);
+  });
+}
+
 function hideUndoToast(root, state) {
   const toast = root.querySelector("[data-list-toast]");
   const message = root.querySelector("[data-list-toast-message]");
@@ -2356,6 +2416,7 @@ async function loadListDetail(root, state) {
     if (title) {
       title.textContent = payload.list.name;
     }
+    renderListSwitcher(root, payload.list, []);
 
     const categories = Array.isArray(payload.categories) ? payload.categories : [];
     const categoryOrder = Array.isArray(payload.category_order) ? payload.category_order : [];
@@ -2373,17 +2434,19 @@ async function loadListDetail(root, state) {
   }
 
   const listId = root.dataset.listId;
-  const [groceryList, itemWindow, categories, categoryOrder] = await Promise.all([
-    fetchJson(`/api/v1/lists/${listId}`),
+  const groceryList = await fetchJson(`/api/v1/lists/${listId}`);
+  const [itemWindow, categories, categoryOrder, householdLists] = await Promise.all([
     fetchJson(`/api/v1/lists/${listId}/items/window`),
     fetchJson(`/api/v1/lists/${listId}/categories`),
     fetchJson(`/api/v1/lists/${listId}/category-order`),
+    loadListSwitchTargets(),
   ]);
 
   const title = root.querySelector("[data-list-title]");
   if (title) {
     title.textContent = groceryList.name;
   }
+  renderListSwitcher(root, groceryList, householdLists);
 
   state.categories = new Map(categories.map((category) => [category.id, category]));
   state.categoryOrder = new Map(
@@ -2517,6 +2580,8 @@ async function initListDetail() {
     url.searchParams.delete("addItem");
     window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
   };
+
+  bindListSwitcher(root);
 
   root.querySelectorAll("[data-item-form-toggle]").forEach((toggle) => {
     toggle.addEventListener("click", () => {
@@ -3167,6 +3232,9 @@ export {
   initDashboard,
   setListMessage,
   setListSyncStatus,
+  renderListSwitcher,
+  loadListSwitchTargets,
+  bindListSwitcher,
   hideUndoToast,
   showUndoToast,
   normalizeItemName,

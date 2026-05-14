@@ -536,12 +536,18 @@ async function scenarioFromSeed(seed, requestContext) {
   assert(groceryList, `Expected seeded list ${seed.e2e.primary_list}`);
   const checkedStressList = lists.find((entry) => entry.name === seed.e2e.checked_stress_list);
   assert(checkedStressList, `Expected seeded list ${seed.e2e.checked_stress_list}`);
+  const quickSwitchList = lists.find(
+    (entry) => entry.id !== groceryList.id && entry.id !== checkedStressList.id,
+  );
+  assert(quickSwitchList, "Expected another seeded list for quick switching");
   return {
     checkedStressListId: checkedStressList.id,
     householdId: household.id,
     householdName: household.name,
     listId: groceryList.id,
     listName: groceryList.name,
+    quickSwitchListId: quickSwitchList.id,
+    quickSwitchListName: quickSwitchList.name,
   };
 }
 
@@ -632,6 +638,29 @@ async function runCheckedStressListFlow(page, stressListUrl) {
   await expectCheckedCardCount(checkedGroup, 258);
   assert.equal(await headingMeta.textContent(), "258 items");
   assert.equal(await checkedGroup.locator(".checked-items-load-more").count(), 0);
+}
+
+async function runListQuickSwitchFlow(page, scenario, primaryListUrl) {
+  logStep("Checking list quick switch control");
+  const switcher = page.locator("[data-list-switcher]");
+  await expectVisible(switcher, "Expected quick switch control when household has multiple lists");
+  await expectVisible(page.getByRole("link", { name: "All lists" }), "Expected clear dashboard link label");
+
+  const select = switcher.locator("[data-list-switcher-select]");
+  assert.equal(await select.inputValue(), scenario.listId);
+  await select.selectOption(scenario.quickSwitchListId);
+  await page.waitForURL(new URL(`/lists/${scenario.quickSwitchListId}`, baseUrl).toString());
+  await expectVisible(
+    page.getByRole("heading", { name: scenario.quickSwitchListName }),
+    "Expected quick switch target list to load",
+  );
+
+  await page.locator("[data-list-switcher-select]").selectOption(scenario.listId);
+  await page.waitForURL(primaryListUrl);
+  await expectVisible(
+    page.getByRole("heading", { name: scenario.listName }),
+    "Expected quick switch to return to the primary list",
+  );
 }
 
 function extractInviteToken(inviteUrl) {
@@ -847,6 +876,7 @@ async function main() {
     logStep("Running main list interaction flow");
     await expectVisible(page.getByRole("button", { name: "Add item" }), "Expected floating add button");
     await expectVisible(page.locator(".item-card", { hasText: "Spaghetti" }), "Expected seeded items to load");
+    await runListQuickSwitchFlow(page, scenario, listUrl);
 
     if (deviceName === "desktop") {
       await page.keyboard.press("Enter");

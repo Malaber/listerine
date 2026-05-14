@@ -23,9 +23,19 @@
       <p class="dashboard-helper">{{ list_page_note }}</p>
       {% endif %}
     </div>
-    <a class="back-link" href="{{ list_back_href if list_back_href is defined else '/?dashboard=1' }}">
-      {{ list_back_label if list_back_label is defined else t("list_detail.back_to_households") }}
-    </a>
+    <div class="list-hero-actions">
+      <div class="list-switcher" data-list-switcher hidden>
+        <label for="list-switcher-select">{{ t("list_detail.switch_list") }}</label>
+        <select
+          id="list-switcher-select"
+          aria-label="{{ t("list_detail.switch_list") }}"
+          data-list-switcher-select
+        ></select>
+      </div>
+      <a class="back-link" href="{{ list_back_href if list_back_href is defined else '/?dashboard=1' }}">
+        {{ list_back_label if list_back_label is defined else t("list_detail.back_to_households") }}
+      </a>
+    </div>
   </div>
 
   <div class="dashboard-banner dashboard-banner-error" data-list-error hidden></div>
