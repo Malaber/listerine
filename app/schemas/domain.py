@@ -36,6 +36,7 @@ class GroceryListOut(ORMModel):
     household_id: UUID
     name: str
     archived: bool
+    open_item_count: int = 0
 
 
 class CategoryCreate(BaseModel):

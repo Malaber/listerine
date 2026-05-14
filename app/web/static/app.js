@@ -587,11 +587,12 @@ function renderHouseholds(root, households, listsByHousehold) {
       card.appendChild(listGrid);
     } else {
       lists.forEach((list) => {
+        const openItemCount = Number.isInteger(list.open_item_count) ? list.open_item_count : 0;
         const item = document.createElement("li");
         item.innerHTML = `
           <a href="/lists/${list.id}">
             <strong>${list.name}</strong>
-            <small>${translate("dashboard.open_list", {}, "Open list")}</small>
+            <small>${translatePlural("dashboard.open_item_count", openItemCount, {}, { one: "{count} open item", other: "{count} open items" })}</small>
           </a>
         `;
         listGrid.appendChild(item);
@@ -770,7 +771,6 @@ function syncPasskeyManagementModalState(root) {
 function setPasskeyDeleteConfirmState(root, state) {
   const overlay = root.querySelector("[data-passkey-delete-overlay]");
   const panel = root.querySelector("[data-passkey-delete-panel]");
-  const nameNode = root.querySelector("[data-passkey-delete-name]");
   const confirmButton = root.querySelector("[data-passkey-delete-confirm]");
   const copyNode = root.querySelector("[data-passkey-delete-copy]");
   if (
@@ -784,15 +784,27 @@ function setPasskeyDeleteConfirmState(root, state) {
   const isOpen = Boolean(state);
   overlay.hidden = !isOpen;
   panel.hidden = !isOpen;
-  if (nameNode instanceof HTMLElement) {
-    nameNode.textContent = state?.name || translate("settings.delete_target_fallback", {}, "this passkey");
-  }
+  const passkeyName = state?.name || translate("settings.delete_target_fallback", {}, "this passkey");
   if (copyNode instanceof HTMLElement) {
-    copyNode.childNodes[0].textContent = `${translate(
-      "settings.delete_help_generic",
-      {},
-      "You must authenticate with another passkey to confirm you still have a working Passkey after deleting one."
-    )} `;
+    const emphasisNode = document.createElement("strong");
+    emphasisNode.textContent = translate("settings.delete_help_emphasis", {}, "another");
+    copyNode.replaceChildren(
+      document.createTextNode(
+        translate(
+          "settings.delete_help_prefix",
+          { name: passkeyName },
+          "To delete {name}, you must authenticate with "
+        )
+      ),
+      emphasisNode,
+      document.createTextNode(
+        translate(
+          "settings.delete_help_suffix",
+          {},
+          " passkey to confirm you still have a working Passkey after deleting one."
+        )
+      )
+    );
   }
   confirmButton.dataset.passkeyId = state?.passkeyId || "";
   syncPasskeyManagementModalState(root);
@@ -3797,6 +3809,34 @@ async function handlePasskeyLoginClick(root, loginForm) {
   }
 }
 
+function transitionAuthPanels(root, updatePanels) {
+  const panelGroup = root.querySelector("[data-auth-panels]");
+  if (!(panelGroup instanceof HTMLElement)) {
+    updatePanels();
+    return;
+  }
+
+  const beforeHeight = panelGroup.getBoundingClientRect().height;
+  updatePanels();
+  const afterHeight = panelGroup.scrollHeight;
+  if (!beforeHeight || !afterHeight || beforeHeight === afterHeight) {
+    return;
+  }
+
+  panelGroup.style.height = `${beforeHeight}px`;
+  panelGroup.style.overflow = "hidden";
+  panelGroup.getBoundingClientRect();
+  panelGroup.style.height = `${afterHeight}px`;
+
+  const settle = () => {
+    panelGroup.style.height = "";
+    panelGroup.style.overflow = "";
+    panelGroup.removeEventListener("transitionend", settle);
+  };
+  panelGroup.addEventListener("transitionend", settle, { once: true });
+  window.setTimeout(settle, 240);
+}
+
 function setAuthTab(root, tab) {
   const panels = root.querySelectorAll("[data-auth-tab-panel]");
   const triggers = root.querySelectorAll("[data-auth-tab-trigger]");
@@ -3804,9 +3844,12 @@ function setAuthTab(root, tab) {
     return;
   }
 
-  panels.forEach((panel) => {
-    panel.hidden = panel.getAttribute("data-auth-tab-panel") !== tab;
+  transitionAuthPanels(root, () => {
+    panels.forEach((panel) => {
+      panel.hidden = panel.getAttribute("data-auth-tab-panel") !== tab;
+    });
   });
+
   triggers.forEach((trigger) => {
     trigger.setAttribute(
       "aria-selected",
@@ -4172,6 +4215,8 @@ export {
   loginWithPasskey,
   addPasskeyWithLink,
   handlePasskeyLoginClick,
+  transitionAuthPanels,
+  setAuthTab,
   setSettingsMessage,
   initPasskeyAuth,
   initPasskeyAddLink,
