@@ -4,6 +4,8 @@ const SUPPORTED_LANGUAGE_OPTIONS = [
   { value: "en", label: "English" },
   { value: "de", label: "Deutsch" },
 ];
+const CATEGORY_SWATCH_FALLBACK_COLOR = "#d9c5b3";
+const CHECKED_CATEGORY_SWATCH_COLOR = "#b59676";
 
 function base64UrlToBytes(value) {
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
@@ -1467,7 +1469,7 @@ function syncCategoryRadioGroup(container, groupName, currentValue, state, searc
 
     const swatch = document.createElement("span");
     swatch.className = "category-radio-swatch";
-    swatch.style.background = category.color || "#cbd5e1";
+    swatch.style.background = category.color || CATEGORY_SWATCH_FALLBACK_COLOR;
     card.appendChild(swatch);
 
     const copy = document.createElement("span");
@@ -1743,7 +1745,7 @@ function renderCategoryOrderSettings(root, state) {
 
     const swatch = document.createElement("span");
     swatch.className = "item-category-swatch";
-    swatch.style.background = category.color || "#cbd5e1";
+    swatch.style.background = category.color || CATEGORY_SWATCH_FALLBACK_COLOR;
     row.appendChild(swatch);
 
     const copy = document.createElement("div");
@@ -2038,7 +2040,7 @@ function renderItems(root, state) {
 
     const swatch = document.createElement("span");
     swatch.className = "item-category-swatch";
-    swatch.style.background = category?.color || "#cbd5e1";
+    swatch.style.background = category?.color || CATEGORY_SWATCH_FALLBACK_COLOR;
     heading.appendChild(swatch);
 
     const headingCopy = document.createElement("div");
@@ -2118,7 +2120,7 @@ function renderItems(root, state) {
 
     const swatch = document.createElement("span");
     swatch.className = "item-category-swatch";
-    swatch.style.background = "#94a3b8";
+    swatch.style.background = CHECKED_CATEGORY_SWATCH_COLOR;
     heading.appendChild(swatch);
 
     const headingCopy = document.createElement("div");

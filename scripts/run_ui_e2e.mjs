@@ -9,6 +9,14 @@ const videoDir = path.join(artifactDir, "videos");
 const seedPath = process.env.E2E_SEED_PATH ?? "app/fixtures/review_seed_e2e.json";
 const deviceName = process.env.E2E_DEVICE ?? "desktop";
 const knownDevices = new Map([["iphone", "iPhone 13"]]);
+const staleBlueAccentTokens = [
+  "20, 42, 87",
+  "29, 184, 217",
+  "79, 105, 129",
+  "167, 203, 223",
+  "223, 248, 253",
+  "245, 251, 253",
+];
 
 function logStep(message) {
   console.log(`[ui-e2e] ${message}`);
@@ -121,6 +129,66 @@ async function expectInViewport(locator, message) {
     return isFullyVisible();
   });
   assert(isInViewport, message);
+}
+
+async function assertBrownWhiteAccentChrome(page) {
+  logStep("Checking brown-white accent chrome");
+  const matches = await page.evaluate((tokens) => {
+    const staleMatches = [];
+    for (const sheet of [...document.styleSheets]) {
+      let rules = [];
+      try {
+        rules = [...sheet.cssRules];
+      } catch {
+        continue;
+      }
+
+      for (const rule of rules) {
+        const cssText = rule.cssText || "";
+        const token = tokens.find((entry) => cssText.includes(entry));
+        if (token) {
+          staleMatches.push(`stylesheet:${token}:${cssText.slice(0, 160)}`);
+        }
+      }
+    }
+
+    const selectors = [
+      ".item-category-header",
+      ".item-card",
+      ".checked-items-load-more",
+      ".item-suggestion",
+      ".item-more-fields",
+      ".floating-add-button",
+      ".list-toast",
+      ".category-radio-card",
+    ];
+    const properties = [
+      "backgroundColor",
+      "backgroundImage",
+      "borderTopColor",
+      "borderRightColor",
+      "borderBottomColor",
+      "borderLeftColor",
+      "boxShadow",
+    ];
+
+    for (const selector of selectors) {
+      for (const node of [...document.querySelectorAll(selector)]) {
+        const styles = getComputedStyle(node);
+        for (const property of properties) {
+          const value = styles[property];
+          const token = tokens.find((entry) => value.includes(entry));
+          if (token) {
+            staleMatches.push(`${selector}:${property}:${value}`);
+          }
+        }
+      }
+    }
+
+    return staleMatches;
+  }, staleBlueAccentTokens);
+
+  assert.deepEqual(matches, [], "Expected list chrome to avoid stale blue accent colors");
 }
 
 async function assertHeaderActionsFitTranslatedLabels(page) {
@@ -615,6 +683,7 @@ async function runCheckedStressListFlow(page, stressListUrl) {
   assert.equal(await headingMeta.textContent(), "258 items");
   assert.equal(await loadMoreButton.textContent(), "Load 100 more");
   assert.equal(await loadMoreMeta.textContent(), "248 older items not loaded");
+  await assertBrownWhiteAccentChrome(page);
 
   await loadMoreButton.click();
   await expectCheckedCardCount(checkedGroup, 110);
@@ -847,6 +916,7 @@ async function main() {
     logStep("Running main list interaction flow");
     await expectVisible(page.getByRole("button", { name: "Add item" }), "Expected floating add button");
     await expectVisible(page.locator(".item-card", { hasText: "Spaghetti" }), "Expected seeded items to load");
+    await assertBrownWhiteAccentChrome(page);
 
     if (deviceName === "desktop") {
       await page.keyboard.press("Enter");
