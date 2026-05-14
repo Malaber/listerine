@@ -1868,14 +1868,15 @@ main {
   width: min(100%, 46rem);
   margin: 0 auto;
   padding-block: clamp(0.35rem, 2.5vh, 1.8rem) 1rem;
-  text-align: center;
+  text-align: left;
 }
 
 .auth-copy {
   display: grid;
-  justify-items: center;
+  justify-items: start;
   gap: 0.65rem;
   max-width: 43rem;
+  width: min(100%, 43rem);
 }
 
 .auth-copy h1,
@@ -1901,7 +1902,7 @@ main {
 }
 
 .auth-copy .secondary-button {
-  justify-self: center;
+  justify-self: start;
 }
 
 .auth-card {
@@ -1932,6 +1933,10 @@ main {
   gap: 0.9rem;
 }
 
+.auth-panels {
+  transition: height 180ms ease;
+}
+
 .auth-panel[hidden] {
   display: none;
 }
@@ -1939,7 +1944,7 @@ main {
 .auth-panel h2,
 .auth-panel p {
   margin: 0;
-  text-align: center;
+  text-align: left;
 }
 
 .auth-panel h2 {
@@ -2092,6 +2097,12 @@ main {
 
   .auth-panel {
     gap: 0.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-panels {
+    transition: none;
   }
 }
 

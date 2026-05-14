@@ -257,6 +257,27 @@ async function assertLoginPageTabs(page) {
     signInButton,
     "Expected the passkey sign-in button to be visible before scrolling on the login page",
   );
+  const layout = await page.evaluate(() => {
+    const shell = document.querySelector(".auth-shell");
+    const copy = document.querySelector(".auth-copy");
+    const panel = document.querySelector('[data-auth-tab-panel="signin"]');
+    if (!(shell instanceof HTMLElement) || !(copy instanceof HTMLElement) || !(panel instanceof HTMLElement)) {
+      throw new Error("Expected login shell, copy, and active panel");
+    }
+    const shellRect = shell.getBoundingClientRect();
+    return {
+      shellCenterOffset: Math.abs(shellRect.left + shellRect.width / 2 - window.innerWidth / 2),
+      viewportWidth: window.innerWidth,
+      copyTextAlign: getComputedStyle(copy).textAlign,
+      panelTextAlign: getComputedStyle(panel).textAlign,
+    };
+  });
+  assert(
+    layout.shellCenterOffset <= Math.max(4, layout.viewportWidth * 0.02),
+    "Expected the login widget to stay centered in the viewport",
+  );
+  assert.equal(layout.copyTextAlign, "left", "Expected login copy to be left aligned inside the centered widget");
+  assert.equal(layout.panelTextAlign, "left", "Expected auth panel text to be left aligned inside the card");
 }
 
 async function screenshot(page, name) {
