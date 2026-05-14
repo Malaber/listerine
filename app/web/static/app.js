@@ -1296,6 +1296,76 @@ function normalizeSearchText(value) {
     .toLowerCase();
 }
 
+function boundedEditDistance(left, right, maxDistance) {
+  if (Math.abs(left.length - right.length) > maxDistance) {
+    return maxDistance + 1;
+  }
+
+  let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    const current = [leftIndex];
+    let rowBest = current[0];
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+      const substitutionCost = left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1;
+      const value = Math.min(
+        previous[rightIndex] + 1,
+        current[rightIndex - 1] + 1,
+        previous[rightIndex - 1] + substitutionCost
+      );
+      current[rightIndex] = value;
+      rowBest = Math.min(rowBest, value);
+    }
+    if (rowBest > maxDistance) {
+      return maxDistance + 1;
+    }
+    previous = current;
+  }
+  return previous[right.length];
+}
+
+function fuzzyItemNameDistance(itemName, query) {
+  if (query.length < 3) {
+    return null;
+  }
+
+  const maxDistance = query.length <= 4 ? 1 : 2;
+  let bestDistance = boundedEditDistance(itemName, query, maxDistance);
+  const minWindowLength = Math.max(1, query.length - maxDistance);
+  const maxWindowLength = Math.min(itemName.length, query.length + maxDistance);
+
+  for (let startIndex = 0; startIndex < itemName.length; startIndex += 1) {
+    for (let windowLength = minWindowLength; windowLength <= maxWindowLength; windowLength += 1) {
+      const candidate = itemName.slice(startIndex, startIndex + windowLength);
+      if (candidate.length < minWindowLength) {
+        continue;
+      }
+      bestDistance = Math.min(bestDistance, boundedEditDistance(candidate, query, maxDistance));
+      if (bestDistance === 0) {
+        return bestDistance;
+      }
+    }
+  }
+
+  return bestDistance <= maxDistance ? bestDistance : null;
+}
+
+function itemSuggestionMatch(itemName, query) {
+  const normalizedName = normalizeSearchText(itemName);
+  const normalizedQuery = normalizeSearchText(query);
+  if (normalizedName === normalizedQuery) {
+    return { distance: 0, rank: 0 };
+  }
+  if (normalizedName.startsWith(normalizedQuery)) {
+    return { distance: 0, rank: 1 };
+  }
+  if (normalizedName.includes(normalizedQuery)) {
+    return { distance: 0, rank: 2 };
+  }
+
+  const distance = fuzzyItemNameDistance(normalizedName, normalizedQuery);
+  return distance === null ? null : { distance, rank: 3 };
+}
+
 function syncModalState(root) {
   const addOverlay = root.querySelector("[data-item-panel-overlay]");
   const editOverlay = root.querySelector("[data-item-edit-overlay]");
@@ -1824,7 +1894,7 @@ function renderItemSuggestions(root, state) {
     return;
   }
 
-  const query = normalizeItemName(nameInput.value);
+  const query = normalizeSearchText(nameInput.value);
   suggestionsNode.innerHTML = "";
   if (!query) {
     suggestionsSlot.classList.remove("is-active");
@@ -1832,25 +1902,21 @@ function renderItemSuggestions(root, state) {
   }
 
   const matches = [...state.items.values()]
-    .filter((item) => normalizeItemName(item.name).includes(query))
+    .map((item) => ({ item, match: itemSuggestionMatch(item.name, query) }))
+    .filter(({ match }) => match !== null)
     .sort((left, right) => {
-      const leftName = normalizeItemName(left.name);
-      const rightName = normalizeItemName(right.name);
-      const leftExact = Number(leftName === query);
-      const rightExact = Number(rightName === query);
-      if (leftExact !== rightExact) {
-        return rightExact - leftExact;
+      if (left.match.rank !== right.match.rank) {
+        return left.match.rank - right.match.rank;
       }
-      const leftStarts = Number(leftName.startsWith(query));
-      const rightStarts = Number(rightName.startsWith(query));
-      if (leftStarts !== rightStarts) {
-        return rightStarts - leftStarts;
+      if (left.match.distance !== right.match.distance) {
+        return left.match.distance - right.match.distance;
       }
-      if (left.checked !== right.checked) {
-        return Number(left.checked) - Number(right.checked);
+      if (left.item.checked !== right.item.checked) {
+        return Number(left.item.checked) - Number(right.item.checked);
       }
-      return left.name.localeCompare(right.name);
+      return left.item.name.localeCompare(right.item.name);
     })
+    .map(({ item }) => item)
     .slice(0, 4);
 
   if (matches.length === 0) {
@@ -3171,6 +3237,9 @@ export {
   showUndoToast,
   normalizeItemName,
   normalizeSearchText,
+  boundedEditDistance,
+  fuzzyItemNameDistance,
+  itemSuggestionMatch,
   syncModalState,
   setItemPanelOpen,
   formatSuggestionMeta,
