@@ -4,12 +4,34 @@
   },
   "e2e": {
     "rp_id": "localhost",
-    "owner_email": "preview-invitee@example.com",
+    "owner_email": "planini@schaedler.rocks",
     "invitee_email": "preview-invitee@example.com",
     "primary_household": "Review Household",
     "primary_list": "Browser Test Shop"
   },
   "users": [
+    {
+      "email": "planini_admin@schaedler.rocks",
+      "display_name": "Planini Admin",
+      "is_admin": true,
+      "passkey": {
+        "credential_id": "rfQtSiCsTAuqtJpva0-SHQ",
+        "name": "Bitwarden - Planini PR Admin",
+        "public_key_b64": "pQECAyYgASFYINZfiOk8k7cvlvkqxDT4TmcAd18mBRSXeVuTW0Pfnd59IlggBoKNFKiABum6lKLkre+9UErWcyYxW7iO2AmlLLVygh4=",
+        "sign_count": 0
+      }
+    },
+    {
+      "email": "planini@schaedler.rocks",
+      "display_name": "Planini User",
+      "is_admin": false,
+      "passkey": {
+        "credential_id": "hBGPAsmMQnyLQ4mn_iL3cg",
+        "name": "Bitwarden - Planini PR",
+        "public_key_b64": "pQECAyYgASFYIAPI11bwm6seVeg6iEBHBwNtIgklb6T13PxVunpQhZtJIlggkOnBnd5Jma1qQsHOpsuFGaqosHwdZvqQ5jIK5Z6Uv6E=",
+        "sign_count": 0
+      }
+    },
     {
       "email": "preview@example.com",
       "display_name": "Preview User",
@@ -122,17 +144,17 @@
   "households": [
     {
       "name": "Review Household",
-      "owner_email": "preview-invitee@example.com",
+      "owner_email": "planini@schaedler.rocks",
       "members": [
         {
-          "email": "preview-invitee@example.com",
+          "email": "planini@schaedler.rocks",
           "role": "owner"
         }
       ],
       "lists": [
         {
           "name": "Browser Test Shop",
-          "created_by_email": "preview-invitee@example.com",
+          "created_by_email": "planini@schaedler.rocks",
           "category_order": [
             "Konserven",
             "Milch & Eier",
@@ -149,68 +171,68 @@
             {
               "name": "Loose item",
               "quantity_text": "1",
-              "created_by_email": "preview-invitee@example.com"
+              "created_by_email": "planini@schaedler.rocks"
             },
             {
               "name": "Spaghetti",
               "category": "Nudeln",
               "quantity_text": "2 packs",
-              "created_by_email": "preview-invitee@example.com"
+              "created_by_email": "planini@schaedler.rocks"
             },
             {
               "name": "Brot",
               "category": "Backwaren",
               "note": "Seeded checked duplicate",
               "checked": true,
-              "checked_by_email": "preview-invitee@example.com",
-              "created_by_email": "preview-invitee@example.com"
+              "checked_by_email": "planini@schaedler.rocks",
+              "created_by_email": "planini@schaedler.rocks"
             },
             {
               "name": "Tomaten",
               "category": "Konserven",
-              "created_by_email": "preview-invitee@example.com"
+              "created_by_email": "planini@schaedler.rocks"
             },
             {
               "name": "Eier",
               "category": "Milch & Eier",
               "quantity_text": "10",
-              "created_by_email": "preview-invitee@example.com"
+              "created_by_email": "planini@schaedler.rocks"
             },
             {
               "name": "Putzmittel",
               "category": "Reinigung",
-              "created_by_email": "preview-invitee@example.com"
+              "created_by_email": "planini@schaedler.rocks"
             },
             {
               "name": "Erbsen",
               "category": "Tiefkuehlkost",
-              "created_by_email": "preview-invitee@example.com"
+              "created_by_email": "planini@schaedler.rocks"
             },
             {
               "name": "Tofu",
               "category": "Vegan",
-              "created_by_email": "preview-invitee@example.com"
+              "created_by_email": "planini@schaedler.rocks"
             },
             {
               "name": "Mehl",
               "category": "Backzutaten",
-              "created_by_email": "preview-invitee@example.com"
+              "created_by_email": "planini@schaedler.rocks"
             },
             {
               "name": "Hackfleisch",
               "category": "Fleisch",
-              "created_by_email": "preview-invitee@example.com"
+              "created_by_email": "planini@schaedler.rocks"
             },
             {
               "name": "Paprika",
               "category": "Gemuese",
-              "created_by_email": "preview-invitee@example.com"
+              "created_by_email": "planini@schaedler.rocks"
             }
           ]
         },
         {
           "name": "Hosting errands",
-          "created_by_email": "preview-invitee@example.com",
+          "created_by_email": "planini@schaedler.rocks",
           "category_order": [
             "Haushalt",
             "Backwaren"
@@ -219,19 +241,19 @@
             {
               "name": "Dish soap",
               "category": "Haushalt",
-              "created_by_email": "preview-invitee@example.com"
+              "created_by_email": "planini@schaedler.rocks"
             },
             {
               "name": "Napkins",
               "category": "Haushalt",
               "checked": true,
-              "checked_by_email": "preview-invitee@example.com",
-              "created_by_email": "preview-invitee@example.com"
+              "checked_by_email": "planini@schaedler.rocks",
+              "created_by_email": "planini@schaedler.rocks"
             },
             {
               "name": "Brioches",
               "category": "Backwaren",
-              "created_by_email": "preview-invitee@example.com"
+              "created_by_email": "planini@schaedler.rocks"
             }
           ]
         }
@@ -246,7 +268,7 @@
           "role": "owner"
         },
         {
-          "email": "preview-invitee@example.com",
+          "email": "planini@schaedler.rocks",
           "role": "member"
         }
       ],
@@ -268,9 +290,9 @@
               "name": "Laundry pods",
               "category": "Haushalt",
               "checked": true,
-              "checked_by_email": "preview-invitee@example.com",
+              "checked_by_email": "planini@schaedler.rocks",
               "created_by_email": "review-neighbor@example.com",
-              "updated_by_email": "preview-invitee@example.com"
+              "updated_by_email": "planini@schaedler.rocks"
             }
           ]
         }
