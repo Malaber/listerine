@@ -86,9 +86,31 @@ class GroceryItemOut(ORMModel):
     category_id: UUID | None
     checked: bool
     checked_at: datetime | None
+    checked_state_recorded_at: datetime | None
     sort_order: int
 
 
 class GroceryItemsWindowOut(BaseModel):
     items: list[GroceryItemOut]
     checked_remaining_count: int
+
+
+class GroceryItemOfflineMutation(BaseModel):
+    mutation_id: str
+    type: str
+    item_id: UUID | str | None = None
+    client_item_id: str | None = None
+    recorded_at: datetime
+    payload: dict[str, object | None] | None = None
+    checked: bool | None = None
+
+
+class GroceryItemOfflineSyncIn(BaseModel):
+    mutations: list[GroceryItemOfflineMutation] = Field(default_factory=list)
+
+
+class GroceryItemOfflineSyncOut(BaseModel):
+    items: list[GroceryItemOut]
+    deleted_item_ids: list[str] = Field(default_factory=list)
+    client_item_ids: dict[str, UUID] = Field(default_factory=dict)
+    applied_mutation_ids: list[str] = Field(default_factory=list)

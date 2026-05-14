@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+from html import unescape
 from datetime import UTC, datetime, timedelta, timezone
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
@@ -145,6 +146,14 @@ def _admin_user_edit_url(user_id: UUID) -> str:
 
 def _admin_user_passkey_add_link_url(user_id: UUID) -> str:
     return f"/admin/user/{user_id}/passkey-add-link"
+
+
+def _register_admin_session(client, monkeypatch, email: str = "admin@example.com") -> UUID:
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.settings.bootstrap_admin_email",
+        email,
+    )
+    return _register_session_user(client, monkeypatch, email)
 
 
 async def _get_auth_session(user_id: UUID) -> AuthSession | None:
@@ -705,6 +714,229 @@ def test_item_window_limits_checked_items_and_pages_older_checked_items(client) 
     assert too_large_page.status_code == 422
     assert checked_item_ids[0] == older_checked_items[1]["id"]
     assert active_item["id"] in {item["id"] for item in item_window["items"]}
+
+
+def test_offline_item_sync_replays_changes_idempotently(client) -> None:
+    headers = _auth_headers(client, f"{uuid4()}@example.com")
+    household = client.post("/api/v1/households", json={"name": "Home"}, headers=headers).json()
+    grocery_list = client.post(
+        f"/api/v1/households/{household['id']}/lists",
+        json={"name": "Weekly"},
+        headers=headers,
+    ).json()
+    checked_item = client.post(
+        f"/api/v1/lists/{grocery_list['id']}/items",
+        json={"name": "Already checked"},
+        headers=headers,
+    ).json()
+    delete_item = client.post(
+        f"/api/v1/lists/{grocery_list['id']}/items",
+        json={"name": "Delete me"},
+        headers=headers,
+    ).json()
+    client.post(f"/api/v1/items/{checked_item['id']}/check", headers=headers)
+    base_recorded_at = datetime.now(UTC) + timedelta(minutes=5)
+    mutations = [
+        {
+            "mutation_id": "create-local",
+            "type": "create",
+            "client_item_id": "local-offline-apples",
+            "recorded_at": base_recorded_at.isoformat(),
+            "payload": {"name": "Offline apples", "sort_order": 7},
+        },
+        {
+            "mutation_id": "create-local",
+            "type": "unknown",
+            "recorded_at": base_recorded_at.isoformat(),
+        },
+        {
+            "mutation_id": "update-local",
+            "type": "update",
+            "item_id": "local-offline-apples",
+            "recorded_at": (base_recorded_at + timedelta(seconds=1)).isoformat(),
+            "payload": {"quantity_text": "2 bags", "category_id": None},
+        },
+        {
+            "mutation_id": "check-local",
+            "type": "set_checked",
+            "item_id": "local-offline-apples",
+            "recorded_at": (base_recorded_at + timedelta(seconds=2)).isoformat(),
+            "checked": True,
+        },
+        {
+            "mutation_id": "create-then-delete",
+            "type": "create",
+            "client_item_id": "local-discarded",
+            "recorded_at": (base_recorded_at + timedelta(seconds=2, milliseconds=100)).isoformat(),
+            "payload": {"name": "Discarded offline item"},
+        },
+        {
+            "mutation_id": "delete-created-local",
+            "type": "delete",
+            "item_id": "local-discarded",
+            "recorded_at": (base_recorded_at + timedelta(seconds=2, milliseconds=200)).isoformat(),
+        },
+        {
+            "mutation_id": "uncheck-existing-newer",
+            "type": "set_checked",
+            "item_id": checked_item["id"],
+            "recorded_at": (base_recorded_at + timedelta(seconds=4)).isoformat(),
+            "checked": False,
+        },
+        {
+            "mutation_id": "check-existing-older",
+            "type": "set_checked",
+            "item_id": checked_item["id"],
+            "recorded_at": (base_recorded_at + timedelta(seconds=3)).isoformat(),
+            "checked": True,
+        },
+        {
+            "mutation_id": "delete-existing",
+            "type": "delete",
+            "item_id": delete_item["id"],
+            "recorded_at": (base_recorded_at + timedelta(seconds=5)).isoformat(),
+        },
+        {
+            "mutation_id": "delete-missing",
+            "type": "delete",
+            "recorded_at": (base_recorded_at + timedelta(seconds=6)).isoformat(),
+        },
+        {
+            "mutation_id": "update-missing",
+            "type": "update",
+            "item_id": "missing-local-id",
+            "recorded_at": (base_recorded_at + timedelta(seconds=6, milliseconds=500)).isoformat(),
+            "payload": {"note": "gone"},
+        },
+        {
+            "mutation_id": "check-missing-local",
+            "type": "set_checked",
+            "item_id": "missing-local-id",
+            "recorded_at": (base_recorded_at + timedelta(seconds=7)).isoformat(),
+            "checked": True,
+        },
+    ]
+
+    first_sync = client.post(
+        f"/api/v1/lists/{grocery_list['id']}/items/sync",
+        json={"mutations": mutations},
+        headers=headers,
+    )
+    second_sync = client.post(
+        f"/api/v1/lists/{grocery_list['id']}/items/sync",
+        json={"mutations": mutations},
+        headers=headers,
+    )
+
+    assert first_sync.status_code == 200
+    assert second_sync.status_code == 200
+    first_payload = first_sync.json()
+    second_payload = second_sync.json()
+    assert first_payload["client_item_ids"]["local-offline-apples"]
+    assert delete_item["id"] in first_payload["deleted_item_ids"]
+    assert first_payload["client_item_ids"]["local-discarded"] in first_payload["deleted_item_ids"]
+    assert delete_item["id"] not in second_payload["deleted_item_ids"]
+    assert first_payload["applied_mutation_ids"].count("create-local") == 1
+
+    items = client.get(f"/api/v1/lists/{grocery_list['id']}/items", headers=headers).json()
+    offline_items = [item for item in items if item["name"] == "Offline apples"]
+    assert len(offline_items) == 1
+    assert offline_items[0]["quantity_text"] == "2 bags"
+    assert offline_items[0]["checked"] is True
+    checked_at = datetime.fromisoformat(offline_items[0]["checked_at"].replace("Z", "+00:00"))
+    if checked_at.tzinfo is None:
+        checked_at = checked_at.replace(tzinfo=UTC)
+    assert checked_at == base_recorded_at + timedelta(seconds=2)
+    checked_items = [item for item in items if item["id"] == checked_item["id"]]
+    assert checked_items[0]["checked"] is False
+    assert delete_item["id"] not in {item["id"] for item in items}
+    assert "Discarded offline item" not in {item["name"] for item in items}
+
+
+def test_offline_item_sync_accepts_create_without_client_item_id(client) -> None:
+    headers = _auth_headers(client, f"{uuid4()}@example.com")
+    household = client.post("/api/v1/households", json={"name": "Home"}, headers=headers).json()
+    grocery_list = client.post(
+        f"/api/v1/households/{household['id']}/lists",
+        json={"name": "Weekly"},
+        headers=headers,
+    ).json()
+
+    response = client.post(
+        f"/api/v1/lists/{grocery_list['id']}/items/sync",
+        json={
+            "mutations": [
+                {
+                    "mutation_id": "create-without-client-id",
+                    "type": "create",
+                    "recorded_at": datetime.now(UTC).isoformat(),
+                    "payload": {"name": "One-shot"},
+                }
+            ]
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["name"] == "One-shot"
+
+
+def test_offline_item_sync_rejects_invalid_mutations(client) -> None:
+    headers = _auth_headers(client, f"{uuid4()}@example.com")
+    household = client.post("/api/v1/households", json={"name": "Home"}, headers=headers).json()
+    grocery_list = client.post(
+        f"/api/v1/households/{household['id']}/lists",
+        json={"name": "Weekly"},
+        headers=headers,
+    ).json()
+    recorded_at = datetime.now(UTC).isoformat()
+
+    missing_name = client.post(
+        f"/api/v1/lists/{grocery_list['id']}/items/sync",
+        json={
+            "mutations": [
+                {
+                    "mutation_id": "bad-create",
+                    "type": "create",
+                    "client_item_id": "bad-local",
+                    "recorded_at": recorded_at,
+                    "payload": {"quantity_text": "missing name"},
+                }
+            ]
+        },
+        headers=headers,
+    )
+    missing_checked = client.post(
+        f"/api/v1/lists/{grocery_list['id']}/items/sync",
+        json={
+            "mutations": [
+                {
+                    "mutation_id": "bad-check",
+                    "type": "set_checked",
+                    "item_id": str(uuid4()),
+                    "recorded_at": recorded_at,
+                }
+            ]
+        },
+        headers=headers,
+    )
+    unknown_type = client.post(
+        f"/api/v1/lists/{grocery_list['id']}/items/sync",
+        json={
+            "mutations": [
+                {
+                    "mutation_id": "bad-type",
+                    "type": "merge",
+                    "recorded_at": recorded_at,
+                }
+            ]
+        },
+        headers=headers,
+    )
+
+    assert missing_name.status_code == 422
+    assert missing_checked.status_code == 422
+    assert unknown_type.status_code == 400
 
 
 def test_cross_household_forbidden(client) -> None:
@@ -2287,6 +2519,55 @@ def test_admin_can_generate_passkey_add_link_from_admin_frontend(client, monkeyp
         expires_at = expires_at.replace(tzinfo=UTC)
     assert expires_at > datetime.now(UTC) + timedelta(hours=23, minutes=59)
     assert expires_at < datetime.now(UTC) + timedelta(hours=24, minutes=1)
+
+
+def test_admin_list_defaults_to_fifty_items_and_sortable_headers(client, monkeypatch) -> None:
+    _register_admin_session(client, monkeypatch)
+    for index in range(60):
+        asyncio.run(_create_user(f"user-{index:02d}@example.com", with_passkey=False))
+
+    page = client.get("/admin/user/list")
+
+    assert page.status_code == 200
+    body = unescape(page.text)
+    assert body.count('class="form-check-input m-0 align-middle select-box"') == 50
+    assert "Showing <span>1</span> to\n                <span>50</span> of <span>61" in body
+    assert "50 / Page" in body
+    assert "100 / Page" in body
+    assert "200 / Page" in body
+    assert "10 / Page" not in body
+    assert "25 / Page" not in body
+    for sort_name in ["email", "display_name", "is_admin", "is_active", "created_at"]:
+        assert f"sortBy={sort_name}&sort=asc&page=1" in body
+    assert 'href="http://testserver/admin/user/list" class="btn btn-secondary"' in body
+    assert "Reset view" in body
+
+
+def test_admin_list_sorts_and_carries_page_size_between_models(client, monkeypatch) -> None:
+    _register_admin_session(client, monkeypatch)
+    asyncio.run(_create_user("zzz-sort@example.com", with_passkey=False))
+    asyncio.run(_create_user("aaa-sort@example.com", with_passkey=False))
+
+    ascending = client.get("/admin/user/list?pageSize=100&sortBy=email&sort=asc")
+    descending = client.get("/admin/user/list?pageSize=100&sortBy=email&sort=desc")
+    category_page = client.get("/admin/category/list?pageSize=100")
+
+    assert ascending.status_code == 200
+    assert descending.status_code == 200
+    assert category_page.status_code == 200
+    ascending_body = unescape(ascending.text)
+    descending_body = unescape(descending.text)
+    category_body = unescape(category_page.text)
+    assert ascending_body.index("aaa-sort@example.com") < ascending_body.index(
+        "zzz-sort@example.com"
+    )
+    assert descending_body.index("zzz-sort@example.com") < descending_body.index(
+        "aaa-sort@example.com"
+    )
+    assert 'href="http://testserver/admin/category/list?pageSize=100"' in ascending_body
+    assert "sortBy=name&sort=asc&page=1" in category_body
+    assert "sortBy=color&sort=asc&page=1" in category_body
+    assert "sortBy=aliases_text&sort=asc&page=1" in category_body
 
 
 def test_passkey_add_link_adds_passkey_and_clears_token(client, monkeypatch) -> None:
