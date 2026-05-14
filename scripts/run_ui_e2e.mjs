@@ -176,17 +176,18 @@ async function assertHeaderActionsFitTranslatedLabels(page) {
 }
 
 async function assertLoginPageTabs(page) {
-  const signInTab = page.getByRole("tab", { name: "Sign In" });
-  const createAccountTab = page.getByRole("tab", { name: "Create Account" });
-  await expectVisible(signInTab, "Expected the Sign In tab on the login page");
-  await expectVisible(createAccountTab, "Expected the Create Account tab on the login page");
+  const signInTab = page.getByRole("tab", { name: "Use passkey" });
+  const createAccountTab = page.getByRole("tab", { name: "Create account" });
+  const signInButton = page.getByRole("button", { name: "Sign in with passkey" });
+  await expectVisible(signInTab, "Expected the passkey mode switch on the login page");
+  await expectVisible(createAccountTab, "Expected the create-account mode switch on the login page");
   await expectVisible(
     page.getByRole("heading", { name: "Sign In" }),
     "Expected the sign-in heading inside the active auth panel",
   );
-  await expectVisible(
-    page.getByRole("button", { name: "Sign in with passkey" }),
-    "Expected the passkey sign-in button on the login page",
+  await expectInViewport(
+    signInButton,
+    "Expected the passkey sign-in button to be visible before scrolling on the login page",
   );
 }
 
