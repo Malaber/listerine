@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import ensure_household_member, get_current_user, get_list_for_user
@@ -28,6 +28,33 @@ from app.schemas.domain import (
 from app.services.websocket_hub import hub
 
 router = APIRouter(tags=["lists"])
+
+
+def _serialize_list(grocery_list: GroceryList, open_item_count: int) -> GroceryListOut:
+    return GroceryListOut.model_validate(grocery_list).model_copy(
+        update={"open_item_count": open_item_count}
+    )
+
+
+async def _open_item_count(db: AsyncSession, list_id: UUID) -> int:
+    result = await db.execute(
+        select(func.count())
+        .select_from(GroceryItem)
+        .where(GroceryItem.list_id == list_id, GroceryItem.checked.is_(False))
+    )
+    return int(result.scalar_one())
+
+
+async def _open_item_counts(db: AsyncSession, list_ids: list[UUID]) -> dict[UUID, int]:
+    if not list_ids:
+        return {}
+
+    result = await db.execute(
+        select(GroceryItem.list_id, func.count())
+        .where(GroceryItem.list_id.in_(list_ids), GroceryItem.checked.is_(False))
+        .group_by(GroceryItem.list_id)
+    )
+    return {list_id: int(count) for list_id, count in result.all()}
 
 
 async def _broadcast_category_order(
@@ -101,13 +128,13 @@ async def create_list(
     payload: GroceryListCreate,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> GroceryList:
+) -> GroceryListOut:
     await ensure_household_member(db, household_id, user.id)
     grocery_list = GroceryList(household_id=household_id, name=payload.name, created_by=user.id)
     db.add(grocery_list)
     await db.commit()
     await db.refresh(grocery_list)
-    return grocery_list
+    return _serialize_list(grocery_list, 0)
 
 
 @router.get("/households/{household_id}/lists", response_model=list[GroceryListOut])
@@ -115,17 +142,23 @@ async def list_lists(
     household_id: UUID,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> list[GroceryList]:
+) -> list[GroceryListOut]:
     await ensure_household_member(db, household_id, user.id)
     result = await db.execute(select(GroceryList).where(GroceryList.household_id == household_id))
-    return list(result.scalars().all())
+    grocery_lists = list(result.scalars().all())
+    counts = await _open_item_counts(db, [grocery_list.id for grocery_list in grocery_lists])
+    return [
+        _serialize_list(grocery_list, counts.get(grocery_list.id, 0))
+        for grocery_list in grocery_lists
+    ]
 
 
 @router.get("/lists/{list_id}", response_model=GroceryListOut)
 async def get_list(
     list_id: UUID, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
-) -> GroceryList:
-    return await get_list_for_user(db, list_id, user.id)
+) -> GroceryListOut:
+    grocery_list = await get_list_for_user(db, list_id, user.id)
+    return _serialize_list(grocery_list, await _open_item_count(db, list_id))
 
 
 @router.get("/lists/{list_id}/categories", response_model=list[CategoryOut])
@@ -282,11 +315,11 @@ async def patch_list(
     payload: GroceryListCreate,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> GroceryList:
+) -> GroceryListOut:
     grocery_list = await get_list_for_user(db, list_id, user.id)
     if not payload.name.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
     grocery_list.name = payload.name
     await db.commit()
     await db.refresh(grocery_list)
-    return grocery_list
+    return _serialize_list(grocery_list, await _open_item_count(db, list_id))

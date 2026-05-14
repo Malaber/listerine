@@ -17,6 +17,16 @@ const staleBlueAccentTokens = [
   "223, 248, 253",
   "245, 251, 253",
 ];
+const seedMainCategoryColors = new Map([
+  ["Milch & Eier", "rgb(216, 180, 226)"],
+  ["Tiefkuehlkost", "rgb(77, 208, 225)"],
+  ["Gemuese", "rgb(126, 217, 87)"],
+]);
+const seedSettingsCategoryColors = new Map([
+  ["Backwaren", "rgb(251, 146, 60)"],
+  ["Backzutaten", "rgb(236, 72, 153)"],
+  ["Fleisch", "rgb(239, 68, 68)"],
+]);
 
 function logStep(message) {
   console.log(`[ui-e2e] ${message}`);
@@ -191,6 +201,47 @@ async function assertBrownWhiteAccentChrome(page) {
   assert.deepEqual(matches, [], "Expected list chrome to avoid stale blue accent colors");
 }
 
+async function assertCategorySwatchColors(page, rowSelector, labelSelector, expectedColors) {
+  const colors = await page.evaluate(
+    ({ rowSelector, labelSelector }) => {
+      const values = {};
+      for (const row of [...document.querySelectorAll(rowSelector)]) {
+        const label = row.querySelector(labelSelector)?.textContent?.trim();
+        const swatch = row.querySelector(".item-category-swatch");
+        if (label && swatch instanceof HTMLElement) {
+          values[label] = getComputedStyle(swatch).backgroundColor;
+        }
+      }
+      return values;
+    },
+    { rowSelector, labelSelector },
+  );
+
+  for (const [name, expectedColor] of expectedColors.entries()) {
+    assert.equal(colors[name], expectedColor, `Expected ${name} swatch to keep its category color`);
+  }
+}
+
+async function assertSeedMainCategoryColors(page) {
+  logStep("Checking seeded category colors in main list");
+  await assertCategorySwatchColors(
+    page,
+    ".item-category-group",
+    ".item-category-header h3",
+    seedMainCategoryColors,
+  );
+}
+
+async function assertSeedSettingsCategoryColors(page) {
+  logStep("Checking seeded category colors in list settings");
+  await assertCategorySwatchColors(
+    page,
+    ".settings-category-row",
+    ".settings-category-copy strong",
+    seedSettingsCategoryColors,
+  );
+}
+
 async function assertHeaderActionsFitTranslatedLabels(page) {
   logStep("Checking mobile header action sizing with German labels");
   const originalViewport = page.viewportSize();
@@ -244,17 +295,55 @@ async function assertHeaderActionsFitTranslatedLabels(page) {
 }
 
 async function assertLoginPageTabs(page) {
-  const signInTab = page.getByRole("tab", { name: "Sign In" });
-  const createAccountTab = page.getByRole("tab", { name: "Create Account" });
-  await expectVisible(signInTab, "Expected the Sign In tab on the login page");
-  await expectVisible(createAccountTab, "Expected the Create Account tab on the login page");
+  const signInTab = page.getByRole("tab", { name: "Use passkey" });
+  const createAccountTab = page.getByRole("tab", { name: "Create account" });
+  const signInButton = page.getByRole("button", { name: "Sign in with passkey" });
+  await expectVisible(signInTab, "Expected the passkey mode switch on the login page");
+  await expectVisible(createAccountTab, "Expected the create-account mode switch on the login page");
   await expectVisible(
     page.getByRole("heading", { name: "Sign In" }),
     "Expected the sign-in heading inside the active auth panel",
   );
-  await expectVisible(
-    page.getByRole("button", { name: "Sign in with passkey" }),
-    "Expected the passkey sign-in button on the login page",
+  await expectInViewport(
+    signInButton,
+    "Expected the passkey sign-in button to be visible before scrolling on the login page",
+  );
+  const layout = await page.evaluate(() => {
+    const shell = document.querySelector(".auth-shell");
+    const copy = document.querySelector(".auth-copy");
+    const panel = document.querySelector('[data-auth-tab-panel="signin"]');
+    if (!(shell instanceof HTMLElement) || !(copy instanceof HTMLElement) || !(panel instanceof HTMLElement)) {
+      throw new Error("Expected login shell, copy, and active panel");
+    }
+    const shellRect = shell.getBoundingClientRect();
+    return {
+      shellCenterOffset: Math.abs(shellRect.left + shellRect.width / 2 - window.innerWidth / 2),
+      viewportWidth: window.innerWidth,
+      copyTextAlign: getComputedStyle(copy).textAlign,
+      panelTextAlign: getComputedStyle(panel).textAlign,
+    };
+  });
+  assert(
+    layout.shellCenterOffset <= Math.max(4, layout.viewportWidth * 0.02),
+    "Expected the login widget to stay centered in the viewport",
+  );
+  assert.equal(layout.copyTextAlign, "left", "Expected login copy to be left aligned inside the centered widget");
+  assert.equal(layout.panelTextAlign, "left", "Expected auth panel text to be left aligned inside the card");
+}
+
+async function assertFaviconAsset(page, requestContext) {
+  logStep("Checking favicon link uses checked-in PNG asset");
+  const favicon = page.locator('head link[rel="icon"]').first();
+  await favicon.waitFor({ state: "attached" });
+  assert.equal(await favicon.getAttribute("type"), "image/png");
+  const href = await favicon.getAttribute("href");
+  assert.equal(href, "/static/img/Favicon.png");
+
+  const response = await requestContext.fetch(new URL(href, baseUrl).toString());
+  assert(response.ok(), `Expected favicon asset to load, got ${response.status()}`);
+  assert(
+    response.headers()["content-type"]?.startsWith("image/png"),
+    "Expected favicon asset to be served as image/png",
   );
 }
 
@@ -345,6 +434,7 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
 
   const originalPasskeys = await passkeysFromSession(context.request);
   assert.equal(originalPasskeys.length, 1, "Expected one seeded passkey before adding another");
+  const originalPasskeyName = originalPasskeys[0].name;
   await expectHidden(
     page.locator("[data-passkey-empty]"),
     "Expected passkey empty state to stay hidden when passkeys are rendered",
@@ -433,12 +523,17 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
   await openSettingsPage(page);
   logStep("Deleting the original passkey using the second passkey as confirmation");
   await page.locator(".passkey-row").nth(0).getByRole("button", { name: "Delete" }).click();
+  const deletePanel = page.locator("[data-passkey-delete-panel]");
   await expectVisible(
-    page.locator("[data-passkey-delete-panel]", {
+    deletePanel.filter({
       hasText:
-        "You must authenticate with another passkey to confirm you still have a working Passkey after deleting one.",
+        `To delete ${originalPasskeyName}, you must authenticate with another passkey to confirm you still have a working Passkey after deleting one.`,
     }),
     "Expected passkey delete confirmation modal",
+  );
+  await expectVisible(
+    deletePanel.locator("strong", { hasText: "another" }),
+    "Expected the delete confirmation to emphasize another passkey",
   );
   await page.getByRole("button", { name: "Continue to verification" }).click();
   await expectVisible(
@@ -646,6 +741,12 @@ async function scenarioFromSeed(seed, requestContext) {
   };
 }
 
+async function openItemCountLabel(requestContext, listId) {
+  const items = await apiJson(requestContext, `/api/v1/lists/${listId}/items`);
+  const openItemCount = items.filter((item) => !item.checked).length;
+  return openItemCount === 1 ? "1 open item" : `${openItemCount} open items`;
+}
+
 async function resetFixtureItems(requestContext, listId, expectedChecked) {
   const items = await apiJson(requestContext, `/api/v1/lists/${listId}/items`);
   for (const item of items) {
@@ -656,6 +757,13 @@ async function resetFixtureItems(requestContext, listId, expectedChecked) {
 
     if (!expectedChecked.has(item.name)) {
       continue;
+    }
+
+    if (item.hidden_until) {
+      await apiJson(requestContext, `/api/v1/items/${item.id}`, {
+        method: "PATCH",
+        data: { hidden_until: null },
+      });
     }
 
     const shouldBeChecked = expectedChecked.get(item.name);
@@ -675,6 +783,114 @@ async function textList(locator) {
 
 function itemCard(page, text) {
   return page.locator(".item-card", { hasText: text }).first();
+}
+
+async function swipeItemRight(card) {
+  await card.evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    const startX = rect.left + Math.min(24, rect.width * 0.18);
+    const endX = Math.min(rect.right - 12, startX + 120);
+    const y = rect.top + rect.height / 2;
+    const base = {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 42,
+      pointerType: "touch",
+      isPrimary: true,
+    };
+    node.dispatchEvent(new PointerEvent("pointerdown", {
+      ...base,
+      buttons: 1,
+      clientX: startX,
+      clientY: y,
+    }));
+    node.dispatchEvent(new PointerEvent("pointermove", {
+      ...base,
+      buttons: 1,
+      clientX: endX,
+      clientY: y,
+    }));
+    node.dispatchEvent(new PointerEvent("pointerup", {
+      ...base,
+      buttons: 0,
+      clientX: endX,
+      clientY: y,
+    }));
+  });
+}
+
+async function dragCategoryAfter(page, sourceName, targetName) {
+  await page.evaluate(
+    ({ sourceName, targetName }) => {
+      const rowByName = (name) =>
+        [...document.querySelectorAll(".settings-category-row")].find((row) =>
+          row.textContent?.includes(name),
+        );
+      const sourceRow = rowByName(sourceName);
+      const targetRow = rowByName(targetName);
+      const handle = sourceRow?.querySelector("[data-settings-category-grabber]");
+      const root = handle?.closest("[data-list-detail]");
+      if (!(handle instanceof HTMLElement) || !(targetRow instanceof HTMLElement) || !(root instanceof HTMLElement)) {
+        throw new Error(`Could not find category drag rows ${sourceName} and ${targetName}`);
+      }
+
+      const handleRect = handle.getBoundingClientRect();
+      const targetRect = targetRow.getBoundingClientRect();
+      const x = targetRect.left + targetRect.width / 2;
+      const y = targetRect.top + targetRect.height * 0.75;
+      const pointerId = 77;
+      const base = {
+        bubbles: true,
+        cancelable: true,
+        pointerId,
+        pointerType: "touch",
+        isPrimary: true,
+      };
+      handle.dispatchEvent(new PointerEvent("pointerdown", {
+        ...base,
+        buttons: 1,
+        clientX: handleRect.left + handleRect.width / 2,
+        clientY: handleRect.top + handleRect.height / 2,
+      }));
+      root.dispatchEvent(new PointerEvent("pointermove", {
+        ...base,
+        buttons: 1,
+        clientX: x,
+        clientY: y,
+      }));
+      window.__planiniFinishCategoryDrag = () => {
+        root.dispatchEvent(new PointerEvent("pointerup", {
+          ...base,
+          buttons: 0,
+          clientX: x,
+          clientY: y,
+        }));
+        delete window.__planiniFinishCategoryDrag;
+      };
+    },
+    { sourceName, targetName },
+  );
+
+  await expectVisible(
+    page.locator(".settings-category-row.is-drop-after"),
+    "Expected category reorder to mark the insertion gap",
+  );
+  await page.evaluate(() => window.__planiniFinishCategoryDrag?.());
+  await page.waitForFunction(
+    ({ sourceName, targetName }) => {
+      const labels = [...document.querySelectorAll(".settings-category-row strong")].map(
+        (node) => node.textContent?.trim(),
+      );
+      return labels.indexOf(sourceName) > labels.indexOf(targetName);
+    },
+    { sourceName, targetName },
+    { timeout: 5000 },
+  );
+  await page.waitForFunction(
+    () => !document.querySelector("[data-category-order-status]:not([hidden])"),
+    null,
+    { timeout: 5000 },
+  );
 }
 
 async function revealCheckedItemCard(page, text) {
@@ -779,6 +995,10 @@ function extractInviteToken(inviteUrl) {
 
 async function runInviteFlow(ownerPage, browser, scenario, seed, rpId) {
   logStep("Creating and accepting a household invite");
+  const expectedOpenItemLabel = await openItemCountLabel(
+    ownerPage.context().request,
+    scenario.listId,
+  );
   await ownerPage.goto(new URL("/?dashboard=1", baseUrl).toString(), { waitUntil: "networkidle" });
   await expectVisible(
     ownerPage.getByRole("heading", { name: "Households and Lists" }),
@@ -789,6 +1009,11 @@ async function runInviteFlow(ownerPage, browser, scenario, seed, rpId) {
     .locator(".household-card", { hasText: scenario.householdName })
     .first();
   await expectVisible(ownerHouseholdCard, "Expected seeded household card on dashboard");
+  const ownerListLink = ownerHouseholdCard.locator(`a[href="/lists/${scenario.listId}"]`);
+  await expectVisible(
+    ownerListLink.filter({ hasText: expectedOpenItemLabel }),
+    "Expected dashboard list link to show open item count",
+  );
 
   await ownerHouseholdCard.getByRole("button", { name: "Create invite link" }).click();
   const inviteInput = ownerHouseholdCard.locator(
@@ -845,8 +1070,10 @@ async function runInviteFlow(ownerPage, browser, scenario, seed, rpId) {
       "Invitee should see the seeded list after accepting the invite",
     );
     await expectVisible(
-      acceptedHouseholdCard.getByRole("link", { name: "Open list" }).first(),
-      "Invitee should be able to reach the seeded list after accepting the invite",
+      acceptedHouseholdCard
+        .locator(`a[href="/lists/${scenario.listId}"]`)
+        .filter({ hasText: expectedOpenItemLabel }),
+      "Invitee should see the seeded list open item count after accepting the invite",
     );
     await screenshot(inviteePage, "invite-accepted");
   } finally {
@@ -949,6 +1176,7 @@ async function main() {
     await installSeededPasskey(authenticator, owner, rpId);
     logStep("Signing in with the seeded owner passkey");
     await loginFromRoot(page, owner, "Households and Lists");
+    await assertFaviconAsset(page, context.request);
     await assertHeaderActionsFitTranslatedLabels(page);
     await runAdminPasskeyAddLinkFlow(page, seed, rpId);
     await runPasskeyManagementFlow(page, context, owner, rpId, authenticator);
@@ -985,6 +1213,7 @@ async function main() {
     logStep("Running main list interaction flow");
     await expectVisible(page.getByRole("button", { name: "Add item" }), "Expected floating add button");
     await expectVisible(page.locator(".item-card", { hasText: "Spaghetti" }), "Expected seeded items to load");
+    await assertSeedMainCategoryColors(page);
     await assertBrownWhiteAccentChrome(page);
 
     if (deviceName === "desktop") {
@@ -994,17 +1223,58 @@ async function main() {
       await page.getByRole("button", { name: "Add item" }).click();
       await expectVisible(page.locator("[data-item-panel]"), "Add button should open add modal");
     }
-    await addForm.getByLabel("Item name").fill("Spag");
+    await addForm.getByLabel("Item name").fill("Spaghetty");
     const activeSuggestion = addForm.locator(".item-suggestion", { hasText: "Spaghetti" });
-    await expectVisible(activeSuggestion, "Expected duplicate suggestion for active item");
+    await expectVisible(activeSuggestion, "Expected fuzzy duplicate suggestion for active item");
     await activeSuggestion.locator("button").click();
     await expectHidden(page.locator("[data-item-panel]"), "Suggestion reuse should close add modal");
     await page.waitForSelector('[data-item-card].is-highlighted', { timeout: 3000 });
 
+    const spaghettiCard = itemCard(page, "Spaghetti");
+    if (deviceName === "desktop") {
+      await spaghettiCard.getByRole("button", { name: "More actions for Spaghetti" }).click();
+      await spaghettiCard.getByRole("button", { name: "Hide item for 4h" }).click();
+    } else {
+      await swipeItemRight(spaghettiCard);
+    }
+    await expectVisible(
+      page.locator("[data-list-toast]", { hasText: "Spaghetti hidden for 4 hours." }),
+      "Expected hide-for-later toast",
+    );
+    const hiddenGroup = page.locator(".item-hidden-group");
+    const hiddenSpaghetti = hiddenGroup.locator(".item-card", { hasText: "Spaghetti" });
+    await expectVisible(hiddenSpaghetti, "Hidden item should move into the hidden section");
+    await expectVisible(
+      hiddenSpaghetti.getByRole("button", { name: "Show Spaghetti now" }),
+      "Hidden item should expose a time button for unhiding",
+    );
+    await pageTwo.waitForFunction(
+      () => {
+        const hiddenGroup = document.querySelector(".item-hidden-group");
+        return Boolean(hiddenGroup?.textContent?.includes("Spaghetti"));
+      },
+      { timeout: 5000 },
+    );
+    await hiddenSpaghetti.getByRole("button", { name: "Show Spaghetti now" }).click();
+    await expectHidden(hiddenGroup.locator(".item-card", { hasText: "Spaghetti" }), "Time button should unhide item");
+    await expectVisible(itemCard(page, "Spaghetti"), "Unhidden item should return to normal categories");
+    await pageTwo.waitForFunction(
+      () => {
+        const hiddenGroup = document.querySelector(".item-hidden-group");
+        if (hiddenGroup?.textContent?.includes("Spaghetti")) {
+          return false;
+        }
+        return [...document.querySelectorAll(".item-card")].some((node) =>
+          node.textContent?.includes("Spaghetti"),
+        );
+      },
+      { timeout: 5000 },
+    );
+
     await page.getByRole("button", { name: "Add item" }).click();
-    await addForm.getByLabel("Item name").fill("Brot");
+    await addForm.getByLabel("Item name").fill("Broz");
     const checkedSuggestion = addForm.locator(".item-suggestion", { hasText: "Brot" });
-    await expectVisible(checkedSuggestion, "Expected suggestion for checked duplicate item");
+    await expectVisible(checkedSuggestion, "Expected fuzzy suggestion for checked duplicate item");
     await checkedSuggestion.locator("button").click();
     await expectVisible(
       page.locator("[data-list-toast]", { hasText: "Brot added back to the list." }),
@@ -1123,6 +1393,7 @@ async function main() {
 
     await page.getByRole("button", { name: "Open list settings" }).click();
     await expectVisible(page.getByRole("heading", { name: "Category order" }), "Expected settings modal");
+    await assertSeedSettingsCategoryColors(page);
     const topCategoryBefore = (
       await textList(page.locator(".item-category-group > .item-category-header h3"))
     ).slice(0, 3);
@@ -1154,12 +1425,21 @@ async function main() {
       { timeout: 5000 },
     );
 
-    await page.getByRole("button", { name: "Add item" }).click();
+    const backwarenGroup = page
+      .locator(".item-category-group")
+      .filter({ has: page.locator(".item-category-header h3", { hasText: "Backwaren" }) })
+      .first();
+    await backwarenGroup.getByRole("button", { name: "Quick add to Backwaren" }).click();
+    await expectVisible(page.locator("[data-item-panel]"), "Category quick add should open add modal");
+    assert.equal(
+      (await addForm
+        .locator('.category-radio-option:has(input[name="category_id"]:checked) .category-radio-copy strong')
+        .textContent())?.trim(),
+      "Backwaren",
+      "Category quick add should preselect that category",
+    );
     const freshThingName = `Fresh thing ${Date.now()}`;
     await addForm.getByLabel("Item name").fill(freshThingName);
-    await addForm.locator(".item-more-fields summary").click();
-    await addForm.locator("[data-item-category-search]").fill("brot");
-    await addForm.locator(".category-radio-option", { hasText: "Backwaren" }).click();
     await addForm.locator('input[name="quantity_text"]').fill("1");
     await page.locator(".add-item-save-button").click();
     const freshThingCard = itemCard(page, freshThingName);
@@ -1180,18 +1460,13 @@ async function main() {
     await expectVisible(page.getByRole("heading", { name: "Category order" }), "Expected settings modal");
     const settingsPanel = page.locator("[data-list-settings-panel]");
     const backwarenDisableRow = settingsPanel.locator(".settings-category-row", { hasText: "Backwaren" });
-    if (deviceName === "desktop") {
-      const nudelnRow = settingsPanel.locator(".settings-category-row", { hasText: "Nudeln" });
-      await backwarenDisableRow
-        .locator("[data-settings-category-grabber]")
-        .dragTo(nudelnRow.locator("[data-settings-category-grabber]"));
-      await page.waitForTimeout(150);
-    }
-    page.once("dialog", async (dialog) => {
-      assert.match(dialog.message(), /Disable Backwaren\?/);
-      await dialog.accept();
-    });
+    await dragCategoryAfter(page, "Backwaren", "Nudeln");
     await backwarenDisableRow.getByRole("button", { name: /Disable Backwaren/i }).click();
+    await expectVisible(
+      page.locator("[data-category-disable-confirm-panel]", { hasText: "Disable Backwaren?" }),
+      "Disabling a populated category should use the app confirmation modal",
+    );
+    await page.locator("[data-category-disable-confirm-confirm]").click();
     await expectVisible(
       backwarenDisableRow.locator(".settings-category-copy", { hasText: "Disabled for this list" }),
       "Disabled category should be visibly marked",
@@ -1256,7 +1531,7 @@ async function main() {
   const summary = [
     "## UI E2E",
     "",
-    `Browser UI flow passed for ${deviceName} using seeded real database data and passkey auth for route rendering, login gating, multi-passkey enrollment and deletion, add/edit flows, duplicate suggestions, undo toasts, category alias search, category disabling, admin navigation, websocket updates, and household invite acceptance.`,
+    `Browser UI flow passed for ${deviceName} using seeded real database data and passkey auth for route rendering, login gating, multi-passkey enrollment and deletion, add/edit flows, fuzzy duplicate suggestions, undo toasts, category alias search, category disabling, admin navigation, websocket updates, and household invite acceptance.`,
     "",
   ].join("\n");
   await fs.writeFile(path.join(artifactDir, "summary.md"), summary);

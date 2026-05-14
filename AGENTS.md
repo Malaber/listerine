@@ -90,6 +90,8 @@ the repo `.venv` before running verification.
 
 ## Frontend styling
 
+- Do not use browser `alert`, `confirm`, or `prompt` for user-facing decisions. Build an app modal
+  instead so confirmation flows match the rest of the interface.
 - Shared web styling lives in `app/web/static/app.css`.
 - The site favicon is `app/web/static/img/Favicon.png`.
 - The primary logo/wordmark asset is `app/web/static/img/planini.svg`.
