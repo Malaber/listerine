@@ -23,13 +23,13 @@
   "auth": {
     "login": {
       "title": "Login",
-      "intro": "Accounts stay private until you sign in with a passkey from your browser or password manager.",
+      "intro": "Planini keeps household grocery lists shared, tidy, and ready wherever you shop.",
       "capabilities_link": "Try the interactive showcase",
       "passkey_only_title": "Passkey-only authentication",
       "passkey_only_body": "Sign-in is account-discovery free, so this page does not ask who you are before your passkey does.",
-      "tabs_aria": "Authentication",
-      "sign_in_tab": "Sign In",
-      "create_account_tab": "Create Account",
+      "tabs_aria": "Authentication mode",
+      "sign_in_tab": "Use passkey",
+      "create_account_tab": "Create account",
       "localhost_hint_prefix": "For local passkeys, open this page on",
       "localhost_hint_middle": "instead of",
       "local_title": "Local Login",

@@ -471,6 +471,9 @@ def test_capabilities_live_demo_page_uses_real_list_ui(client) -> None:
     assert "Saturday Groceries" in page.text
     assert "Interactive demo running locally." in page.text
     assert "real list UI with local demo data" in page.text
+    assert "#6bbf59" in page.text
+    assert "#1db8d9" in page.text
+    assert "#f59e0b" in page.text
     assert 'href="/capabilities"' in page.text
 
 
@@ -2284,16 +2287,23 @@ def test_password_auth_endpoints_are_disabled(client) -> None:
 def test_web_pages_require_login(client) -> None:
     response = client.get("/login")
     assert response.status_code == 200
-    assert "Sign In" in response.text
-    assert "Create Account" in response.text
+    assert "Use passkey" in response.text
+    assert "Create account" in response.text
     assert "Sign in with passkey" in response.text
+    assert (
+        "Planini keeps household grocery lists shared, tidy, and ready wherever you shop."
+        in response.text
+    )
+    assert "Passkey-only authentication" not in response.text
     assert (
         "Choose a passkey and your browser or password manager will identify the account for you."
         in response.text
     )
     assert "Create passkey" in response.text
+    assert response.text.index("Sign in with passkey") < response.text.index('role="tablist"')
     assert 'data-auth-tab-trigger="signin"' in response.text
     assert 'data-auth-tab-trigger="signup"' in response.text
+    assert 'aria-controls="auth-panel-signin"' in response.text
     assert "Logout" not in response.text
     assert client.get("/", follow_redirects=False).status_code == 303
     assert client.get("/settings", follow_redirects=False).status_code == 303
