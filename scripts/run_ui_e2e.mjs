@@ -734,18 +734,20 @@ async function scenarioFromSeed(seed, requestContext) {
   assert(groceryList, `Expected seeded list ${seed.e2e.primary_list}`);
   const checkedStressList = lists.find((entry) => entry.name === seed.e2e.checked_stress_list);
   assert(checkedStressList, `Expected seeded list ${seed.e2e.checked_stress_list}`);
-  const quickSwitchList = lists.find(
+  const alternateList = lists.find(
     (entry) => entry.id !== groceryList.id && entry.id !== checkedStressList.id,
   );
-  assert(quickSwitchList, "Expected another seeded list for quick switching");
+  assert(alternateList, "Expected another seeded list for quick switching and item move coverage");
   return {
     checkedStressListId: checkedStressList.id,
     householdId: household.id,
     householdName: household.name,
     listId: groceryList.id,
     listName: groceryList.name,
-    quickSwitchListId: quickSwitchList.id,
-    quickSwitchListName: quickSwitchList.name,
+    moveTargetListId: alternateList.id,
+    moveTargetListName: alternateList.name,
+    quickSwitchListId: alternateList.id,
+    quickSwitchListName: alternateList.name,
   };
 }
 
@@ -755,10 +757,10 @@ async function openItemCountLabel(requestContext, listId) {
   return openItemCount === 1 ? "1 open item" : `${openItemCount} open items`;
 }
 
-async function resetFixtureItems(requestContext, listId, expectedChecked) {
+async function resetFixtureItems(requestContext, listId, expectedChecked = new Map()) {
   const items = await apiJson(requestContext, `/api/v1/lists/${listId}/items`);
   for (const item of items) {
-    if (item.name.startsWith("Fresh thing")) {
+    if (item.name.startsWith("Fresh thing") || item.name.startsWith("Move target")) {
       await apiJson(requestContext, `/api/v1/items/${item.id}`, { method: "DELETE" });
       continue;
     }
@@ -1257,6 +1259,7 @@ async function main() {
     const scenario = await scenarioFromSeed(seed, context.request);
     logStep(`Resetting seeded list state for ${scenario.listName}`);
     await resetFixtureItems(context.request, scenario.listId, expectedChecked);
+    await resetFixtureItems(context.request, scenario.moveTargetListId);
     const listUrl = new URL(`/lists/${scenario.listId}`, baseUrl).toString();
     const checkedStressListUrl = new URL(`/lists/${scenario.checkedStressListId}`, baseUrl).toString();
 
@@ -1551,6 +1554,39 @@ async function main() {
     );
     await page.locator("[data-item-edit-panel] .add-item-close[data-item-edit-close]").click();
     await expectHidden(page.locator("[data-item-edit-overlay]"), "Edit modal should close before opening settings");
+
+    await page.getByRole("button", { name: "Add item" }).click();
+    const moveThingName = `Move target ${Date.now()}`;
+    await addForm.getByLabel("Item name").fill(moveThingName);
+    await page.locator(".add-item-save-button").click();
+    const moveThingCard = itemCard(page, moveThingName);
+    await expectVisible(moveThingCard, "Expected move target item before moving");
+    await moveThingCard.click();
+    await expectVisible(
+      page.locator("[data-item-edit-panel]").getByRole("heading", { name: moveThingName }),
+      "Expected move target edit modal",
+    );
+    await editForm.getByLabel("Move to list").selectOption({ label: scenario.moveTargetListName });
+    await expectVisible(
+      page.locator("[data-list-success]", { hasText: "Item moved to another list." }),
+      "Expected item move success",
+    );
+    const goToListLink = page.locator("[data-list-success]").getByRole("link", { name: "Go to list" });
+    await expectVisible(goToListLink, "Expected moved-item banner to link to the target list");
+    assert.equal(
+      new URL(await goToListLink.getAttribute("href"), baseUrl).pathname,
+      `/lists/${scenario.moveTargetListId}`,
+    );
+    await expectHidden(moveThingCard, "Moved item should leave the source list");
+    await pageTwo.waitForFunction(
+      (name) => ![...document.querySelectorAll(".item-card .item-name")].some((node) => node.textContent?.trim() === name),
+      moveThingName,
+      { timeout: 5000 },
+    );
+    const moveTargetItems = await apiJson(context.request, `/api/v1/lists/${scenario.moveTargetListId}/items`);
+    const movedTargetItem = moveTargetItems.find((item) => item.name === moveThingName);
+    assert(movedTargetItem, "Expected moved item in target list");
+    await apiJson(context.request, `/api/v1/items/${movedTargetItem.id}`, { method: "DELETE" });
 
     await page.getByRole("button", { name: "Open list settings" }).click();
     await expectVisible(page.getByRole("heading", { name: "Category order" }), "Expected settings modal");

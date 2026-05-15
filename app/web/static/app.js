@@ -1238,7 +1238,7 @@ async function initDashboard() {
   }
 }
 
-function setListMessage(root, type, message) {
+function setListMessage(root, type, message, action = null) {
   const errorNode = root.querySelector("[data-list-error]");
   const successNode = root.querySelector("[data-list-success]");
 
@@ -1255,14 +1255,18 @@ function setListMessage(root, type, message) {
     return;
   }
 
-  if (type === "error") {
-    errorNode.hidden = false;
-    errorNode.textContent = message;
-    return;
+  const targetNode = type === "error" ? errorNode : successNode;
+  targetNode.hidden = false;
+  const textNode = document.createElement("span");
+  textNode.textContent = message;
+  targetNode.appendChild(textNode);
+  if (action?.href && action?.label) {
+    const actionLink = document.createElement("a");
+    actionLink.className = "dashboard-banner-action";
+    actionLink.href = action.href;
+    actionLink.textContent = action.label;
+    targetNode.appendChild(actionLink);
   }
-
-  successNode.hidden = false;
-  successNode.textContent = message;
 }
 
 function setListSyncStatus(root, message) {
@@ -1938,6 +1942,7 @@ function persistOfflineListState(root, state) {
     JSON.stringify({
       title: listTitleText(root),
       items: [...state.items.values()],
+      lists: state.lists || [],
       checkedRemainingCount: state.checkedRemainingCount || 0,
       categories: [...state.categories.values()],
       categoryOrder: [...state.categoryOrder.entries()].map(([category_id, sort_order]) => ({
@@ -1954,6 +1959,7 @@ function applyOfflineListState(root, state, cachedState) {
   setListName(root, state, cachedState.title || listTitleText(root));
 
   state.categories = new Map((cachedState.categories || []).map((category) => [category.id, category]));
+  state.lists = cachedState.lists || [];
   state.categoryOrder = new Map(
     (cachedState.categoryOrder || []).map((entry) => [entry.category_id, entry.sort_order]),
   );
@@ -2549,6 +2555,7 @@ function getDemoPayload(root) {
 function cloneDemoItem(item) {
   return {
     id: item.id,
+    list_id: item.list_id || null,
     name: item.name,
     category_id: item.category_id || null,
     quantity_text: item.quantity_text || null,
@@ -2568,6 +2575,7 @@ function getNextDemoSortOrder(state) {
 function createDemoItem(state, payload) {
   const item = cloneDemoItem({
     id: `demo-item-${state.nextDemoId}`,
+    list_id: payload.list_id || null,
     name: payload.name,
     category_id: payload.category_id || null,
     quantity_text: payload.quantity_text || null,
@@ -2703,6 +2711,28 @@ async function updateItemWithOfflineFallback(root, state, itemId, payload) {
   }
 }
 
+async function moveItemWithOfflineFallback(root, state, itemId, payload) {
+  if (isDemoList(root)) {
+    return updateDemoItem(state, itemId, payload);
+  }
+
+  if (shouldQueueItemMutation(state, itemId) || isBrowserOffline()) {
+    throw new Error(
+      translate(
+        "list_detail.item_move_online_required",
+        {},
+        "Move items while online so both lists stay in sync.",
+      ),
+    );
+  }
+
+  return fetchJson(`/api/v1/items/${itemId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
 async function setItemCheckedWithOfflineFallback(root, state, itemId, checked) {
   if (isDemoList(root)) {
     return setDemoItemChecked(state, itemId, checked);
@@ -2752,6 +2782,37 @@ async function saveCategoryOrder(root, state) {
     body: JSON.stringify({ category_ids: categoryIds }),
   });
   state.categoryOrder = new Map(response.map((entry) => [entry.category_id, entry.sort_order]));
+}
+
+function syncItemMoveSelect(root, state, currentListId) {
+  const field = root.querySelector("[data-item-edit-list-field]");
+  const select = root.querySelector("[data-item-edit-list-select]");
+  const lists = state.lists || [];
+  if (!(field instanceof HTMLElement) || !(select instanceof HTMLSelectElement)) {
+    return;
+  }
+
+  field.hidden = lists.length <= 1;
+  select.innerHTML = "";
+  lists.forEach((list) => {
+    const option = document.createElement("option");
+    option.value = list.id;
+    option.textContent = list.name;
+    select.appendChild(option);
+  });
+  select.value = currentListId || root.dataset.listId || "";
+}
+
+function showItemMovedMessage(root, targetListId) {
+  setListMessage(
+    root,
+    "success",
+    translate("list_detail.item_moved", {}, "Item moved to another list."),
+    {
+      href: `/lists/${encodeURIComponent(targetListId)}`,
+      label: translate("list_detail.go_to_list", {}, "Go to list"),
+    },
+  );
 }
 
 function ensureCategoryOrderStatus(root) {
@@ -2918,6 +2979,48 @@ function categoryDisableConfirmText(category, affectedCount) {
       other: "Disable {name}? {count} items in this category will lose their category.",
     },
   );
+}
+
+async function moveEditingItemToList(root, state, targetListId) {
+  const itemId = state.editingItemId;
+  const existingItem = itemId ? state.items.get(itemId) : null;
+  const existingListId = existingItem?.list_id || root.dataset.listId || "";
+  if (!itemId || !existingItem || !targetListId || targetListId === existingListId) {
+    return true;
+  }
+
+  cancelItemEditSaveTimer(state);
+  if (state.itemEditSaveInFlight) {
+    await state.itemEditSaveInFlight;
+  }
+
+  const payload = readItemEditFormPayload(root);
+  if (!payload?.name) {
+    setItemEditStatus(root, "error", translate("list_detail.item_name_required", {}, "Please enter an item name."));
+    setListMessage(root, "error", translate("list_detail.item_name_required", {}, "Please enter an item name."));
+    return false;
+  }
+
+  setItemEditStatus(root, "saving", translate("list_detail.item_saving", {}, "Saving..."));
+  try {
+    const movedItem = await moveItemWithOfflineFallback(root, state, itemId, {
+      ...payload,
+      list_id: targetListId,
+    });
+    removeItem(state, movedItem.id);
+    renderItems(root, state);
+    persistOfflineListState(root, state);
+    setItemEditPanelOpen(root, state, null);
+    showItemMovedMessage(root, targetListId);
+    return true;
+  } catch (error) {
+    syncItemMoveSelect(root, state, existingListId);
+    const message = error instanceof Error ? error.message : translate("list_detail.item_update_failed", {}, "Could not save item.");
+    setItemEditStatus(root, "error", message);
+    setListMessage(root, "error", message);
+    updateItemEditUndoButton(root, state);
+    return false;
+  }
 }
 
 function ensureCategoryDisableConfirm(root) {
@@ -3290,6 +3393,7 @@ function setItemEditPanelOpen(root, state, itemId) {
   syncModalState(root);
   title.textContent = item.name;
 
+  syncItemMoveSelect(root, state, item.list_id || root.dataset.listId);
   const editSearch = root.querySelector("[data-item-edit-category-search]");
   if (editSearch instanceof HTMLInputElement) {
     editSearch.value = "";
@@ -4201,6 +4305,7 @@ async function loadListDetail(root, state) {
 
     state.demoPayload = payload;
     state.nextDemoId = items.length + 1;
+    state.lists = [{ id: payload.list.id, name: payload.list.name }];
     state.categories = new Map(categories.map((category) => [category.id, category]));
     state.categoryOrder = new Map(categoryOrder.map((entry) => [entry.category_id, entry.sort_order]));
     setDisabledCategoryIds(state, disabledCategoryIds);
@@ -4216,12 +4321,12 @@ async function loadListDetail(root, state) {
   let itemWindow;
   let categories;
   let categoryOrder;
-  let householdLists = [];
   let disabledCategories;
+  let switchTargets = [];
 
   try {
-    [groceryList, itemWindow, categories, categoryOrder, disabledCategories, householdLists] = await Promise.all([
-      fetchJson(`/api/v1/lists/${listId}`),
+    groceryList = await fetchJson(`/api/v1/lists/${listId}`);
+    [itemWindow, categories, categoryOrder, disabledCategories, switchTargets] = await Promise.all([
       fetchJson(`/api/v1/lists/${listId}/items/window`),
       fetchJson(`/api/v1/lists/${listId}/categories`),
       fetchJson(`/api/v1/lists/${listId}/category-order`),
@@ -4248,9 +4353,10 @@ async function loadListDetail(root, state) {
   }
 
   setListName(root, state, groceryList.name);
-  renderListSwitcher(root, groceryList, householdLists);
+  renderListSwitcher(root, groceryList, switchTargets);
 
   state.categories = new Map(categories.map((category) => [category.id, category]));
+  state.lists = switchTargets.filter((list) => list.household_id === groceryList.household_id);
   state.categoryOrder = new Map(
     categoryOrder.map((entry) => [entry.category_id, entry.sort_order])
   );
@@ -4396,6 +4502,7 @@ async function initListDetail() {
     itemEditSaveInFlight: null,
     itemEditSaveTimerId: null,
     items: new Map(),
+    lists: [],
     listName: "",
     nextDemoId: 1,
     offlineSyncInFlight: null,
@@ -4585,6 +4692,10 @@ async function initListDetail() {
     const target = event.target;
     if (target instanceof HTMLInputElement && target.name === "edit_category_id") {
       void flushItemEditSave(root, state);
+      return;
+    }
+    if (target instanceof HTMLSelectElement && target.name === "list_id") {
+      void moveEditingItemToList(root, state, target.value);
     }
   });
 
@@ -5550,8 +5661,12 @@ export {
   applyLocalCheckedState,
   createItemWithOfflineFallback,
   updateItemWithOfflineFallback,
+  moveItemWithOfflineFallback,
   setItemCheckedWithOfflineFallback,
   saveCategoryOrder,
+  syncItemMoveSelect,
+  showItemMovedMessage,
+  moveEditingItemToList,
   saveCategoryOrderInBackground,
   saveDisabledCategories,
   itemCountForCategory,

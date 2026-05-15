@@ -255,6 +255,10 @@
           <span>{{ t("list_detail.note") }}</span>
           <input type="text" name="note" />
         </label>
+        <label class="dashboard-field" data-item-edit-list-field hidden>
+          <span>{{ t("list_detail.move_to_list") }}</span>
+          <select name="list_id" data-item-edit-list-select></select>
+        </label>
         <div class="item-edit-live-status" data-item-edit-status hidden>
           <span class="item-edit-live-spinner" data-item-edit-spinner aria-hidden="true"></span>
           <span data-item-edit-status-text></span>
