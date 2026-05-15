@@ -272,6 +272,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 80C886823AEF477705DAD6A0 /* Build configuration list for PBXNativeTarget "Planini" */;
 			buildPhases = (
+				2CCDF5478436F262DA1D97D6 /* Check Generated App Icons */,
 				EA56E95D14F84E2E4AA8C381 /* Sources */,
 				906EB4DF839B14F4B265C7ED /* Resources */,
 				059AB0C3C9EE2A33700BC885 /* Frameworks */,
@@ -391,6 +392,27 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		2CCDF5478436F262DA1D97D6 /* Check Generated App Icons */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Check Generated App Icons";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\n\nicon_dir=\"${PROJECT_DIR}/Assets.xcassets/AppIcon.appiconset\"\n\nmissing=0\nfor file in \\\n  Icon-20@2x.png \\\n  Icon-20@3x.png \\\n  Icon-29@2x.png \\\n  Icon-29@3x.png \\\n  Icon-40@2x.png \\\n  Icon-40@3x.png \\\n  Icon-60@2x.png \\\n  Icon-60@3x.png \\\n  Icon-1024.png\ndo\n  if [ ! -f \"${icon_dir}/${file}\" ]; then\n    echo \"error: Missing generated app icon: ${icon_dir}/${file}\"\n    missing=1\n  fi\ndone\n\nif [ \"${missing}\" -ne 0 ]; then\n  echo \"error: Run from repo root: .venv/bin/inv generate-ios-app-icons\"\n  exit 1\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		563179647847687140EB37D1 /* Sources */ = {

@@ -1,11 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scheme
    LastUpgradeVersion = "1430"
-   version = "1.7">
+   version = "1.3">
    <BuildAction
       parallelizeBuildables = "YES"
-      buildImplicitDependencies = "YES"
-      runPostActionsOnFailure = "NO">
+      buildImplicitDependencies = "YES">
       <BuildActionEntries>
          <BuildActionEntry
             buildForTesting = "YES"
@@ -30,7 +29,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "7A3ABE956F63693B9585D08D"
-               BuildableName = "PlaniniWatchApp.app"
+               BuildableName = "Planini Watch.app"
                BlueprintName = "PlaniniWatchApp"
                ReferencedContainer = "container:PlaniniApp.xcodeproj">
             </BuildableReference>
@@ -44,7 +43,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "DEBF93F3E0CDE651B6065A38"
-               BuildableName = "PlaniniWatchExtension.appex"
+               BuildableName = "Planini Watch Extension.appex"
                BlueprintName = "PlaniniWatchExtension"
                ReferencedContainer = "container:PlaniniApp.xcodeproj">
             </BuildableReference>
@@ -58,7 +57,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "3180F3469A0A460B5E6E607B"
-               BuildableName = "PlaniniWatchWidgetExtension.appex"
+               BuildableName = "Planini Watch Widgets.appex"
                BlueprintName = "PlaniniWatchWidgetExtension"
                ReferencedContainer = "container:PlaniniApp.xcodeproj">
             </BuildableReference>
@@ -69,8 +68,7 @@
       buildConfiguration = "Debug"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
-      shouldUseLaunchSchemeArgsEnv = "YES"
-      onlyGenerateCoverageForSpecifiedTargets = "NO">
+      shouldUseLaunchSchemeArgsEnv = "YES">
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
@@ -82,8 +80,7 @@
       </MacroExpansion>
       <Testables>
          <TestableReference
-            skipped = "NO"
-            parallelizable = "NO">
+            skipped = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "2DDAD55DE417376D7015B238"
@@ -93,8 +90,6 @@
             </BuildableReference>
          </TestableReference>
       </Testables>
-      <CommandLineArguments>
-      </CommandLineArguments>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"
