@@ -242,7 +242,8 @@ private struct ListDetailScreen: View {
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                         if viewModel.isRunningUITests, viewModel.liveUpdatesReadyListID == list.id {
-                            Color.clear
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 1))
                                 .frame(width: 1, height: 1)
                                 .accessibilityIdentifier("live-updates-ready")
                         }

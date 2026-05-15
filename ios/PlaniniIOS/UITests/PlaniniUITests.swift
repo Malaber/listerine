@@ -34,6 +34,37 @@ final class PlaniniUITests: XCTestCase {
         captureScreenshot(named: "ios-ui-list-detail")
 
         XCTAssertTrue(app.staticTexts["Uncategorized"].waitForExistence(timeout: 3))
+        XCTAssertTrue(
+            app.images["live-updates-ready"].waitForExistence(timeout: 10),
+            "Expected live updates socket to receive its initial list snapshot before mutating the list outside the app."
+        )
+
+        let liveSuffix = UUID().uuidString.prefix(8)
+        let liveItemName = "UI Live \(liveSuffix)"
+        let updatedLiveItemName = "\(liveItemName) Updated"
+        let liveItemID = try createItem(
+            named: liveItemName,
+            note: "",
+            inListNamed: initialListName,
+            accessToken: session.accessToken
+        )
+        XCTAssertTrue(app.staticTexts[liveItemName].waitForExistence(timeout: 8))
+        captureScreenshot(named: "ios-ui-live-item-created")
+
+        try updateItem(
+            itemID: liveItemID,
+            name: updatedLiveItemName,
+            note: "",
+            accessToken: session.accessToken
+        )
+        XCTAssertTrue(app.staticTexts[updatedLiveItemName].waitForExistence(timeout: 8))
+
+        try deleteItem(itemID: liveItemID, accessToken: session.accessToken)
+        XCTAssertTrue(
+            waitForElementToDisappear(app.staticTexts[updatedLiveItemName], timeout: 8),
+            "Expected live-deleted item to disappear without manual refresh."
+        )
+
         if app.buttons["favorite-list-button"].exists {
             app.buttons["favorite-list-button"].tap()
         }
@@ -99,59 +130,6 @@ final class PlaniniUITests: XCTestCase {
         app.tabBars.buttons["Settings"].tap()
         XCTAssertTrue(app.buttons["settings-sign-out-button"].waitForExistence(timeout: 5))
         captureScreenshot(named: "ios-ui-settings")
-    }
-
-    func testListReceivesLiveUpdates() throws {
-        try assertLocalTestBackend()
-        let session = if let injectedSession {
-            injectedSession
-        } else {
-            try bootstrapSession(email: userEmail)
-        }
-
-        let app = XCUIApplication()
-        app.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
-        app.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
-        app.launchEnvironment["PLANINI_UI_TEST_ACCESS_TOKEN"] = session.accessToken
-        app.launchEnvironment["PLANINI_UI_TEST_DISPLAY_NAME"] = session.displayName
-        app.launchEnvironment["PLANINI_UI_TEST_INITIAL_LIST_NAME"] = initialListName
-        app.launch()
-
-        let listTitle = app.staticTexts["list-detail-title"]
-        XCTAssertTrue(listTitle.waitForExistence(timeout: 10))
-        XCTAssertEqual(listTitle.label, initialListName)
-        XCTAssertTrue(app.staticTexts["Loose item"].waitForExistence(timeout: 5))
-        XCTAssertTrue(
-            app.otherElements["live-updates-ready"].waitForExistence(timeout: 10),
-            "Expected live updates socket to receive its initial list snapshot before mutating the list outside the app."
-        )
-
-        let uniqueSuffix = UUID().uuidString.prefix(8)
-        let itemName = "UI Live \(uniqueSuffix)"
-        let updatedName = "\(itemName) Updated"
-        let itemID = try createItem(
-            named: itemName,
-            note: "",
-            inListNamed: initialListName,
-            accessToken: session.accessToken
-        )
-
-        XCTAssertTrue(app.staticTexts[itemName].waitForExistence(timeout: 8))
-        captureScreenshot(named: "ios-ui-live-item-created")
-
-        try updateItem(
-            itemID: itemID,
-            name: updatedName,
-            note: "",
-            accessToken: session.accessToken
-        )
-        XCTAssertTrue(app.staticTexts[updatedName].waitForExistence(timeout: 8))
-
-        try deleteItem(itemID: itemID, accessToken: session.accessToken)
-        XCTAssertTrue(
-            waitForElementToDisappear(app.staticTexts[updatedName], timeout: 8),
-            "Expected live-deleted item to disappear without manual refresh."
-        )
     }
 
     private var baseURL: URL {
