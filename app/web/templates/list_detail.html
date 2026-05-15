@@ -12,20 +12,34 @@
 >
   <div class="list-hero">
     <div class="list-hero-copy">
-      <p class="dashboard-kicker">{{ list_kicker if list_kicker is defined else t("list_detail.kicker") }}</p>
+      <div class="list-kicker-row">
+        <p class="dashboard-kicker">{{ list_kicker if list_kicker is defined else t("list_detail.kicker") }}</p>
+        <div class="list-hero-actions">
+          <button class="list-settings-button" type="button" aria-label="{{ t("list_detail.open_settings") }}" data-list-settings-toggle>
+            {{ t("list_detail.list_settings_short") }}
+          </button>
+          <a class="back-link" href="{{ list_back_href if list_back_href is defined else '/?dashboard=1' }}">
+            {{ list_back_label if list_back_label is defined else t("list_detail.back_to_households") }}
+          </a>
+        </div>
+      </div>
       <div class="list-title-row">
-        <h1 data-list-title>{{ t("list_detail.loading_title") }}</h1>
-        <button class="list-settings-button" type="button" aria-label="{{ t("list_detail.open_settings") }}" data-list-settings-toggle>
-          {{ t("list_detail.list_settings") }}
-        </button>
+        <h1 class="list-title-heading">
+          <span data-list-title>{{ t("list_detail.loading_title") }}</span>
+          <span class="list-switcher" data-list-switcher hidden>
+            <label for="list-switcher-select">{{ t("list_detail.switch_list") }}</label>
+            <select
+              id="list-switcher-select"
+              aria-label="{{ t("list_detail.switch_list") }}"
+              data-list-switcher-select
+            ></select>
+          </span>
+        </h1>
       </div>
       {% if list_page_note is defined %}
       <p class="dashboard-helper">{{ list_page_note }}</p>
       {% endif %}
     </div>
-    <a class="back-link" href="{{ list_back_href if list_back_href is defined else '/?dashboard=1' }}">
-      {{ list_back_label if list_back_label is defined else t("list_detail.back_to_households") }}
-    </a>
   </div>
 
   <div class="dashboard-banner dashboard-banner-error" data-list-error hidden></div>
@@ -142,11 +156,35 @@
       <div class="add-item-panel-header">
         <div>
           <p class="dashboard-label">{{ t("list_detail.list_settings") }}</p>
-          <h2>{{ t("list_detail.category_order") }}</h2>
+          <h2>{{ t("list_detail.list_settings") }}</h2>
         </div>
         <button class="add-item-close" type="button" aria-label="{{ t("list_detail.close_list_settings") }}" data-list-settings-close>
           &times;
         </button>
+      </div>
+      <form class="dashboard-form settings-list-name-form" data-list-name-form>
+        <label class="dashboard-field">
+          <span>{{ t("list_detail.list_name") }}</span>
+          <input
+            type="text"
+            name="name"
+            maxlength="255"
+            required
+            autocomplete="off"
+            data-list-name-input
+          />
+        </label>
+        <div class="settings-list-name-actions">
+          <button type="submit" class="primary-button" data-list-name-submit>
+            {{ t("list_detail.save_list_name") }}
+          </button>
+        </div>
+      </form>
+      <div class="dashboard-section-heading settings-subsection-heading">
+        <div>
+          <p class="dashboard-label">{{ t("list_detail.categories_label") }}</p>
+          <h3>{{ t("list_detail.category_order") }}</h3>
+        </div>
       </div>
       <p class="dashboard-helper">{{ t("list_detail.category_order_body") }}</p>
       <div class="settings-category-list" data-list-settings-category-list></div>
@@ -161,9 +199,37 @@
           <p class="dashboard-label">{{ t("list_detail.edit_item") }}</p>
           <h2 data-item-edit-title>{{ t("list_detail.edit_item") }}</h2>
         </div>
-        <button class="add-item-close" type="button" aria-label="{{ t("list_detail.close_item_editor") }}" data-item-edit-close>
-          &times;
-        </button>
+        <div class="item-edit-header-actions" data-item-edit-header-actions>
+          <div class="item-edit-history-actions" role="group" aria-label="{{ t("list_detail.edit_history_actions") }}">
+            <button
+              type="button"
+              class="item-edit-history-button"
+              data-item-edit-undo
+              aria-label="{{ t("list_detail.undo_item_edit") }}"
+              disabled
+            >
+              <svg class="item-edit-history-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M9 14 4 9l5-5" />
+                <path d="M4 9h10.5a5.5 5.5 0 1 1-3.9 9.4" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              class="item-edit-history-button"
+              data-item-edit-redo
+              aria-label="{{ t("list_detail.redo_item_edit") }}"
+              disabled
+            >
+              <svg class="item-edit-history-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="m15 14 5-5-5-5" />
+                <path d="M20 9H9.5a5.5 5.5 0 1 0 3.9 9.4" />
+              </svg>
+            </button>
+          </div>
+          <button class="add-item-close" type="button" aria-label="{{ t("list_detail.close_item_editor") }}" data-item-edit-close>
+            &times;
+          </button>
+        </div>
       </div>
       <form class="dashboard-form" data-item-edit-form>
         <label class="dashboard-field">
@@ -189,8 +255,15 @@
           <span>{{ t("list_detail.note") }}</span>
           <input type="text" name="note" />
         </label>
+        <label class="dashboard-field" data-item-edit-list-field hidden>
+          <span>{{ t("list_detail.move_to_list") }}</span>
+          <select name="list_id" data-item-edit-list-select></select>
+        </label>
+        <div class="item-edit-live-status" data-item-edit-status hidden>
+          <span class="item-edit-live-spinner" data-item-edit-spinner aria-hidden="true"></span>
+          <span data-item-edit-status-text></span>
+        </div>
         <div class="item-edit-actions">
-          <button type="submit">{{ t("common.save_changes") }}</button>
           <button type="button" class="danger-button" data-item-edit-delete>{{ t("common.delete") }}</button>
         </div>
       </form>

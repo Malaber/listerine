@@ -34,6 +34,12 @@ private enum AppBuildConfiguration {
     }
 }
 
+private struct MobileListData {
+    let items: [GroceryItemRecord]
+    let categories: [GroceryCategorySummary]
+    let categoryOrder: [ListCategoryOrderEntry]
+}
+
 @MainActor
 final class MobileAppViewModel: ObservableObject {
     private static let favoriteListKey = "planini.favoriteListID"
@@ -65,6 +71,7 @@ final class MobileAppViewModel: ObservableObject {
     private let liveUpdates: MobileListLiveUpdateClient
     private let isSimulatorBuild: Bool
     private var didAttemptLaunchBootstrap = false
+    private var itemReloadGeneration = 0
 
     init(
         passkeyClient: ApplePasskeyClient = ApplePasskeyClient(),
@@ -586,31 +593,37 @@ final class MobileAppViewModel: ObservableObject {
 
     func reloadItems() async throws {
         guard let backendURL, let authToken, let selectedListID else {
+            itemReloadGeneration += 1
             items = []
             categories = []
             categoryOrder = []
+            updateLiveUpdatesConnection()
+            watchSyncCoordinator.publishCurrentState()
             return
         }
 
-        async let itemPayload = requestArray(
-            backendURL: backendURL,
-            path: "/api/v1/lists/\(selectedListID.uuidString)/items",
-            token: authToken
-        )
-        async let categoryPayload = requestArray(
-            backendURL: backendURL,
-            path: "/api/v1/lists/\(selectedListID.uuidString)/categories",
-            token: authToken
-        )
-        async let categoryOrderPayload = requestArray(
-            backendURL: backendURL,
-            path: "/api/v1/lists/\(selectedListID.uuidString)/category-order",
-            token: authToken
+        itemReloadGeneration += 1
+        let generation = itemReloadGeneration
+        let reloadedListID = selectedListID
+        let reloadedBackendURL = backendURL
+        let reloadedAuthToken = authToken
+
+        let listData = try await loadListData(
+            backendURL: reloadedBackendURL,
+            authToken: reloadedAuthToken,
+            listID: reloadedListID
         )
 
-        items = try await itemPayload.compactMap(GroceryItemRecord.init)
-        categories = try await categoryPayload.compactMap(GroceryCategorySummary.init)
-        categoryOrder = try await categoryOrderPayload.compactMap(ListCategoryOrderEntry.init)
+        guard
+            generation == itemReloadGeneration,
+            self.selectedListID == reloadedListID,
+            self.backendURL == reloadedBackendURL,
+            self.authToken == reloadedAuthToken
+        else {
+            return
+        }
+
+        applyListData(listData)
         updateLiveUpdatesConnection()
         watchSyncCoordinator.publishCurrentState()
     }
@@ -763,6 +776,45 @@ final class MobileAppViewModel: ObservableObject {
                 "Failed to reload items after live update: \(error.localizedDescription, privacy: .public)"
             )
         }
+    }
+
+    private func loadListData(
+        backendURL: URL,
+        authToken: String,
+        listID: UUID
+    ) async throws -> MobileListData {
+        async let itemPayload = requestArray(
+            backendURL: backendURL,
+            path: "/api/v1/lists/\(listID.uuidString)/items",
+            token: authToken
+        )
+        async let categoryPayload = requestArray(
+            backendURL: backendURL,
+            path: "/api/v1/lists/\(listID.uuidString)/categories",
+            token: authToken
+        )
+        async let categoryOrderPayload = requestArray(
+            backendURL: backendURL,
+            path: "/api/v1/lists/\(listID.uuidString)/category-order",
+            token: authToken
+        )
+
+        let loadedItems = try await itemPayload.compactMap(GroceryItemRecord.init)
+        let loadedCategories = try await categoryPayload.compactMap(GroceryCategorySummary.init)
+        let loadedCategoryOrder = try await categoryOrderPayload.compactMap(
+            ListCategoryOrderEntry.init
+        )
+        return MobileListData(
+            items: loadedItems,
+            categories: loadedCategories,
+            categoryOrder: loadedCategoryOrder
+        )
+    }
+
+    private func applyListData(_ listData: MobileListData) {
+        items = listData.items
+        categories = listData.categories
+        categoryOrder = listData.categoryOrder
     }
 
     private func rpID(from optionsPayload: [String: Any]) -> String? {

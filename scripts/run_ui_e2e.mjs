@@ -8,6 +8,8 @@ const artifactDir = process.env.PREVIEW_ARTIFACT_DIR ?? "e2e-artifacts/ui-e2e";
 const videoDir = path.join(artifactDir, "videos");
 const seedPath = process.env.E2E_SEED_PATH ?? "app/fixtures/review_seed_e2e.json";
 const deviceName = process.env.E2E_DEVICE ?? "desktop";
+const browserLocale = process.env.E2E_LOCALE ?? "en-US";
+const browserTimeZone = process.env.E2E_TIMEZONE ?? "Europe/Berlin";
 const knownDevices = new Map([["iphone", "iPhone 13"]]);
 const staleBlueAccentTokens = [
   "20, 42, 87",
@@ -46,6 +48,8 @@ function contextOptions() {
   if (!preset) {
     return {
       viewport: { width: 1440, height: 1200 },
+      locale: browserLocale,
+      timezoneId: browserTimeZone,
       recordVideo: {
         dir: videoDir,
         size: { width: 1440, height: 1200 },
@@ -57,6 +61,8 @@ function contextOptions() {
   assert(device, `Unknown Playwright device preset ${preset}`);
   return {
     ...device,
+    locale: browserLocale,
+    timezoneId: browserTimeZone,
     recordVideo: {
       dir: videoDir,
       size: device.viewport,
@@ -419,6 +425,26 @@ async function passkeysFromSession(requestContext) {
   return apiJson(requestContext, "/api/v1/auth/passkeys");
 }
 
+function normalizeText(value) {
+  return value.replace(/\s+/gu, " ").trim();
+}
+
+function assertTimestampIncludesOffset(value, label) {
+  assert.equal(typeof value, "string", `${label} should be a timestamp string`);
+  assert(
+    /(?:Z|[+-]\d{2}:\d{2})$/.test(value),
+    `${label} should include a UTC offset so browsers can convert it to local time; got ${value}`,
+  );
+}
+
+function localizedBrowserDate(value, locale) {
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: browserTimeZone,
+  }).format(new Date(value));
+}
+
 async function openSettingsPage(page) {
   await page.getByRole("link", { name: "Settings" }).click();
   await page.waitForURL(/\/settings(\?|$)/);
@@ -442,6 +468,23 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
   await expectVisible(
     page.locator(".passkey-row").first(),
     "Expected seeded passkey row in settings",
+  );
+  const originalPasskey = originalPasskeys[0];
+  assertTimestampIncludesOffset(originalPasskey.created_at, "Passkey created_at");
+  assertTimestampIncludesOffset(originalPasskey.last_used_at, "Passkey last_used_at");
+  const locale = await page.evaluate(
+    () => window.__appI18n?.locale || document.documentElement.lang || "en",
+  );
+  const expectedCreatedAt = localizedBrowserDate(originalPasskey.created_at, locale);
+  const expectedLastUsedAt = localizedBrowserDate(originalPasskey.last_used_at, locale);
+  const originalPasskeyRowText = normalizeText(await page.locator(".passkey-row").first().innerText());
+  assert(
+    originalPasskeyRowText.includes(normalizeText(expectedCreatedAt)),
+    `Expected passkey created timestamp ${expectedCreatedAt} in local timezone; got ${originalPasskeyRowText}`,
+  );
+  assert(
+    originalPasskeyRowText.includes(normalizeText(expectedLastUsedAt)),
+    `Expected passkey last-used timestamp ${expectedLastUsedAt} in local timezone; got ${originalPasskeyRowText}`,
   );
 
   const seededCredential = (await authenticatorCredentials(authenticator))[0];
@@ -600,8 +643,10 @@ async function registerAccountFromLogin(page, { displayName, email }, expectedUr
   );
   await page.locator('[data-passkey-register] input[name="display_name"]').fill(displayName);
   await page.locator('[data-passkey-register] input[name="email"]').fill(email);
-  await page.locator("[data-passkey-register-button]").click();
-  await page.waitForURL(expectedUrlPattern, { waitUntil: "commit", timeout: 10_000 });
+  await Promise.all([
+    page.waitForURL(expectedUrlPattern, { waitUntil: "commit", timeout: 10_000 }),
+    page.locator("[data-passkey-register-button]").click(),
+  ]);
 }
 
 async function loginAsAdmin(page, user) {
@@ -733,12 +778,20 @@ async function scenarioFromSeed(seed, requestContext) {
   assert(groceryList, `Expected seeded list ${seed.e2e.primary_list}`);
   const checkedStressList = lists.find((entry) => entry.name === seed.e2e.checked_stress_list);
   assert(checkedStressList, `Expected seeded list ${seed.e2e.checked_stress_list}`);
+  const alternateList = lists.find(
+    (entry) => entry.id !== groceryList.id && entry.id !== checkedStressList.id,
+  );
+  assert(alternateList, "Expected another seeded list for quick switching and item move coverage");
   return {
     checkedStressListId: checkedStressList.id,
     householdId: household.id,
     householdName: household.name,
     listId: groceryList.id,
     listName: groceryList.name,
+    moveTargetListId: alternateList.id,
+    moveTargetListName: alternateList.name,
+    quickSwitchListId: alternateList.id,
+    quickSwitchListName: alternateList.name,
   };
 }
 
@@ -748,10 +801,10 @@ async function openItemCountLabel(requestContext, listId) {
   return openItemCount === 1 ? "1 open item" : `${openItemCount} open items`;
 }
 
-async function resetFixtureItems(requestContext, listId, expectedChecked) {
+async function resetFixtureItems(requestContext, listId, expectedChecked = new Map()) {
   const items = await apiJson(requestContext, `/api/v1/lists/${listId}/items`);
   for (const item of items) {
-    if (item.name.startsWith("Fresh thing")) {
+    if (item.name.startsWith("Fresh thing") || item.name.startsWith("Move target")) {
       await apiJson(requestContext, `/api/v1/items/${item.id}`, { method: "DELETE" });
       continue;
     }
@@ -820,6 +873,80 @@ async function swipeItemRight(card) {
   });
 }
 
+async function dragCategoryAfter(page, sourceName, targetName) {
+  await page.evaluate(
+    ({ sourceName, targetName }) => {
+      const rowByName = (name) =>
+        [...document.querySelectorAll(".settings-category-row")].find((row) =>
+          row.textContent?.includes(name),
+        );
+      const sourceRow = rowByName(sourceName);
+      const targetRow = rowByName(targetName);
+      const handle = sourceRow?.querySelector("[data-settings-category-grabber]");
+      const root = handle?.closest("[data-list-detail]");
+      if (!(handle instanceof HTMLElement) || !(targetRow instanceof HTMLElement) || !(root instanceof HTMLElement)) {
+        throw new Error(`Could not find category drag rows ${sourceName} and ${targetName}`);
+      }
+
+      const handleRect = handle.getBoundingClientRect();
+      const targetRect = targetRow.getBoundingClientRect();
+      const x = targetRect.left + targetRect.width / 2;
+      const y = targetRect.top + targetRect.height * 0.75;
+      const pointerId = 77;
+      const base = {
+        bubbles: true,
+        cancelable: true,
+        pointerId,
+        pointerType: "touch",
+        isPrimary: true,
+      };
+      handle.dispatchEvent(new PointerEvent("pointerdown", {
+        ...base,
+        buttons: 1,
+        clientX: handleRect.left + handleRect.width / 2,
+        clientY: handleRect.top + handleRect.height / 2,
+      }));
+      root.dispatchEvent(new PointerEvent("pointermove", {
+        ...base,
+        buttons: 1,
+        clientX: x,
+        clientY: y,
+      }));
+      window.__planiniFinishCategoryDrag = () => {
+        root.dispatchEvent(new PointerEvent("pointerup", {
+          ...base,
+          buttons: 0,
+          clientX: x,
+          clientY: y,
+        }));
+        delete window.__planiniFinishCategoryDrag;
+      };
+    },
+    { sourceName, targetName },
+  );
+
+  await expectVisible(
+    page.locator(".settings-category-row.is-drop-after"),
+    "Expected category reorder to mark the insertion gap",
+  );
+  await page.evaluate(() => window.__planiniFinishCategoryDrag?.());
+  await page.waitForFunction(
+    ({ sourceName, targetName }) => {
+      const labels = [...document.querySelectorAll(".settings-category-row strong")].map(
+        (node) => node.textContent?.trim(),
+      );
+      return labels.indexOf(sourceName) > labels.indexOf(targetName);
+    },
+    { sourceName, targetName },
+    { timeout: 5000 },
+  );
+  await page.waitForFunction(
+    () => !document.querySelector("[data-category-order-status]:not([hidden])"),
+    null,
+    { timeout: 5000 },
+  );
+}
+
 async function revealCheckedItemCard(page, text) {
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const card = itemCard(page, text);
@@ -877,6 +1004,70 @@ async function runCheckedStressListFlow(page, stressListUrl) {
   await expectCheckedCardCount(checkedGroup, 258);
   assert.equal(await headingMeta.textContent(), "258 items");
   assert.equal(await checkedGroup.locator(".checked-items-load-more").count(), 0);
+}
+
+async function runListQuickSwitchFlow(page, scenario, primaryListUrl) {
+  logStep("Checking list quick switch control");
+  const switcher = page.locator("[data-list-switcher]");
+  await expectVisible(switcher, "Expected quick switch control when household has multiple lists");
+  await expectVisible(page.getByRole("link", { name: "All lists" }), "Expected clear dashboard link label");
+
+  const headerLayout = await page.evaluate(() => {
+    const kicker = document.querySelector(".list-kicker-row .dashboard-kicker");
+    const actions = document.querySelector(".list-kicker-row .list-hero-actions");
+    const titleRow = document.querySelector(".list-title-row");
+    const focusCard = document.querySelector(".list-focus-card");
+    if (
+      !(kicker instanceof HTMLElement) ||
+      !(actions instanceof HTMLElement) ||
+      !(titleRow instanceof HTMLElement) ||
+      !(focusCard instanceof HTMLElement)
+    ) {
+      throw new Error("Expected list kicker, header actions, title row, and focus card");
+    }
+
+    const kickerRect = kicker.getBoundingClientRect();
+    const actionsRect = actions.getBoundingClientRect();
+    const titleRect = titleRow.getBoundingClientRect();
+    const focusRect = focusCard.getBoundingClientRect();
+    return {
+      actionCenterOffset: Math.abs(
+        actionsRect.top + actionsRect.height / 2 - (kickerRect.top + kickerRect.height / 2),
+      ),
+      actionsBottom: actionsRect.bottom,
+      focusTop: focusRect.top,
+      titleBottom: titleRect.bottom,
+      titleTop: titleRect.top,
+    };
+  });
+  assert(
+    headerLayout.actionCenterOffset <= 22,
+    "Expected list settings and all-lists controls to stay inline with the shopping-list kicker",
+  );
+  assert(
+    headerLayout.actionsBottom <= headerLayout.titleTop,
+    "Expected list header controls to sit above the title switcher, not below the hero gap",
+  );
+  assert(
+    headerLayout.focusTop - headerLayout.titleBottom <= 80,
+    "Expected list content to sit directly below the title switcher without a mobile hero spacer",
+  );
+
+  const select = switcher.locator("[data-list-switcher-select]");
+  assert.equal(await select.inputValue(), scenario.listId);
+  await select.selectOption(scenario.quickSwitchListId);
+  await page.waitForURL(new URL(`/lists/${scenario.quickSwitchListId}`, baseUrl).toString());
+  await expectVisible(
+    page.locator("[data-list-title]", { hasText: scenario.quickSwitchListName }),
+    "Expected quick switch target list to load",
+  );
+
+  await page.locator("[data-list-switcher-select]").selectOption(scenario.listId);
+  await page.waitForURL(primaryListUrl);
+  await expectVisible(
+    page.locator("[data-list-title]", { hasText: scenario.listName }),
+    "Expected quick switch to return to the primary list",
+  );
 }
 
 async function runOfflineSyncFlow(page, requestContext, listId) {
@@ -1113,6 +1304,7 @@ async function main() {
     const scenario = await scenarioFromSeed(seed, context.request);
     logStep(`Resetting seeded list state for ${scenario.listName}`);
     await resetFixtureItems(context.request, scenario.listId, expectedChecked);
+    await resetFixtureItems(context.request, scenario.moveTargetListId);
     const listUrl = new URL(`/lists/${scenario.listId}`, baseUrl).toString();
     const checkedStressListUrl = new URL(`/lists/${scenario.checkedStressListId}`, baseUrl).toString();
 
@@ -1143,6 +1335,7 @@ async function main() {
     await expectVisible(page.locator(".item-card", { hasText: "Spaghetti" }), "Expected seeded items to load");
     await assertSeedMainCategoryColors(page);
     await assertBrownWhiteAccentChrome(page);
+    await runListQuickSwitchFlow(page, scenario, listUrl);
 
     if (deviceName === "desktop") {
       await page.keyboard.press("Enter");
@@ -1312,24 +1505,157 @@ async function main() {
       editForm.locator(".category-radio-option .category-radio-copy span"),
     );
     assert(!aliasTexts.some((text) => text.includes("Also found as")), "Alias helper text should stay hidden");
+    await expectHidden(
+      editForm.getByRole("button", { name: "Save changes" }),
+      "Edit modal should live-save without a save button",
+    );
     await editForm.locator(".category-radio-option", { hasText: "Backwaren" }).click();
     await editForm.locator('input[name="quantity_text"]').fill("4 loaves");
-    await editForm.locator('input[name="note"]').fill("for the weekend");
-    await editForm.getByRole("button", { name: "Save changes" }).click();
     await expectVisible(
-      page.locator("[data-list-success]", { hasText: "Item updated." }),
-      "Expected item update success before closing the edit modal",
+      editForm.locator("[data-item-edit-status]", { hasText: "Saved." }),
+      "Expected quantity edit to live-save after debounce",
     );
+    await editForm.locator('input[name="note"]').fill("for the weekend");
     await page.locator("[data-item-edit-panel] .add-item-close[data-item-edit-close]").click();
-    await expectHidden(page.locator("[data-item-edit-overlay]"), "Edit modal should close before opening settings");
+    await expectHidden(page.locator("[data-item-edit-overlay]"), "Immediate close should flush pending edit");
+    await expectVisible(
+      itemCard(page, "Tomaten").locator(".item-meta", { hasText: "for the weekend" }),
+      "Close-triggered save should keep note edit",
+    );
     await expectVisible(itemCard(page, "Tomaten"), "Updated item should remain visible");
     await expectVisible(
       itemCard(page, "Tomaten").locator(".item-meta", { hasText: "4 loaves" }),
       "Updated quantity should render",
     );
+    await itemCard(page, "Tomaten").click();
+    await expectVisible(
+      page.locator("[data-item-edit-panel]").getByRole("heading", { name: "Tomaten" }),
+      "Expected Tomaten edit modal before undoing a live edit",
+    );
+    await expectVisible(
+      page.locator("[data-item-edit-header-actions]"),
+      "Edit history controls and close button should stay in the sticky header",
+    );
+    const editHeaderMetrics = await page.locator("[data-item-edit-panel] .add-item-panel-header").evaluate((header) => {
+      const panel = header.closest("[data-item-edit-panel]");
+      const undo = header.querySelector("[data-item-edit-undo]");
+      const icon = undo?.querySelector(".item-edit-history-icon");
+      if (!(panel instanceof HTMLElement) || !(undo instanceof HTMLElement) || !(icon instanceof Element)) {
+        return null;
+      }
+      const headerRect = header.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      const undoRect = undo.getBoundingClientRect();
+      const iconRect = icon.getBoundingClientRect();
+      return {
+        backgroundColor: window.getComputedStyle(header).backgroundColor,
+        headerLeft: headerRect.left,
+        headerRight: headerRect.right,
+        headerTop: headerRect.top,
+        iconHeight: iconRect.height,
+        iconWidth: iconRect.width,
+        panelLeft: panelRect.left,
+        panelRight: panelRect.right,
+        panelTop: panelRect.top,
+        undoHeight: undoRect.height,
+        undoWidth: undoRect.width,
+      };
+    });
+    assert(editHeaderMetrics, "Expected measurable edit header controls");
+    assert(
+      editHeaderMetrics.headerLeft <= editHeaderMetrics.panelLeft + 1
+        && editHeaderMetrics.headerRight >= editHeaderMetrics.panelRight - 1,
+      "Edit sticky header background should reach the panel edges",
+    );
+    assert(
+      editHeaderMetrics.headerTop <= editHeaderMetrics.panelTop + 2,
+      "Edit sticky header background should cover the panel top edge",
+    );
+    assert(
+      editHeaderMetrics.backgroundColor !== "rgba(0, 0, 0, 0)",
+      "Edit sticky header should have a visible background",
+    );
+    assert(
+      editHeaderMetrics.undoWidth <= 44
+        && editHeaderMetrics.undoHeight <= 40
+        && editHeaderMetrics.iconWidth <= 18
+        && editHeaderMetrics.iconHeight <= 18,
+      "Edit history icons should stay compact",
+    );
+    await editForm.locator('input[name="quantity_text"]').fill("wrong amount");
+    await expectVisible(
+      editForm.locator("[data-item-edit-status]", { hasText: "Saved." }),
+      "Expected wrong quantity to live-save before undo",
+    );
+    await page.getByRole("button", { name: "Undo last edit" }).click();
+    await page.waitForFunction(
+      () => document.querySelector('[data-item-edit-form] input[name="quantity_text"]')?.value === "4 loaves",
+      { timeout: 5000 },
+    );
+    await expectVisible(
+      itemCard(page, "Tomaten").locator(".item-meta", { hasText: "4 loaves" }),
+      "Undo should restore previous live-saved quantity",
+    );
+    await page.getByRole("button", { name: "Redo edit" }).click();
+    await page.waitForFunction(
+      () => document.querySelector('[data-item-edit-form] input[name="quantity_text"]')?.value === "wrong amount",
+      { timeout: 5000 },
+    );
+    await page.getByRole("button", { name: "Undo last edit" }).click();
+    await page.waitForFunction(
+      () => document.querySelector('[data-item-edit-form] input[name="quantity_text"]')?.value === "4 loaves",
+      { timeout: 5000 },
+    );
+    await page.locator("[data-item-edit-panel] .add-item-close[data-item-edit-close]").click();
+    await expectHidden(page.locator("[data-item-edit-overlay]"), "Edit modal should close before opening settings");
+
+    await page.getByRole("button", { name: "Add item" }).click();
+    const moveThingName = `Move target ${Date.now()}`;
+    await addForm.getByLabel("Item name").fill(moveThingName);
+    await page.locator(".add-item-save-button").click();
+    const moveThingCard = itemCard(page, moveThingName);
+    await expectVisible(moveThingCard, "Expected move target item before moving");
+    await moveThingCard.click();
+    await expectVisible(
+      page.locator("[data-item-edit-panel]").getByRole("heading", { name: moveThingName }),
+      "Expected move target edit modal",
+    );
+    await editForm.getByLabel("Move to list").selectOption({ label: scenario.moveTargetListName });
+    await expectVisible(
+      page.locator("[data-list-success]", { hasText: "Item moved to another list." }),
+      "Expected item move success",
+    );
+    const goToListLink = page.locator("[data-list-success]").getByRole("link", { name: "Go to list" });
+    await expectVisible(goToListLink, "Expected moved-item banner to link to the target list");
+    assert.equal(
+      new URL(await goToListLink.getAttribute("href"), baseUrl).pathname,
+      `/lists/${scenario.moveTargetListId}`,
+    );
+    await expectHidden(moveThingCard, "Moved item should leave the source list");
+    await pageTwo.waitForFunction(
+      (name) => ![...document.querySelectorAll(".item-card .item-name")].some((node) => node.textContent?.trim() === name),
+      moveThingName,
+      { timeout: 5000 },
+    );
+    const moveTargetItems = await apiJson(context.request, `/api/v1/lists/${scenario.moveTargetListId}/items`);
+    const movedTargetItem = moveTargetItems.find((item) => item.name === moveThingName);
+    assert(movedTargetItem, "Expected moved item in target list");
+    await apiJson(context.request, `/api/v1/items/${movedTargetItem.id}`, { method: "DELETE" });
 
     await page.getByRole("button", { name: "Open list settings" }).click();
     await expectVisible(page.getByRole("heading", { name: "Category order" }), "Expected settings modal");
+    const settingsPanel = page.locator("[data-list-settings-panel]");
+    const renamedListName = `E2E Market ${Date.now()}`;
+    await settingsPanel.getByLabel("List name").fill(renamedListName);
+    await settingsPanel.getByRole("button", { name: "Save list name" }).click();
+    await expectVisible(
+      page.locator("[data-list-success]", { hasText: "List name saved." }),
+      "Expected list rename success",
+    );
+    await expectVisible(page.getByRole("heading", { name: renamedListName }), "List title should update");
+    const renamedList = await apiJson(context.request, `/api/v1/lists/${scenario.listId}`);
+    assert.equal(renamedList.name, renamedListName, "List rename should persist through the API");
+    scenario.listName = renamedListName;
     await assertSeedSettingsCategoryColors(page);
     const topCategoryBefore = (
       await textList(page.locator(".item-category-group > .item-category-header h3"))
@@ -1393,6 +1719,54 @@ async function main() {
       "New item should land in the Backwaren section",
     );
 
+    await page.getByRole("button", { name: "Open list settings" }).click();
+    await expectVisible(page.getByRole("heading", { name: "Category order" }), "Expected settings modal");
+    const backwarenDisableRow = settingsPanel.locator(".settings-category-row", { hasText: "Backwaren" });
+    await dragCategoryAfter(page, "Backwaren", "Nudeln");
+    await backwarenDisableRow.getByRole("button", { name: /Disable Backwaren/i }).click();
+    await expectVisible(
+      page.locator("[data-category-disable-confirm-panel]", { hasText: "Disable Backwaren?" }),
+      "Disabling a populated category should use the app confirmation modal",
+    );
+    await page.locator("[data-category-disable-confirm-confirm]").click();
+    await expectVisible(
+      backwarenDisableRow.locator(".settings-category-copy", { hasText: "Disabled for this list" }),
+      "Disabled category should be visibly marked",
+    );
+    await page.locator("[data-list-settings-panel] .add-item-close").click();
+    await page.waitForFunction(
+      (name) => {
+        const uncategorized = [...document.querySelectorAll(".item-category-group")].find((group) =>
+          group.querySelector(".item-category-header h3")?.textContent?.includes("Uncategorized"),
+        );
+        return Boolean(
+          uncategorized &&
+            [...uncategorized.querySelectorAll(".item-card")].some((card) =>
+              card.textContent?.includes(name),
+            ),
+        );
+      },
+      freshThingName,
+      { timeout: 5000 },
+    );
+    await page.getByRole("button", { name: "Add item" }).click();
+    const addMoreFields = addForm.locator(".item-more-fields");
+    if (!(await addMoreFields.evaluate((node) => node.open))) {
+      await addMoreFields.locator("summary").click();
+    }
+    await addForm.locator("[data-item-category-search]").fill("brot");
+    await expectHidden(
+      addForm.locator(".category-radio-option", { hasText: "Backwaren" }),
+      "Disabled category should not be selectable when adding items",
+    );
+    await page.locator("[data-item-panel] .add-item-close").click();
+    await page.getByRole("button", { name: "Open list settings" }).click();
+    await settingsPanel
+      .locator(".settings-category-row", { hasText: "Backwaren" })
+      .getByRole("button", { name: /Enable Backwaren/i })
+      .click();
+    await page.locator("[data-list-settings-panel] .add-item-close").click();
+
     const toast = page.locator("[data-list-toast]");
     await freshThingCard.getByRole("button").first().click();
     await expectVisible(toast, "Expected temporary undo toast");
@@ -1419,7 +1793,7 @@ async function main() {
   const summary = [
     "## UI E2E",
     "",
-    `Browser UI flow passed for ${deviceName} using seeded real database data and passkey auth for route rendering, login gating, multi-passkey enrollment and deletion, add/edit flows, fuzzy duplicate suggestions, undo toasts, category alias search, admin navigation, websocket updates, and household invite acceptance.`,
+    `Browser UI flow passed for ${deviceName} using seeded real database data and passkey auth for route rendering, login gating, multi-passkey enrollment and deletion, add/edit flows, fuzzy duplicate suggestions, undo toasts, category alias search, category disabling, admin navigation, websocket updates, and household invite acceptance.`,
     "",
   ].join("\n");
   await fs.writeFile(path.join(artifactDir, "summary.md"), summary);

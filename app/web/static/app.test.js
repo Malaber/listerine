@@ -17,23 +17,37 @@ import {
   isDemoList,
   languagePreferenceLabel,
   loadListDetail,
+  loadListSwitchTargets,
   loadMoreCheckedItems,
   normalizeLanguagePreference,
   openItemPanelForCategory,
   registerServiceWorker,
+  bindListSwitcher,
   renderCategoryOrderSettings,
   renderHouseholds,
   renderPasskeys,
   renderItems,
   renderItemSuggestions,
+  renderListSwitcher,
   restoreCheckedSuggestion,
   restoreDeletedItem,
   restoreToggledItem,
   saveCategoryOrder,
+  saveListName,
   setCategoryOrder,
   setDemoItemChecked,
   setLanguageSettingsOpen,
+  setListName,
   setListSyncStatus,
+  itemEditHistoryStorageKey,
+  readItemEditFormPayload,
+  setItemEditPanelOpen,
+  scheduleItemEditSave,
+  flushItemEditSave,
+  closeItemEditPanel,
+  undoItemEdit,
+  redoItemEdit,
+  moveEditingItemToList,
   storeLanguagePreference,
   syncLanguageSettings,
   updateDemoItem,
@@ -46,6 +60,16 @@ import {
   persistOfflineListState,
   applyOfflineListState,
   showOfflineSavedMessage,
+  clearCategoryDragState,
+  getDisabledCategoryIds,
+  itemCountForCategory,
+  isCategoryDisabled,
+  reorderCategoryIds,
+  restoreItemCategoryIds,
+  saveDisabledCategories,
+  setCategoryDisabled,
+  setDisabledCategoryIds,
+  unassignCategoryItems,
   isBrowserOffline,
   isOfflineRequestError,
   shouldQueueItemMutation,
@@ -53,10 +77,19 @@ import {
   applyLocalCheckedState,
   createItemWithOfflineFallback,
   updateItemWithOfflineFallback,
+  moveItemWithOfflineFallback,
   setItemCheckedWithOfflineFallback,
+  syncItemMoveSelect,
   applyOfflineSyncResult,
   flushOfflineMutations,
   restoreHiddenItem,
+  applyCategoryReorder,
+  categoryDropPosition,
+  categoryInsertionIndex,
+  clearCategoryDropIndicators,
+  confirmCategoryDisable,
+  saveCategoryOrderInBackground,
+  setCategoryDropIndicator,
   transitionAuthPanels,
   setAuthTab,
 } from "./app.js";
@@ -70,13 +103,19 @@ function setGlobalProperty(name, value) {
 }
 
 function setDomGlobals(dom) {
+  setGlobalProperty("FormData", dom.window.FormData);
   setGlobalProperty("HTMLElement", dom.window.HTMLElement);
+  setGlobalProperty("HTMLButtonElement", dom.window.HTMLButtonElement);
+  setGlobalProperty("HTMLFormElement", dom.window.HTMLFormElement);
   setGlobalProperty("HTMLInputElement", dom.window.HTMLInputElement);
   setGlobalProperty("HTMLSelectElement", dom.window.HTMLSelectElement);
 }
 
 function restoreDomGlobals(originals) {
+  setGlobalProperty("FormData", originals.FormData);
   setGlobalProperty("HTMLElement", originals.HTMLElement);
+  setGlobalProperty("HTMLButtonElement", originals.HTMLButtonElement);
+  setGlobalProperty("HTMLFormElement", originals.HTMLFormElement);
   setGlobalProperty("HTMLInputElement", originals.HTMLInputElement);
   setGlobalProperty("HTMLSelectElement", originals.HTMLSelectElement);
 }
@@ -299,10 +338,20 @@ test("setAuthTab ignores incomplete auth markup", () => {
 function createListRoot() {
   const dom = new JSDOM(`
     <section data-list-detail data-list-id="list-1">
-      <h1 data-list-title>Weekly</h1>
+      <h1 class="list-title-heading">
+        <span data-list-title>Weekly</span>
+        <span class="list-switcher" data-list-switcher hidden>
+          <label for="list-switcher-select">Switch list</label>
+          <select id="list-switcher-select" data-list-switcher-select></select>
+        </span>
+      </h1>
       <div data-list-error hidden></div>
       <div data-list-success hidden></div>
       <p data-list-sync-status></p>
+      <form data-list-name-form>
+        <input data-list-name-input name="name" value="Weekly" />
+        <button type="submit" data-list-name-submit>Save list name</button>
+      </form>
       <div data-list-toast hidden>
         <p data-list-toast-message></p>
         <button type="button" data-list-toast-undo>Undo</button>
@@ -310,12 +359,55 @@ function createListRoot() {
       </div>
       <input data-item-category-search value="" />
       <input data-item-edit-category-search value="" />
+      <label data-item-edit-list-field hidden><select name="list_id" data-item-edit-list-select></select></label>
       <div data-item-suggestions-slot><div data-item-suggestions></div></div>
       <div data-item-category-radios></div>
       <div data-item-edit-category-radios></div>
       <div data-item-empty></div>
       <div data-item-list></div>
       <div data-list-settings-category-list></div>
+    </section>
+  `, { url: "https://example.test/lists/list-1" });
+  return {
+    document: dom.window.document,
+    root: dom.window.document.querySelector("[data-list-detail]"),
+    window: dom.window,
+  };
+}
+
+function createEditListRoot() {
+  const dom = new JSDOM(`
+    <section data-list-detail data-list-id="list-1">
+      <h1 data-list-title>Weekly</h1>
+      <div data-list-error hidden></div>
+      <div data-list-success hidden></div>
+      <p data-list-sync-status></p>
+      <input data-item-category-search value="" />
+      <input data-item-edit-category-search value="" />
+      <div data-item-suggestions-slot><div data-item-suggestions></div></div>
+      <div data-item-category-radios></div>
+      <div data-item-edit-category-radios></div>
+      <div data-item-empty></div>
+      <div data-item-list></div>
+      <div data-item-edit-overlay hidden>
+        <section data-item-edit-panel hidden>
+          <h2 data-item-edit-title></h2>
+          <form data-item-edit-form>
+            <input type="text" name="name" />
+            <input type="text" name="quantity_text" />
+            <input type="text" name="note" />
+            <label data-item-edit-list-field hidden>
+              <select name="list_id" data-item-edit-list-select></select>
+            </label>
+            <div data-item-edit-status hidden>
+              <span data-item-edit-spinner></span>
+              <span data-item-edit-status-text></span>
+            </div>
+            <button type="button" data-item-edit-undo disabled>Undo</button>
+            <button type="button" data-item-edit-redo disabled>Redo</button>
+          </form>
+        </section>
+      </div>
     </section>
   `, { url: "https://example.test/lists/list-1" });
   return {
@@ -332,6 +424,11 @@ function createQuickAddRoot() {
       <body>
         <section data-list-detail data-list-id="list-1">
           <button type="button" data-item-form-toggle aria-expanded="false">Add</button>
+          <h1 data-list-title>Weekly</h1>
+          <form data-list-name-form>
+            <input data-list-name-input name="name" value="Weekly" />
+            <button type="submit" data-list-name-submit>Save list name</button>
+          </form>
           <div data-list-error hidden></div>
           <div data-list-success hidden></div>
           <div data-item-panel-overlay hidden>
@@ -395,6 +492,37 @@ function createSuggestionRoot() {
   };
 }
 
+function createEditRoot() {
+  const dom = new JSDOM(`
+    <section data-list-detail data-list-id="list-1">
+      <div data-item-panel-overlay hidden></div>
+      <div data-item-panel hidden></div>
+      <button data-item-form-toggle></button>
+      <div data-item-edit-overlay hidden></div>
+      <section data-item-edit-panel hidden>
+        <h2 data-item-edit-title></h2>
+        <form data-item-edit-form>
+          <input name="name" />
+          <input name="quantity_text" />
+          <input name="note" />
+          <input data-item-edit-category-search value="" />
+          <div data-item-edit-category-radios></div>
+          <label data-item-edit-list-field hidden>
+            <select name="list_id" data-item-edit-list-select></select>
+          </label>
+        </form>
+      </section>
+      <input data-item-category-search value="" />
+      <div data-item-category-radios></div>
+    </section>
+  `);
+  return {
+    document: dom.window.document,
+    root: dom.window.document.querySelector("[data-list-detail]"),
+    window: dom.window,
+  };
+}
+
 function createDemoListRoot() {
   const demoPayload = {
     list: { id: "demo-list", name: "Saturday Groceries" },
@@ -443,16 +571,28 @@ function createDemoListRoot() {
           data-demo-sync-text="Interactive demo running locally."
           data-demo-payload='${JSON.stringify(demoPayload)}'
         >
-          <h1 data-list-title></h1>
+          <h1 class="list-title-heading">
+            <span data-list-title></span>
+            <span class="list-switcher" data-list-switcher hidden>
+              <label for="list-switcher-select">Switch list</label>
+              <select id="list-switcher-select" data-list-switcher-select></select>
+            </span>
+          </h1>
+          <form data-list-name-form>
+            <input data-list-name-input name="name" value="" />
+            <button type="submit" data-list-name-submit>Save list name</button>
+          </form>
           <p data-list-sync-status></p>
           <input data-item-name-input value="" />
           <input data-item-category-search value="" />
           <input data-item-edit-category-search value="" />
+          <label data-item-edit-list-field hidden><select name="list_id" data-item-edit-list-select></select></label>
           <div data-item-suggestions-slot><div data-item-suggestions></div></div>
           <div data-item-category-radios></div>
           <div data-item-edit-category-radios></div>
           <div data-item-empty></div>
           <div data-item-list></div>
+          <div data-list-settings-category-list></div>
         </section>
       </body>
     </html>
@@ -470,10 +610,18 @@ function createState(items) {
     categoryOrder: new Map(),
     categories: new Map(),
     checkedRemainingCount: 0,
+    disabledCategoryIds: new Set(),
     editingItemId: null,
     highlightedItemId: null,
     highlightTimers: new Map(),
+    itemEditHistory: new Map(),
+    itemEditLastSavedPayload: null,
+    itemEditNeedsSave: false,
+    itemEditRedoHistory: new Map(),
+    itemEditSaveInFlight: null,
+    itemEditSaveTimerId: null,
     items: new Map(items.map((item) => [item.id, item])),
+    lists: [{ id: "list-1", name: "Weekly" }],
     offlineSyncInFlight: null,
     pendingMutations: [],
   };
@@ -492,6 +640,123 @@ function createCheckedItem(index) {
     sort_order: index,
   };
 }
+
+test("list switcher renders household lists and navigates to a different list", () => {
+  const { document, root, window } = createListRoot();
+  const originals = {
+    HTMLElement: globalThis.HTMLElement,
+    HTMLSelectElement: globalThis.HTMLSelectElement,
+    __appNavigateTo: globalThis.__appNavigateTo,
+  };
+  const navigations = [];
+  setGlobalProperty("HTMLElement", window.HTMLElement);
+  setGlobalProperty("HTMLSelectElement", window.HTMLSelectElement);
+  setGlobalProperty("__appNavigateTo", (url) => {
+    navigations.push(url);
+  });
+
+  try {
+    renderListSwitcher(root, { id: "list-1", name: "Weekly" }, [
+      { id: "list-1", name: "Weekly", householdName: "Home" },
+      { id: "list-2", name: "Party", householdName: "Home" },
+      { id: "", name: "Broken" },
+      { id: "list-3", name: "" },
+      null,
+    ]);
+    const switcher = document.querySelector("[data-list-switcher]");
+    const select = document.querySelector("[data-list-switcher-select]");
+    assert.equal(switcher.hidden, false);
+    assert.equal(select.disabled, false);
+    assert.deepEqual(
+      [...select.options].map((option) => [option.value, option.textContent]),
+      [["list-1", "Weekly"], ["list-2", "Party"]],
+    );
+    assert.deepEqual(
+      [...select.querySelectorAll("optgroup")].map((group) => group.label),
+      ["Home"],
+    );
+    assert.equal(select.value, "list-1");
+    assert.equal(document.querySelector(".list-title-heading").classList.contains("has-switcher"), true);
+
+    bindListSwitcher(root);
+    select.value = "list-2";
+    select.dispatchEvent(new window.Event("change"));
+    select.value = "list-1";
+    select.dispatchEvent(new window.Event("change"));
+    select.value = "";
+    select.dispatchEvent(new window.Event("change"));
+    assert.deepEqual(navigations, ["/lists/list-2"]);
+
+    renderListSwitcher(root, null, [{ id: "list-1", name: "Weekly" }]);
+    assert.equal(switcher.hidden, true);
+    assert.equal(select.disabled, true);
+    assert.equal(select.options.length, 0);
+    assert.equal(document.querySelector(".list-title-heading").classList.contains("has-switcher"), false);
+    renderListSwitcher(root, null, null);
+    bindListSwitcher(document.createElement("section"));
+  } finally {
+    setGlobalProperty("HTMLElement", originals.HTMLElement);
+    setGlobalProperty("HTMLSelectElement", originals.HTMLSelectElement);
+    setGlobalProperty("__appNavigateTo", originals.__appNavigateTo);
+  }
+});
+
+test("loadListDetail hydrates the live list switcher", async () => {
+  const { document, root, window } = createListRoot();
+  const originalFetch = globalThis.fetch;
+  const originals = {
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    HTMLSelectElement: globalThis.HTMLSelectElement,
+  };
+  const calls = [];
+  setDomGlobals({ window });
+  setGlobalProperty("fetch", async (url) => {
+    calls.push(url);
+    const responses = {
+      "/api/v1/lists/list-1": { id: "list-1", household_id: "home-1", name: "Weekly" },
+      "/api/v1/lists/list-1/items/window": { checked_remaining_count: 0, items: [] },
+      "/api/v1/lists/list-1/categories": [],
+      "/api/v1/lists/list-1/category-order": [],
+      "/api/v1/lists/list-1/disabled-categories": { category_ids: [] },
+      "/api/v1/households": [{ id: "home-1", name: "Home" }],
+      "/api/v1/households/home-1/lists": [
+        { id: "list-1", household_id: "home-1", name: "Weekly" },
+        { id: "list-2", household_id: "home-1", name: "Party" },
+      ],
+    };
+    return {
+      ok: true,
+      status: 200,
+      json: async () => responses[url],
+    };
+  });
+
+  try {
+    await loadListDetail(root, {
+      categoryOrder: new Map(),
+      categories: new Map(),
+      checkedRemainingCount: 0,
+      items: new Map(),
+    });
+  } finally {
+    setGlobalProperty("fetch", originalFetch);
+    restoreDomGlobals(originals);
+  }
+
+  assert.deepEqual(calls, [
+    "/api/v1/lists/list-1",
+    "/api/v1/lists/list-1/items/window",
+    "/api/v1/lists/list-1/categories",
+    "/api/v1/lists/list-1/category-order",
+    "/api/v1/lists/list-1/disabled-categories",
+    "/api/v1/households",
+    "/api/v1/households/home-1/lists",
+  ]);
+  assert.equal(document.querySelector("[data-list-title]").textContent, "Weekly");
+  assert.equal(document.querySelector("[data-list-switcher]").hidden, false);
+  assert.equal(document.querySelector("[data-list-switcher-select]").value, "list-1");
+});
 
 test("renderItems only shows loaded checked items before loading more", () => {
   const { document, root } = createListRoot();
@@ -531,6 +796,65 @@ test("renderHouseholds shows open item counts on list links", () => {
   assert.equal(document.querySelector('[href="/lists/list-1"] small').textContent, "1 open item");
   assert.equal(document.querySelector('[href="/lists/list-2"] small').textContent, "3 open items");
   assert.equal(document.body.textContent.includes("Open list"), false);
+});
+
+test("saveListName trims, patches, and persists the list title", async () => {
+  const { document, root, window } = createListRoot();
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  const state = createState([]);
+  let request;
+
+  setGlobalProperty("window", window);
+  setGlobalProperty("fetch", async (url, options) => {
+    request = { url, options };
+    return new Response(
+      JSON.stringify({
+        id: "list-1",
+        household_id: "household-1",
+        name: "Market Run",
+        archived: false,
+        open_item_count: 2,
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+  });
+
+  try {
+    setListName(root, state, "Weekly");
+    const groceryList = await saveListName(root, state, "  Market Run  ");
+
+    assert.equal(request.url, "/api/v1/lists/list-1");
+    assert.equal(request.options.method, "PATCH");
+    assert.deepEqual(JSON.parse(request.options.body), { name: "Market Run" });
+    assert.equal(groceryList.name, "Market Run");
+    assert.equal(state.listName, "Market Run");
+    assert.equal(document.querySelector("[data-list-title]").textContent, "Market Run");
+    assert.equal(document.querySelector("[data-list-name-input]").value, "Market Run");
+    assert.equal(
+      JSON.parse(window.localStorage.getItem(offlineListStorageKey("list-1"))).title,
+      "Market Run",
+    );
+
+    await assert.rejects(saveListName(root, state, "   "), /Please enter a list name\./);
+  } finally {
+    setGlobalProperty("fetch", originalFetch);
+    setGlobalProperty("window", originalWindow);
+  }
+});
+
+test("saveListName updates demo payload locally", async () => {
+  const { document, payload, root } = createDemoListRoot();
+  const state = { ...createState([]), demoPayload: payload };
+
+  setListName(root, state, payload.list.name);
+  const groceryList = await saveListName(root, state, "Demo Market");
+
+  assert.equal(groceryList.name, "Demo Market");
+  assert.equal(state.demoPayload.list.name, "Demo Market");
+  assert.equal(JSON.parse(root.dataset.demoPayload).list.name, "Demo Market");
+  assert.equal(document.querySelector("[data-list-title]").textContent, "Demo Market");
+  assert.equal(document.querySelector("[data-list-name-input]").value, "Demo Market");
 });
 
 test("renderItems uses brown fallback swatches for uncategorized and checked groups", () => {
@@ -743,10 +1067,67 @@ test("loadMoreCheckedItems fetches one hundred older checked items per page", as
   assert.equal(document.querySelector(".checked-items-load-more .item-category-meta").textContent, "10 older items not loaded");
 });
 
+test("item editor renders move-to-list choices", () => {
+  const { document, root, window } = createEditRoot();
+  const originals = {
+    HTMLElement: globalThis.HTMLElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    HTMLSelectElement: globalThis.HTMLSelectElement,
+    document: globalThis.document,
+    window: globalThis.window,
+  };
+  const state = createState([
+    {
+      id: "item-1",
+      list_id: "list-1",
+      name: "Milk",
+      checked: false,
+      checked_at: null,
+      category_id: null,
+      note: "organic",
+      quantity_text: "1",
+      sort_order: 0,
+    },
+  ]);
+  state.lists = [
+    { id: "list-1", name: "Weekly" },
+    { id: "list-2", name: "Errands" },
+  ];
+
+  setDomGlobals({ window });
+  setGlobalProperty("document", document);
+  setGlobalProperty("window", window);
+
+  try {
+    syncItemMoveSelect(root, state, "list-2");
+    const field = root.querySelector("[data-item-edit-list-field]");
+    const select = root.querySelector("[data-item-edit-list-select]");
+    assert.equal(field.hidden, false);
+    assert.equal(field.previousElementSibling?.dataset.itemEditCategoryRadios, "");
+    assert.deepEqual([...select.options].map((option) => option.textContent), ["Weekly", "Errands"]);
+    assert.equal(select.value, "list-2");
+
+    setItemEditPanelOpen(root, state, "item-1");
+    assert.equal(root.querySelector("[data-item-edit-title]").textContent, "Milk");
+    assert.equal(select.value, "list-1");
+
+    state.lists = [{ id: "list-1", name: "Weekly" }];
+    syncItemMoveSelect(root, state, "list-1");
+    assert.equal(field.hidden, true);
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("window", originals.window);
+  }
+});
+
 test("offline list cache helpers persist local state and merge sync results", () => {
   const { document, root, window } = createListRoot();
   const originals = {
+    FormData: globalThis.FormData,
     HTMLElement: globalThis.HTMLElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
     HTMLInputElement: globalThis.HTMLInputElement,
     document: globalThis.document,
     window: globalThis.window,
@@ -777,6 +1158,7 @@ test("offline list cache helpers persist local state and merge sync results", ()
   ]);
   state.categories.set("cat-1", { id: "cat-1", name: "Produce", color: "#22c55e" });
   state.categoryOrder.set("cat-1", 0);
+  state.disabledCategoryIds.add("cat-1");
   state.pendingMutations.push({ mutation_id: "m1", type: "create" });
 
   assert.equal(loadOfflineListState("no-window"), null);
@@ -800,11 +1182,13 @@ test("offline list cache helpers persist local state and merge sync results", ()
     assert.equal(cached.title, "Weekly");
     assert.equal(cached.items.length, 2);
     assert.equal(cached.categories[0].name, "Produce");
+    assert.deepEqual(cached.disabledCategoryIds, ["cat-1"]);
     assert.equal(cached.pendingMutations[0].mutation_id, "m1");
 
     const nextState = createState([]);
     applyOfflineListState(root, nextState, cached);
     assert.equal(nextState.items.get("local-item-1").name, "Offline apples");
+    assert.equal(isCategoryDisabled(nextState, "cat-1"), true);
     assert.equal(document.querySelectorAll(".item-card").length, 2);
     applyOfflineListState(root, nextState, { items: [], pendingMutations: [] });
     assert.equal(document.querySelector("[data-list-title]").textContent, "Weekly");
@@ -848,7 +1232,9 @@ test("offline list cache helpers persist local state and merge sync results", ()
 test("offline item mutations save locally when browser or request is offline", async () => {
   const { document, root, window } = createListRoot();
   const originals = {
+    FormData: globalThis.FormData,
     HTMLElement: globalThis.HTMLElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
     HTMLInputElement: globalThis.HTMLInputElement,
     document: globalThis.document,
     fetch: globalThis.fetch,
@@ -908,7 +1294,9 @@ test("offline item mutations save locally when browser or request is offline", a
 test("offline item helpers use network while online and fall back on fetch TypeError", async () => {
   const { root, window } = createListRoot();
   const originals = {
+    FormData: globalThis.FormData,
     HTMLElement: globalThis.HTMLElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
     HTMLInputElement: globalThis.HTMLInputElement,
     document: globalThis.document,
     fetch: globalThis.fetch,
@@ -954,6 +1342,17 @@ test("offline item helpers use network while online and fall back on fetch TypeE
       };
     }
     if (url === "/api/v1/items/item-1" && options?.method === "PATCH") {
+      const body = JSON.parse(options.body);
+      if (body.list_id === "list-2") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ...state.items.get("item-1"),
+            ...body,
+          }),
+        };
+      }
       return {
         ok: true,
         status: 200,
@@ -980,10 +1379,31 @@ test("offline item helpers use network while online and fall back on fetch TypeE
     assert.equal(updated.note, "organic");
     assert.deepEqual(calls[1], ["/api/v1/items/item-1", "PATCH"]);
 
+    const moved = await moveItemWithOfflineFallback(root, state, "item-1", {
+      name: "Milk",
+      list_id: "list-2",
+      quantity_text: null,
+      note: null,
+      category_id: null,
+    });
+    assert.equal(moved.list_id, "list-2");
+    assert.deepEqual(calls[2], ["/api/v1/items/item-1", "PATCH"]);
+
     const checked = await setItemCheckedWithOfflineFallback(root, state, "item-1", true);
     assert.equal(checked.id, "item-1");
     assert.equal(checked.checked, true);
     assert.equal(state.pendingMutations[0].type, "set_checked");
+
+    await assert.rejects(
+      () => moveItemWithOfflineFallback(root, state, "item-1", {
+        name: "Milk",
+        list_id: "list-2",
+        quantity_text: null,
+        note: null,
+        category_id: null,
+      }),
+      /Move items while online/,
+    );
 
     state.pendingMutations = [];
     setGlobalProperty("fetch", async () => ({
@@ -1003,6 +1423,253 @@ test("offline item helpers use network while online and fall back on fetch TypeE
       () => setItemCheckedWithOfflineFallback(root, state, "item-1", true),
       /Bad item\./,
     );
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("fetch", originals.fetch);
+    setGlobalProperty("navigator", originals.navigator);
+    setGlobalProperty("window", originals.window);
+  }
+});
+
+test("live item editing debounces saves, flushes before close, and undoes local history", async () => {
+  const { document, root, window } = createEditListRoot();
+  const originals = {
+    FormData: globalThis.FormData,
+    HTMLElement: globalThis.HTMLElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    document: globalThis.document,
+    fetch: globalThis.fetch,
+    navigator: globalThis.navigator,
+    window: globalThis.window,
+  };
+  const state = createState([
+    {
+      id: "item-1",
+      list_id: "list-1",
+      name: "Milk",
+      checked: false,
+      checked_at: null,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+      sort_order: 0,
+    },
+  ]);
+  const calls = [];
+
+  setDomGlobals({ window });
+  setGlobalProperty("document", document);
+  setGlobalProperty("window", window);
+  setGlobalProperty("navigator", { onLine: true });
+  setGlobalProperty("fetch", async (url, options) => {
+    const payload = JSON.parse(options.body);
+    calls.push({ url, method: options.method, payload });
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ...state.items.get("item-1"),
+        ...payload,
+      }),
+    };
+  });
+
+  try {
+    setItemEditPanelOpen(root, state, "item-1");
+    const form = document.querySelector("[data-item-edit-form]");
+    const undoButton = document.querySelector("[data-item-edit-undo]");
+    const redoButton = document.querySelector("[data-item-edit-redo]");
+    assert.equal(readItemEditFormPayload(root).name, "Milk");
+    assert.equal(undoButton.disabled, true);
+    assert.equal(redoButton.disabled, true);
+
+    form.elements.namedItem("note").value = "organic";
+    scheduleItemEditSave(root, state, 20);
+    form.elements.namedItem("note").value = "organic whole milk";
+    scheduleItemEditSave(root, state, 20);
+    assert.equal(calls.length, 0);
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
+
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0], {
+      url: "/api/v1/items/item-1",
+      method: "PATCH",
+      payload: {
+        name: "Milk",
+        quantity_text: null,
+        note: "organic whole milk",
+        category_id: null,
+      },
+    });
+    assert.equal(document.querySelector("[data-item-edit-status-text]").textContent, "Saved.");
+    assert.equal(window.localStorage.getItem(itemEditHistoryStorageKey("list-1")).includes("Milk"), true);
+
+    form.elements.namedItem("quantity_text").value = "wrong amount";
+    assert.equal(await undoItemEdit(root, state), true);
+    assert.equal(calls.length, 1);
+    assert.equal(form.elements.namedItem("quantity_text").value, "");
+    assert.equal(redoButton.disabled, false);
+
+    form.elements.namedItem("quantity_text").value = "2 cartons";
+    assert.equal(await closeItemEditPanel(root, state), true);
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1].payload.quantity_text, "2 cartons");
+    assert.equal(document.querySelector("[data-item-edit-overlay]").hidden, true);
+
+    setItemEditPanelOpen(root, state, "item-1");
+    assert.equal(form.elements.namedItem("quantity_text").value, "2 cartons");
+    assert.equal(undoButton.disabled, false);
+    assert.equal(await undoItemEdit(root, state), true);
+    assert.equal(calls.length, 3);
+    assert.equal(calls[2].payload.quantity_text, null);
+    assert.equal(form.elements.namedItem("quantity_text").value, "");
+    assert.equal(document.querySelector("[data-list-success]").textContent, "Edit undone.");
+    assert.equal(redoButton.disabled, false);
+
+    assert.equal(await redoItemEdit(root, state), true);
+    assert.equal(calls.length, 4);
+    assert.equal(calls[3].payload.quantity_text, "2 cartons");
+    assert.equal(form.elements.namedItem("quantity_text").value, "2 cartons");
+    assert.equal(document.querySelector("[data-list-success]").textContent, "Edit redone.");
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("fetch", originals.fetch);
+    setGlobalProperty("navigator", originals.navigator);
+    setGlobalProperty("window", originals.window);
+  }
+});
+
+test("live item editing moves to another list from the autosave dialog", async () => {
+  const { document, root, window } = createEditListRoot();
+  const originals = {
+    FormData: globalThis.FormData,
+    HTMLElement: globalThis.HTMLElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    HTMLSelectElement: globalThis.HTMLSelectElement,
+    document: globalThis.document,
+    fetch: globalThis.fetch,
+    navigator: globalThis.navigator,
+    window: globalThis.window,
+  };
+  const state = createState([
+    {
+      id: "item-1",
+      list_id: "list-1",
+      name: "Milk",
+      checked: false,
+      checked_at: null,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+      sort_order: 0,
+    },
+  ]);
+  state.lists = [
+    { id: "list-1", name: "Weekly" },
+    { id: "list-2", name: "Errands" },
+  ];
+  const calls = [];
+
+  setDomGlobals({ window });
+  setGlobalProperty("document", document);
+  setGlobalProperty("window", window);
+  setGlobalProperty("navigator", { onLine: true });
+  setGlobalProperty("fetch", async (url, options) => {
+    const payload = JSON.parse(options.body);
+    calls.push({ url, method: options.method, payload });
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ...state.items.get("item-1"),
+        ...payload,
+      }),
+    };
+  });
+
+  try {
+    setItemEditPanelOpen(root, state, "item-1");
+    const form = document.querySelector("[data-item-edit-form]");
+    form.elements.namedItem("note").value = "organic";
+
+    assert.equal(await moveEditingItemToList(root, state, "list-2"), true);
+
+    assert.deepEqual(calls, [
+      {
+        url: "/api/v1/items/item-1",
+        method: "PATCH",
+        payload: {
+          name: "Milk",
+          quantity_text: null,
+          note: "organic",
+          category_id: null,
+          list_id: "list-2",
+        },
+      },
+    ]);
+    assert.equal(state.items.has("item-1"), false);
+    assert.equal(document.querySelector("[data-item-edit-overlay]").hidden, true);
+    assert.equal(document.querySelector("[data-list-success]").textContent, "Item moved to another list.Go to list");
+    assert.equal(document.querySelector("[data-list-success] a").getAttribute("href"), "/lists/list-2");
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("fetch", originals.fetch);
+    setGlobalProperty("navigator", originals.navigator);
+    setGlobalProperty("window", originals.window);
+  }
+});
+
+test("live item editing keeps the modal open when close-triggered save fails", async () => {
+  const { document, root, window } = createEditListRoot();
+  const originals = {
+    FormData: globalThis.FormData,
+    HTMLElement: globalThis.HTMLElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    document: globalThis.document,
+    fetch: globalThis.fetch,
+    navigator: globalThis.navigator,
+    window: globalThis.window,
+  };
+  const state = createState([
+    {
+      id: "item-1",
+      list_id: "list-1",
+      name: "Milk",
+      checked: false,
+      checked_at: null,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+      sort_order: 0,
+    },
+  ]);
+
+  setDomGlobals({ window });
+  setGlobalProperty("document", document);
+  setGlobalProperty("window", window);
+  setGlobalProperty("navigator", { onLine: true });
+  setGlobalProperty("fetch", async () => ({
+    ok: false,
+    status: 500,
+    json: async () => ({ detail: "Server rejected edit." }),
+  }));
+
+  try {
+    setItemEditPanelOpen(root, state, "item-1");
+    const form = document.querySelector("[data-item-edit-form]");
+    form.elements.namedItem("note").value = "will fail";
+
+    assert.equal(await closeItemEditPanel(root, state), false);
+    assert.equal(document.querySelector("[data-item-edit-overlay]").hidden, false);
+    assert.equal(document.querySelector("[data-item-edit-status-text]").textContent, "Server rejected edit.");
+    assert.equal(document.querySelector("[data-list-error]").textContent, "Server rejected edit.");
+    assert.equal(state.items.get("item-1").note, null);
   } finally {
     restoreDomGlobals(originals);
     setGlobalProperty("document", originals.document);
@@ -1078,7 +1745,9 @@ test("hideItemForLater hides for four hours and restoreHiddenItem clears it", as
 test("flushOfflineMutations clears applied mutations and reports sync failures", async () => {
   const { document, root, window } = createListRoot();
   const originals = {
+    FormData: globalThis.FormData,
     HTMLElement: globalThis.HTMLElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
     HTMLInputElement: globalThis.HTMLInputElement,
     document: globalThis.document,
     fetch: globalThis.fetch,
@@ -1369,7 +2038,9 @@ test("renderItemSuggestions keeps surviving matches mounted when narrowed", () =
 test("demo list helpers reuse the real list page with local data", async () => {
   const { document, payload, root, window } = createDemoListRoot();
   const originals = {
+    FormData: globalThis.FormData,
     HTMLElement: globalThis.HTMLElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
     HTMLInputElement: globalThis.HTMLInputElement,
     HTMLSelectElement: globalThis.HTMLSelectElement,
     document: globalThis.document,
@@ -1385,6 +2056,7 @@ test("demo list helpers reuse the real list page with local data", async () => {
       categoryOrder: new Map(),
       categories: new Map(),
       checkedRemainingCount: 0,
+      disabledCategoryIds: new Set(),
       demoPayload: getDemoPayload(root),
       editingItemId: null,
       highlightedItemId: null,
@@ -1401,6 +2073,7 @@ test("demo list helpers reuse the real list page with local data", async () => {
 
     await loadListDetail(root, state);
     assert.equal(document.querySelector("[data-list-title]").textContent, "Saturday Groceries");
+    assert.equal(document.querySelector("[data-list-switcher]").hidden, true);
     assert.equal(document.querySelectorAll(".item-card").length, 2);
 
     const createdItem = createDemoItem(state, { name: "Dishwasher tabs", category_id: "pantry" });
@@ -1412,6 +2085,8 @@ test("demo list helpers reuse the real list page with local data", async () => {
     assert.equal(updatedItem.note, "Big box");
     const updatedViaFallback = await updateItemWithOfflineFallback(root, state, "demo-item-3", { note: "Fallback box" });
     assert.equal(updatedViaFallback.note, "Fallback box");
+    const movedViaFallback = await moveItemWithOfflineFallback(root, state, "demo-item-3", { list_id: "demo-list" });
+    assert.equal(movedViaFallback.list_id, "demo-list");
 
     const checkedItem = setDemoItemChecked(state, "demo-item-1", true);
     assert.equal(checkedItem.checked, true);
@@ -1441,6 +2116,367 @@ test("demo list helpers reuse the real list page with local data", async () => {
   } finally {
     restoreDomGlobals(originals);
     setGlobalProperty("document", originals.document);
+    setGlobalProperty("window", originals.window);
+  }
+});
+
+test("category disabling hides choices and unassigns local items", async () => {
+  const { document, root, window } = createDemoListRoot();
+  const originals = {
+    HTMLButtonElement: globalThis.HTMLButtonElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    document: globalThis.document,
+    window: globalThis.window,
+  };
+
+  setDomGlobals({ window });
+  setGlobalProperty("document", document);
+  setGlobalProperty("window", window);
+
+  try {
+    const state = {
+      categoryOrder: new Map(),
+      categories: new Map(),
+      checkedRemainingCount: 0,
+      disabledCategoryIds: new Set(),
+      demoPayload: getDemoPayload(root),
+      editingItemId: null,
+      highlightedItemId: null,
+      highlightTimers: new Map(),
+      items: new Map(),
+      nextDemoId: 1,
+      socket: null,
+      undoAction: null,
+      undoTimerId: null,
+    };
+
+    await loadListDetail(root, state);
+    assert.deepEqual(reorderCategoryIds(["produce", "pantry"], "produce", 1), ["pantry", "produce"]);
+    assert.deepEqual(reorderCategoryIds(["produce"], "missing", 0), ["produce"]);
+    assert.equal(itemCountForCategory(state, "produce"), 1);
+    const previousPantryCategories = unassignCategoryItems(state, "pantry");
+    assert.equal(itemCountForCategory(state, "pantry"), 0);
+    restoreItemCategoryIds(state, previousPantryCategories);
+    assert.equal(itemCountForCategory(state, "pantry"), 1);
+
+    const didDisablePromise = setCategoryDisabled(root, state, "produce", true);
+    assert.equal(document.querySelector("[data-category-disable-confirm-overlay]").hidden, false);
+    assert.match(
+      document.querySelector("[data-category-disable-confirm-copy]").textContent,
+      /1 item in this category/
+    );
+    document.querySelector("[data-category-disable-confirm-confirm]").click();
+    const didDisable = await didDisablePromise;
+    assert.equal(didDisable, true);
+    assert.equal(isCategoryDisabled(state, "produce"), true);
+    assert.deepEqual(getDisabledCategoryIds(state), ["produce"]);
+    assert.equal(state.items.get("demo-item-1").category_id, null);
+    assert.equal(document.querySelector("[data-category-disable-confirm-overlay]").hidden, true);
+    assert.equal(document.querySelector(".settings-category-row.is-disabled strong").textContent, "Produce");
+    assert.equal(document.querySelector(".settings-category-grabber svg").getAttribute("viewBox"), "0 0 24 24");
+    assert.equal(document.querySelector(".settings-category-toggle svg").getAttribute("viewBox"), "0 0 24 24");
+    document.querySelector(".settings-category-row").classList.add("is-dragging", "is-drag-over", "is-drop-after");
+    clearCategoryDragState(root);
+    assert.equal(document.querySelector(".settings-category-row").classList.contains("is-dragging"), false);
+    assert.equal(document.querySelector(".settings-category-row").classList.contains("is-drop-after"), false);
+    assert.equal(document.querySelectorAll("[data-item-category-radios] .category-radio-option").length, 2);
+    assert.equal(document.querySelector("[data-item-category-radios]").textContent.includes("Produce"), false);
+
+    await saveDisabledCategories(root, state);
+    const didEnable = await setCategoryDisabled(root, state, "produce", false);
+    assert.equal(didEnable, true);
+    assert.equal(isCategoryDisabled(state, "produce"), false);
+    assert.equal(await setCategoryDisabled(root, state, "produce", false), false);
+    assert.equal(await setCategoryDisabled(root, state, "missing", true), false);
+    const didCancelPromise = setCategoryDisabled(root, state, "pantry", true);
+    document.querySelector("[data-category-disable-confirm-cancel]").click();
+    assert.equal(await didCancelPromise, false);
+    assert.equal(isCategoryDisabled(state, "pantry"), false);
+
+    setDisabledCategoryIds(state, ["pantry", "missing"]);
+    assert.deepEqual(getDisabledCategoryIds(state), ["pantry"]);
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("window", originals.window);
+  }
+});
+
+test("category reorder helpers mark gaps and save the latest order in the background", async () => {
+  const { document, root, window } = createListRoot();
+  const originals = {
+    HTMLButtonElement: globalThis.HTMLButtonElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    document: globalThis.document,
+    fetch: globalThis.fetch,
+    window: globalThis.window,
+  };
+
+  setDomGlobals({ window });
+  setGlobalProperty("document", document);
+  setGlobalProperty("window", window);
+
+  try {
+    const state = createState([]);
+    state.categories.set("produce", { id: "produce", name: "Produce", color: "#22c55e" });
+    state.categories.set("pantry", { id: "pantry", name: "Pantry", color: "#f59e0b" });
+    state.categories.set("dairy", { id: "dairy", name: "Dairy", color: "#f9fafb" });
+    setCategoryOrder(state, ["produce", "pantry"]);
+    renderCategoryOrderSettings(root, state);
+
+    const pantryRow = document.querySelector('.settings-category-row[data-category-id="pantry"]');
+    Object.defineProperty(pantryRow, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ top: 10, bottom: 30, height: 20, left: 0, right: 100, width: 100 }),
+    });
+    assert.equal(categoryDropPosition(pantryRow, 21), "after");
+    assert.equal(categoryDropPosition(pantryRow, 19), "before");
+    setCategoryDropIndicator(root, state, pantryRow, "before");
+    assert.equal(pantryRow.classList.contains("is-drop-before"), true);
+    assert.deepEqual(state.categoryDropTarget, { categoryId: "pantry", position: "before" });
+    clearCategoryDropIndicators(root);
+    assert.equal(pantryRow.classList.contains("is-drop-before"), false);
+    assert.equal(categoryInsertionIndex(["produce", "pantry", "dairy"], "produce", "dairy", "after"), 2);
+
+    const fetchCalls = [];
+    let resolveFirstFetch;
+    const responseFor = (categoryIds) => ({
+      ok: true,
+      status: 200,
+      json: async () => categoryIds.map((category_id, sort_order) => ({ category_id, sort_order })),
+    });
+    setGlobalProperty("fetch", async (_url, options) => {
+      const categoryIds = JSON.parse(options.body).category_ids;
+      fetchCalls.push(categoryIds);
+      if (fetchCalls.length === 1) {
+        return new Promise((resolve) => {
+          resolveFirstFetch = () => resolve(responseFor(categoryIds));
+        });
+      }
+      return responseFor(categoryIds);
+    });
+
+    assert.equal(applyCategoryReorder(root, state, "produce", "dairy", "after"), true);
+    assert.deepEqual(fetchCalls, [["pantry"]]);
+    assert.equal(document.querySelector("[data-category-order-status]").hidden, false);
+    assert.equal(applyCategoryReorder(root, state, "produce", "pantry", "before"), true);
+    assert.deepEqual(fetchCalls, [["pantry"]]);
+
+    const savingPromise = state.categoryOrderSaveQueue.promise;
+    resolveFirstFetch();
+    await savingPromise;
+    assert.deepEqual(fetchCalls, [["pantry"], ["produce", "pantry"]]);
+    assert.equal(document.querySelector("[data-category-order-status]").hidden, true);
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("fetch", originals.fetch);
+    setGlobalProperty("window", originals.window);
+  }
+});
+
+test("background category order save reports failures without blocking the list UI", async () => {
+  const { document, root, window } = createListRoot();
+  const originals = {
+    HTMLButtonElement: globalThis.HTMLButtonElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    document: globalThis.document,
+    fetch: globalThis.fetch,
+    window: globalThis.window,
+  };
+
+  setDomGlobals({ window });
+  setGlobalProperty("document", document);
+  setGlobalProperty("window", window);
+  setGlobalProperty("fetch", async () => {
+    throw new TypeError("offline");
+  });
+
+  try {
+    const state = createState([]);
+    state.categories.set("produce", { id: "produce", name: "Produce", color: "#22c55e" });
+    setCategoryOrder(state, ["produce"]);
+    await saveCategoryOrderInBackground(root, state);
+    const status = document.querySelector("[data-category-order-status]");
+    assert.equal(status.hidden, false);
+    assert.equal(status.classList.contains("is-error"), true);
+    assert.equal(document.querySelector("[data-list-error]").textContent, "offline");
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("fetch", originals.fetch);
+    setGlobalProperty("window", originals.window);
+  }
+});
+
+test("category reorder works with pointer and drag gestures", async () => {
+  const { document, root, window } = createDemoListRoot();
+  const originals = {
+    HTMLButtonElement: globalThis.HTMLButtonElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    document: globalThis.document,
+    window: globalThis.window,
+  };
+
+  const dispatchInput = (target, type, properties = {}) => {
+    const event = new window.Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperties(
+      event,
+      Object.fromEntries(
+        Object.entries(properties).map(([key, value]) => [
+          key,
+          { configurable: true, value },
+        ])
+      )
+    );
+    target.dispatchEvent(event);
+    return event;
+  };
+  const labels = () =>
+    [...document.querySelectorAll(".settings-category-row strong")].map((node) => node.textContent);
+  const setRowRect = (row, top = 10) => {
+    Object.defineProperty(row, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ top, bottom: top + 20, height: 20, left: 0, right: 100, width: 100 }),
+    });
+  };
+
+  setDomGlobals({ window });
+  setGlobalProperty("document", document);
+  setGlobalProperty("window", window);
+
+  try {
+    await loadListDetail(root, {
+      categoryOrder: new Map(),
+      categories: new Map(),
+      checkedRemainingCount: 0,
+      disabledCategoryIds: new Set(),
+      demoPayload: getDemoPayload(root),
+      editingItemId: null,
+      highlightedItemId: null,
+      highlightTimers: new Map(),
+      items: new Map(),
+      nextDemoId: 1,
+      socket: null,
+      undoAction: null,
+      undoTimerId: null,
+    });
+
+    let produceRow = document.querySelector('.settings-category-row[data-category-id="produce"]');
+    let pantryRow = document.querySelector('.settings-category-row[data-category-id="pantry"]');
+    setRowRect(pantryRow);
+    document.elementFromPoint = () => pantryRow;
+    dispatchInput(produceRow.querySelector("[data-settings-category-grabber]"), "pointerdown", {
+      clientX: 5,
+      clientY: 12,
+      pointerId: 1,
+    });
+    dispatchInput(root, "pointermove", { clientX: 5, clientY: 25, pointerId: 1 });
+    assert.equal(pantryRow.classList.contains("is-drop-after"), true);
+    dispatchInput(root, "pointerup", { clientX: 5, clientY: 25, pointerId: 1 });
+    assert.deepEqual(labels(), ["Pantry", "Produce"]);
+
+    produceRow = document.querySelector('.settings-category-row[data-category-id="produce"]');
+    dispatchInput(produceRow.querySelector("[data-settings-category-grabber]"), "pointerdown", {
+      clientX: 5,
+      clientY: 12,
+      pointerId: 2,
+    });
+    dispatchInput(root, "pointercancel", { pointerId: 2 });
+    assert.equal(document.querySelector(".settings-category-row.is-dragging"), null);
+
+    pantryRow = document.querySelector('.settings-category-row[data-category-id="pantry"]');
+    produceRow = document.querySelector('.settings-category-row[data-category-id="produce"]');
+    setRowRect(produceRow);
+    const transferData = new Map();
+    const dataTransfer = {
+      dropEffect: "",
+      effectAllowed: "",
+      getData: (name) => transferData.get(name),
+      setData: (name, value) => transferData.set(name, value),
+    };
+    dispatchInput(pantryRow.querySelector("[data-settings-category-grabber]"), "dragstart", {
+      dataTransfer,
+    });
+    dispatchInput(produceRow, "dragover", { clientY: 25, dataTransfer });
+    assert.equal(produceRow.classList.contains("is-drop-after"), true);
+    dispatchInput(produceRow, "drop", { clientY: 25, dataTransfer });
+    dispatchInput(root, "dragend");
+    assert.deepEqual(labels(), ["Produce", "Pantry"]);
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("window", originals.window);
+  }
+});
+
+test("category disabling restores local state when save fails", async () => {
+  const { document, root, window } = createListRoot();
+  const originals = {
+    HTMLButtonElement: globalThis.HTMLButtonElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    document: globalThis.document,
+    fetch: globalThis.fetch,
+    window: globalThis.window,
+  };
+
+  setDomGlobals({ window });
+  setGlobalProperty("document", document);
+  setGlobalProperty("window", window);
+  setGlobalProperty("fetch", async () => {
+    throw new TypeError("offline");
+  });
+
+  try {
+    const state = createState([
+      {
+        id: "item-1",
+        list_id: "list-1",
+        name: "Bananas",
+        checked: false,
+        checked_at: null,
+        category_id: "produce",
+        note: null,
+        quantity_text: null,
+        sort_order: 0,
+      },
+    ]);
+    state.categories.set("produce", { id: "produce", name: "Produce", color: "#22c55e" });
+
+    const failedDisablePromise = setCategoryDisabled(root, state, "produce", true);
+    document.querySelector("[data-category-disable-confirm-confirm]").click();
+    await assert.rejects(() => failedDisablePromise, /offline/);
+    assert.equal(isCategoryDisabled(state, "produce"), false);
+    assert.equal(state.items.get("item-1").category_id, "produce");
+
+    setGlobalProperty("fetch", async (url, options) => {
+      assert.equal(url, "/api/v1/lists/list-1/disabled-categories");
+      assert.equal(options.method, "PUT");
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ category_ids: ["produce"] }),
+      };
+    });
+    const successfulDisablePromise = setCategoryDisabled(root, state, "produce", true);
+    document.querySelector("[data-category-disable-confirm-confirm]").click();
+    assert.equal(await successfulDisablePromise, true);
+    assert.equal(isCategoryDisabled(state, "produce"), true);
+    assert.equal(state.items.get("item-1").category_id, null);
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("fetch", originals.fetch);
     setGlobalProperty("window", originals.window);
   }
 });
