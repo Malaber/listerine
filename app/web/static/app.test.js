@@ -44,6 +44,7 @@ import {
   closeItemEditPanel,
   undoItemEdit,
   redoItemEdit,
+  moveEditingItemToList,
   storeLanguagePreference,
   syncLanguageSettings,
   updateDemoItem,
@@ -73,7 +74,9 @@ import {
   applyLocalCheckedState,
   createItemWithOfflineFallback,
   updateItemWithOfflineFallback,
+  moveItemWithOfflineFallback,
   setItemCheckedWithOfflineFallback,
+  syncItemMoveSelect,
   applyOfflineSyncResult,
   flushOfflineMutations,
   restoreHiddenItem,
@@ -347,6 +350,7 @@ function createListRoot() {
       </div>
       <input data-item-category-search value="" />
       <input data-item-edit-category-search value="" />
+      <label data-item-edit-list-field hidden><select name="list_id" data-item-edit-list-select></select></label>
       <div data-item-suggestions-slot><div data-item-suggestions></div></div>
       <div data-item-category-radios></div>
       <div data-item-edit-category-radios></div>
@@ -383,6 +387,9 @@ function createEditListRoot() {
             <input type="text" name="name" />
             <input type="text" name="quantity_text" />
             <input type="text" name="note" />
+            <label data-item-edit-list-field hidden>
+              <select name="list_id" data-item-edit-list-select></select>
+            </label>
             <div data-item-edit-status hidden>
               <span data-item-edit-spinner></span>
               <span data-item-edit-status-text></span>
@@ -476,6 +483,37 @@ function createSuggestionRoot() {
   };
 }
 
+function createEditRoot() {
+  const dom = new JSDOM(`
+    <section data-list-detail data-list-id="list-1">
+      <div data-item-panel-overlay hidden></div>
+      <div data-item-panel hidden></div>
+      <button data-item-form-toggle></button>
+      <div data-item-edit-overlay hidden></div>
+      <section data-item-edit-panel hidden>
+        <h2 data-item-edit-title></h2>
+        <form data-item-edit-form>
+          <input name="name" />
+          <input name="quantity_text" />
+          <input name="note" />
+          <input data-item-edit-category-search value="" />
+          <div data-item-edit-category-radios></div>
+          <label data-item-edit-list-field hidden>
+            <select name="list_id" data-item-edit-list-select></select>
+          </label>
+        </form>
+      </section>
+      <input data-item-category-search value="" />
+      <div data-item-category-radios></div>
+    </section>
+  `);
+  return {
+    document: dom.window.document,
+    root: dom.window.document.querySelector("[data-list-detail]"),
+    window: dom.window,
+  };
+}
+
 function createDemoListRoot() {
   const demoPayload = {
     list: { id: "demo-list", name: "Saturday Groceries" },
@@ -533,6 +571,7 @@ function createDemoListRoot() {
           <input data-item-name-input value="" />
           <input data-item-category-search value="" />
           <input data-item-edit-category-search value="" />
+          <label data-item-edit-list-field hidden><select name="list_id" data-item-edit-list-select></select></label>
           <div data-item-suggestions-slot><div data-item-suggestions></div></div>
           <div data-item-category-radios></div>
           <div data-item-edit-category-radios></div>
@@ -567,6 +606,7 @@ function createState(items) {
     itemEditSaveInFlight: null,
     itemEditSaveTimerId: null,
     items: new Map(items.map((item) => [item.id, item])),
+    lists: [{ id: "list-1", name: "Weekly" }],
     offlineSyncInFlight: null,
     pendingMutations: [],
   };
@@ -895,6 +935,61 @@ test("loadMoreCheckedItems fetches one hundred older checked items per page", as
   assert.equal(document.querySelector(".checked-items-load-more .item-category-meta").textContent, "10 older items not loaded");
 });
 
+test("item editor renders move-to-list choices", () => {
+  const { document, root, window } = createEditRoot();
+  const originals = {
+    HTMLElement: globalThis.HTMLElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    HTMLSelectElement: globalThis.HTMLSelectElement,
+    document: globalThis.document,
+    window: globalThis.window,
+  };
+  const state = createState([
+    {
+      id: "item-1",
+      list_id: "list-1",
+      name: "Milk",
+      checked: false,
+      checked_at: null,
+      category_id: null,
+      note: "organic",
+      quantity_text: "1",
+      sort_order: 0,
+    },
+  ]);
+  state.lists = [
+    { id: "list-1", name: "Weekly" },
+    { id: "list-2", name: "Errands" },
+  ];
+
+  setDomGlobals({ window });
+  setGlobalProperty("document", document);
+  setGlobalProperty("window", window);
+
+  try {
+    syncItemMoveSelect(root, state, "list-2");
+    const field = root.querySelector("[data-item-edit-list-field]");
+    const select = root.querySelector("[data-item-edit-list-select]");
+    assert.equal(field.hidden, false);
+    assert.equal(field.previousElementSibling?.dataset.itemEditCategoryRadios, "");
+    assert.deepEqual([...select.options].map((option) => option.textContent), ["Weekly", "Errands"]);
+    assert.equal(select.value, "list-2");
+
+    setItemEditPanelOpen(root, state, "item-1");
+    assert.equal(root.querySelector("[data-item-edit-title]").textContent, "Milk");
+    assert.equal(select.value, "list-1");
+
+    state.lists = [{ id: "list-1", name: "Weekly" }];
+    syncItemMoveSelect(root, state, "list-1");
+    assert.equal(field.hidden, true);
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("window", originals.window);
+  }
+});
+
 test("offline list cache helpers persist local state and merge sync results", () => {
   const { document, root, window } = createListRoot();
   const originals = {
@@ -1115,6 +1210,17 @@ test("offline item helpers use network while online and fall back on fetch TypeE
       };
     }
     if (url === "/api/v1/items/item-1" && options?.method === "PATCH") {
+      const body = JSON.parse(options.body);
+      if (body.list_id === "list-2") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ...state.items.get("item-1"),
+            ...body,
+          }),
+        };
+      }
       return {
         ok: true,
         status: 200,
@@ -1141,10 +1247,31 @@ test("offline item helpers use network while online and fall back on fetch TypeE
     assert.equal(updated.note, "organic");
     assert.deepEqual(calls[1], ["/api/v1/items/item-1", "PATCH"]);
 
+    const moved = await moveItemWithOfflineFallback(root, state, "item-1", {
+      name: "Milk",
+      list_id: "list-2",
+      quantity_text: null,
+      note: null,
+      category_id: null,
+    });
+    assert.equal(moved.list_id, "list-2");
+    assert.deepEqual(calls[2], ["/api/v1/items/item-1", "PATCH"]);
+
     const checked = await setItemCheckedWithOfflineFallback(root, state, "item-1", true);
     assert.equal(checked.id, "item-1");
     assert.equal(checked.checked, true);
     assert.equal(state.pendingMutations[0].type, "set_checked");
+
+    await assert.rejects(
+      () => moveItemWithOfflineFallback(root, state, "item-1", {
+        name: "Milk",
+        list_id: "list-2",
+        quantity_text: null,
+        note: null,
+        category_id: null,
+      }),
+      /Move items while online/,
+    );
 
     state.pendingMutations = [];
     setGlobalProperty("fetch", async () => ({
@@ -1274,6 +1401,88 @@ test("live item editing debounces saves, flushes before close, and undoes local 
     assert.equal(calls[3].payload.quantity_text, "2 cartons");
     assert.equal(form.elements.namedItem("quantity_text").value, "2 cartons");
     assert.equal(document.querySelector("[data-list-success]").textContent, "Edit redone.");
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("fetch", originals.fetch);
+    setGlobalProperty("navigator", originals.navigator);
+    setGlobalProperty("window", originals.window);
+  }
+});
+
+test("live item editing moves to another list from the autosave dialog", async () => {
+  const { document, root, window } = createEditListRoot();
+  const originals = {
+    FormData: globalThis.FormData,
+    HTMLElement: globalThis.HTMLElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    HTMLSelectElement: globalThis.HTMLSelectElement,
+    document: globalThis.document,
+    fetch: globalThis.fetch,
+    navigator: globalThis.navigator,
+    window: globalThis.window,
+  };
+  const state = createState([
+    {
+      id: "item-1",
+      list_id: "list-1",
+      name: "Milk",
+      checked: false,
+      checked_at: null,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+      sort_order: 0,
+    },
+  ]);
+  state.lists = [
+    { id: "list-1", name: "Weekly" },
+    { id: "list-2", name: "Errands" },
+  ];
+  const calls = [];
+
+  setDomGlobals({ window });
+  setGlobalProperty("document", document);
+  setGlobalProperty("window", window);
+  setGlobalProperty("navigator", { onLine: true });
+  setGlobalProperty("fetch", async (url, options) => {
+    const payload = JSON.parse(options.body);
+    calls.push({ url, method: options.method, payload });
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ...state.items.get("item-1"),
+        ...payload,
+      }),
+    };
+  });
+
+  try {
+    setItemEditPanelOpen(root, state, "item-1");
+    const form = document.querySelector("[data-item-edit-form]");
+    form.elements.namedItem("note").value = "organic";
+
+    assert.equal(await moveEditingItemToList(root, state, "list-2"), true);
+
+    assert.deepEqual(calls, [
+      {
+        url: "/api/v1/items/item-1",
+        method: "PATCH",
+        payload: {
+          name: "Milk",
+          quantity_text: null,
+          note: "organic",
+          category_id: null,
+          list_id: "list-2",
+        },
+      },
+    ]);
+    assert.equal(state.items.has("item-1"), false);
+    assert.equal(document.querySelector("[data-item-edit-overlay]").hidden, true);
+    assert.equal(document.querySelector("[data-list-success]").textContent, "Item moved to another list.Go to list");
+    assert.equal(document.querySelector("[data-list-success] a").getAttribute("href"), "/lists/list-2");
   } finally {
     restoreDomGlobals(originals);
     setGlobalProperty("document", originals.document);
@@ -1743,6 +1952,8 @@ test("demo list helpers reuse the real list page with local data", async () => {
     assert.equal(updatedItem.note, "Big box");
     const updatedViaFallback = await updateItemWithOfflineFallback(root, state, "demo-item-3", { note: "Fallback box" });
     assert.equal(updatedViaFallback.note, "Fallback box");
+    const movedViaFallback = await moveItemWithOfflineFallback(root, state, "demo-item-3", { list_id: "demo-list" });
+    assert.equal(movedViaFallback.list_id, "demo-list");
 
     const checkedItem = setDemoItemChecked(state, "demo-item-1", true);
     assert.equal(checkedItem.checked, true);
