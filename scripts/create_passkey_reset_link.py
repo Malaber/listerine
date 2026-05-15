@@ -66,14 +66,15 @@ async def _issue_link(
                 target = email or user_id or "unknown target"
                 raise SystemExit(f"User not found: {target}")
 
-            token, expires_at = await issue_passkey_reset(session, user)
+            token, link_record = await issue_passkey_reset(session, user)
             link = build_passkey_add_link(base_url, token)
     finally:
         await engine.dispose()
 
     print(f"Passkey add link for {user.email}:")
     print(link)
-    print(f"Expires at: {expires_at.isoformat()}")
+    print(f"Identifier: {link_record.short_id}")
+    print(f"Expires at: {link_record.expires_at.isoformat()}")
     return 0
 
 

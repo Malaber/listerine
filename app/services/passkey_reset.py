@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import User
+from app.models import PasskeyAddLink, User
 
 PASSKEY_RESET_TTL = timedelta(hours=24)
 
@@ -23,11 +23,13 @@ def passkey_reset_expires_at(ttl: timedelta | None = None) -> datetime:
     return datetime.now(UTC) + (ttl or PASSKEY_RESET_TTL)
 
 
-def passkey_reset_is_active(user: User, *, now: datetime | None = None) -> bool:
-    if not user.passkey_reset_token_hash or user.passkey_reset_expires_at is None:
+def passkey_reset_is_active(link: PasskeyAddLink, *, now: datetime | None = None) -> bool:
+    if link.used_at is not None:
+        return False
+    if not link.token_hash or link.expires_at is None:
         return False
     current_time = now or datetime.now(UTC)
-    expires_at = user.passkey_reset_expires_at
+    expires_at = link.expires_at
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=UTC)
     else:
@@ -35,20 +37,24 @@ def passkey_reset_is_active(user: User, *, now: datetime | None = None) -> bool:
     return expires_at > current_time
 
 
-def set_passkey_reset(user: User, token: str, *, ttl: timedelta | None = None) -> datetime:
+def set_passkey_reset(user: User, token: str, *, ttl: timedelta | None = None) -> PasskeyAddLink:
     expires_at = passkey_reset_expires_at(ttl)
-    user.passkey_reset_token_hash = hash_passkey_reset_token(token)
-    user.passkey_reset_expires_at = expires_at
-    return expires_at
+    return PasskeyAddLink(
+        user_id=user.id,
+        token_hash=hash_passkey_reset_token(token),
+        expires_at=expires_at,
+    )
 
 
 async def issue_passkey_reset(
     db: AsyncSession, user: User, *, ttl: timedelta | None = None
-) -> tuple[str, datetime]:
+) -> tuple[str, PasskeyAddLink]:
     token = create_passkey_reset_token()
-    expires_at = set_passkey_reset(user, token, ttl=ttl)
+    link = set_passkey_reset(user, token, ttl=ttl)
+    db.add(link)
     await db.commit()
-    return token, expires_at
+    await db.refresh(link)
+    return token, link
 
 
 def build_passkey_add_link(base_url: str, token: str) -> str:
@@ -58,9 +64,28 @@ def build_passkey_add_link(base_url: str, token: str) -> str:
     return f"{normalized_base_url}/passkey-add/{token}"
 
 
-def clear_passkey_reset(user: User) -> None:
-    user.passkey_reset_token_hash = None
-    user.passkey_reset_expires_at = None
+def clear_passkey_reset(link: PasskeyAddLink) -> None:
+    link.used_at = datetime.now(UTC)
+
+
+async def get_passkey_add_link_for_token(
+    db: AsyncSession,
+    token: str,
+    *,
+    with_passkeys: bool = False,
+) -> PasskeyAddLink | None:
+    query = select(PasskeyAddLink).where(
+        PasskeyAddLink.token_hash == hash_passkey_reset_token(token)
+    )
+    if with_passkeys:
+        query = query.options(selectinload(PasskeyAddLink.user).selectinload(User.passkeys))
+    else:
+        query = query.options(selectinload(PasskeyAddLink.user))
+    result = await db.execute(query)
+    link = result.scalar_one_or_none()
+    if link is None or not passkey_reset_is_active(link):
+        return None
+    return link
 
 
 async def get_user_for_passkey_reset_token(
@@ -69,11 +94,11 @@ async def get_user_for_passkey_reset_token(
     *,
     with_passkeys: bool = False,
 ) -> User | None:
-    query = select(User).where(User.passkey_reset_token_hash == hash_passkey_reset_token(token))
-    if with_passkeys:
-        query = query.options(selectinload(User.passkeys))
-    result = await db.execute(query)
-    user = result.scalar_one_or_none()
-    if user is None or not passkey_reset_is_active(user):
+    link = await get_passkey_add_link_for_token(
+        db,
+        token,
+        with_passkeys=with_passkeys,
+    )
+    if link is None:
         return None
-    return user
+    return link.user

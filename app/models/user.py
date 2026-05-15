@@ -34,3 +34,9 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    passkey_add_links = relationship(
+        "PasskeyAddLink",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="PasskeyAddLink.created_at",
+    )

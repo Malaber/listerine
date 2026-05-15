@@ -55,6 +55,11 @@
         {{ request.query_params.get("passkey_add_error") }}
       </div>
       {% endif %}
+      {% if request.query_params.get("passkey_add_notice") %}
+      <div class="alert alert-success mt-3 mb-3" role="alert">
+        {{ request.query_params.get("passkey_add_notice") }}
+      </div>
+      {% endif %}
       <form action="{{ url_for('admin:view-user-generate_passkey_add_link', pk=obj.id) }}" method="POST">
         <div class="row align-items-end">
           <div class="col-sm-4 col-lg-3">
@@ -76,47 +81,91 @@
           </div>
         </div>
       </form>
-      <h4 class="mt-4 mb-2">Valid links</h4>
       {% if request.query_params.get("passkey_add_link") %}
       <div class="alert alert-success mt-3 mb-3" role="alert">
-        Add-passkey link ready for <strong>{{ request.query_params.get("passkey_add_email") or obj.email }}</strong>.
+        Add-passkey link
+        {{ request.query_params.get("passkey_add_identifier") }}
+        ready for <strong>{{ request.query_params.get("passkey_add_email") or obj.email }}</strong>.
         Valid for {{ request.query_params.get("passkey_add_valid_for_hours") }} hours.
       </div>
+      <div class="mb-3">
+        <label class="form-label" for="passkey-add-link">New add-passkey link</label>
+        <input
+          id="passkey-add-link"
+          class="form-control"
+          type="text"
+          value="{{ request.query_params.get('passkey_add_link') }}"
+          readonly
+          onclick="this.select()"
+        />
+      </div>
+      {% endif %}
+      <h4 class="mt-4 mb-2">Valid links</h4>
       <div class="table-responsive">
         <table class="table table-vcenter">
           <thead>
             <tr>
-              <th>Link</th>
+              <th>Identifier</th>
               <th>Valid until</th>
+              <th>Valid for hours</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
+            {% set valid_links = namespace(found=false) %}
+            {% for link in obj.passkey_add_links %}
+            {% if link.is_active() %}
+            {% set valid_links.found = true %}
             <tr>
               <td>
-                <label class="form-label visually-hidden" for="passkey-add-link">Add-passkey link</label>
-                <input
-                  id="passkey-add-link"
-                  class="form-control"
-                  type="text"
-                  value="{{ request.query_params.get('passkey_add_link') }}"
-                  readonly
-                  onclick="this.select()"
-                />
+                {{ link.short_id }}
               </td>
               <td>
-                {{ request.query_params.get("passkey_add_expires_at") | replace("T", " ") }}
+                {{ link.expires_at.isoformat() | replace("T", " ") }}
+              </td>
+              <td>
+                <form
+                  id="passkey-add-link-duration-form-{{ link.id }}"
+                  action="{{ url_for('admin:view-user-update_passkey_add_link_duration', pk=obj.id, link_id=link.id) }}"
+                  method="POST"
+                >
+                  <label class="form-label visually-hidden" for="passkey-add-link-duration-{{ link.id }}">
+                    Valid for hours for link {{ link.short_id }}
+                  </label>
+                  <input
+                    id="passkey-add-link-duration-{{ link.id }}"
+                    name="valid_for_hours"
+                    data-passkey-link-duration
+                    class="form-control"
+                    type="number"
+                    min="1"
+                    max="720"
+                    step="1"
+                    value="{{ link.remaining_hours }}"
+                    required
+                  />
+                </form>
+              </td>
+              <td>
+                <button
+                  type="submit"
+                  class="btn"
+                  form="passkey-add-link-duration-form-{{ link.id }}"
+                >
+                  Update duration
+                </button>
               </td>
             </tr>
+            {% endif %}
+            {% endfor %}
+            {% if not valid_links.found %}
+            <tr>
+              <td colspan="4" class="text-muted">No valid add-passkey links.</td>
+            </tr>
+            {% endif %}
           </tbody>
         </table>
       </div>
-      {% elif obj.passkey_reset_token_hash %}
-      <div class="alert alert-info mt-3 mb-0" role="alert">
-        This user has an existing add-passkey link. Generate a new link to reveal a copyable URL.
-      </div>
-      {% else %}
-      <p class="text-muted mb-0">No generated add-passkey link is visible.</p>
-      {% endif %}
     </div>
   </div>
 </div>

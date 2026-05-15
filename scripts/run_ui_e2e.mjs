@@ -742,6 +742,15 @@ async function runAdminPasskeyAddLinkFlow(page, seed, rpId) {
       `Expected generated admin link to use /passkey-add/, got ${generatedLink}`,
     );
 
+    logStep("Updating the generated add-passkey link duration from the valid links table");
+    await adminPage.locator("[data-passkey-link-duration]").first().fill("72");
+    await adminPage.getByRole("button", { name: "Update duration" }).first().click();
+    await adminPage.waitForURL(/passkey_add_notice=/);
+    await expectVisible(
+      adminPage.locator("text=duration updated to 72 hours."),
+      "Expected generated admin link duration update confirmation",
+    );
+
     const recipientPage = await recipientContext.newPage();
     const recipientAuthenticator = await createVirtualAuthenticator(recipientPage);
 
