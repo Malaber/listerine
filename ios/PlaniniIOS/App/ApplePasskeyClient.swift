@@ -21,12 +21,14 @@ struct ApplePasskeyClient {
         }
 
         let userName = (user["name"] as? String) ?? (user["displayName"] as? String) ?? "Planini"
+        #if DEBUG
         logPasskeyRequest(
             operation: "registration",
             relyingPartyIdentifier: relyingPartyIdentifier,
             publicKey: publicKey,
             allowedCredentialCount: 0
         )
+        #endif
         let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: relyingPartyIdentifier)
         let request = provider.createCredentialRegistrationRequest(
             challenge: challenge,
@@ -64,12 +66,14 @@ struct ApplePasskeyClient {
         }
 
         let allowCredentials = publicKey["allowCredentials"] as? [[String: Any]]
+        #if DEBUG
         logPasskeyRequest(
             operation: "assertion",
             relyingPartyIdentifier: relyingPartyIdentifier,
             publicKey: publicKey,
             allowedCredentialCount: allowCredentials?.count ?? 0
         )
+        #endif
         let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: relyingPartyIdentifier)
         let request = provider.createCredentialAssertionRequest(challenge: challenge)
 
@@ -104,6 +108,7 @@ struct ApplePasskeyClient {
     }
 }
 
+#if DEBUG
 private func logPasskeyRequest(
     operation: String,
     relyingPartyIdentifier: String,
@@ -117,6 +122,7 @@ private func logPasskeyRequest(
         "Starting passkey \(operation, privacy: .public). rpID=\(relyingPartyIdentifier, privacy: .public) bundleID=\(bundleID, privacy: .public) challengeLength=\(challengeText.count) allowCredentials=\(allowedCredentialCount) userVerification=\(userVerification, privacy: .public)"
     )
 }
+#endif
 
 private final class PasskeyCoordinator: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
     private var continuation: CheckedContinuation<ASAuthorization, Error>?
@@ -124,9 +130,11 @@ private final class PasskeyCoordinator: NSObject, ASAuthorizationControllerDeleg
     func perform(request: ASAuthorizationRequest) async throws -> ASAuthorization {
         try await withCheckedThrowingContinuation { continuation in
             self.continuation = continuation
+            #if DEBUG
             passkeyLog.debug(
                 "Performing ASAuthorizationController request type=\(String(describing: type(of: request)), privacy: .public)"
             )
+            #endif
             let controller = ASAuthorizationController(authorizationRequests: [request])
             controller.delegate = self
             controller.presentationContextProvider = self
@@ -135,18 +143,22 @@ private final class PasskeyCoordinator: NSObject, ASAuthorizationControllerDeleg
     }
 
     func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
+        #if DEBUG
         passkeyLog.notice(
             "ASAuthorizationController completed. credentialType=\(String(describing: type(of: authorization.credential)), privacy: .public)"
         )
+        #endif
         continuation?.resume(returning: authorization)
         continuation = nil
     }
 
     func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
+        #if DEBUG
         let nsError = error as NSError
         passkeyLog.error(
             "ASAuthorizationController failed. type=\(String(describing: type(of: error)), privacy: .public) domain=\(nsError.domain, privacy: .public) code=\(nsError.code) description=\(nsError.localizedDescription, privacy: .public) userInfo=\(String(describing: nsError.userInfo), privacy: .public)"
         )
+        #endif
         continuation?.resume(throwing: error)
         continuation = nil
     }

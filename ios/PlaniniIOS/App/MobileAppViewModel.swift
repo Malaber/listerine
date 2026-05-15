@@ -255,12 +255,14 @@ final class MobileAppViewModel: ObservableObject {
                 token: nil
             )
             let relyingPartyIdentifier = rpID(from: options) ?? backendURL.host ?? ""
+            #if DEBUG
             logPasskeyOptions(
                 context: "add-passkey",
                 backendURL: backendURL,
                 optionsPayload: options,
                 relyingPartyIdentifier: relyingPartyIdentifier
             )
+            #endif
             let credential = try await passkeyClient.register(
                 optionsPayload: options,
                 relyingPartyIdentifier: relyingPartyIdentifier
@@ -279,10 +281,12 @@ final class MobileAppViewModel: ObservableObject {
             reviewerOnboardingMessage = nil
             return true
         } catch {
+            #if DEBUG
             let nsErr = error as NSError
             netLog.error(
                 "Add passkey failed. type=\(String(describing: type(of: error)), privacy: .public) domain=\(nsErr.domain, privacy: .public) code=\(nsErr.code) description=\(nsErr.localizedDescription, privacy: .public) userInfo=\(String(describing: nsErr.userInfo), privacy: .public)"
             )
+            #endif
             reviewerOnboardingMessage = nil
             errorMessage = (error as NSError).localizedDescription
             return false
@@ -319,12 +323,14 @@ final class MobileAppViewModel: ObservableObject {
                 token: nil
             )
             let relyingPartyIdentifier = rpID(from: options) ?? backendURL.host ?? ""
+            #if DEBUG
             logPasskeyOptions(
                 context: "register",
                 backendURL: backendURL,
                 optionsPayload: options,
                 relyingPartyIdentifier: relyingPartyIdentifier
             )
+            #endif
             let credential = try await passkeyClient.register(
                 optionsPayload: options,
                 relyingPartyIdentifier: relyingPartyIdentifier
@@ -343,10 +349,12 @@ final class MobileAppViewModel: ObservableObject {
             reviewerOnboardingMessage = nil
             return true
         } catch {
+            #if DEBUG
             let nsErr = error as NSError
             netLog.error(
                 "Register account failed. type=\(String(describing: type(of: error)), privacy: .public) domain=\(nsErr.domain, privacy: .public) code=\(nsErr.code) description=\(nsErr.localizedDescription, privacy: .public) userInfo=\(String(describing: nsErr.userInfo), privacy: .public)"
             )
+            #endif
             reviewerOnboardingMessage = nil
             errorMessage = (error as NSError).localizedDescription
             return false
@@ -363,6 +371,7 @@ final class MobileAppViewModel: ObservableObject {
             token: nil
         )
         let relyingPartyIdentifier = rpID(from: options) ?? backendURL.host ?? ""
+        #if DEBUG
         logPasskeyOptions(
             context: "login",
             backendURL: backendURL,
@@ -370,6 +379,7 @@ final class MobileAppViewModel: ObservableObject {
             relyingPartyIdentifier: relyingPartyIdentifier
         )
         await logAssociatedDomainProbe(domain: relyingPartyIdentifier)
+        #endif
         let credential = try await passkeyClient.authenticate(
             optionsPayload: options,
             relyingPartyIdentifier: relyingPartyIdentifier
@@ -849,6 +859,7 @@ final class MobileAppViewModel: ObservableObject {
         return publicKey["rpId"] as? String
     }
 
+    #if DEBUG
     private func logPasskeyOptions(
         context: String,
         backendURL: URL,
@@ -894,6 +905,7 @@ final class MobileAppViewModel: ObservableObject {
             }
         }
     }
+    #endif
 
     private func ensureBackendReady(backendURL: URL) async throws {
         let data = try await requestData(
