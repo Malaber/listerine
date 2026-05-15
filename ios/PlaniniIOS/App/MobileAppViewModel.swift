@@ -255,6 +255,12 @@ final class MobileAppViewModel: ObservableObject {
                 token: nil
             )
             let relyingPartyIdentifier = rpID(from: options) ?? backendURL.host ?? ""
+            logPasskeyOptions(
+                context: "add-passkey",
+                backendURL: backendURL,
+                optionsPayload: options,
+                relyingPartyIdentifier: relyingPartyIdentifier
+            )
             let credential = try await passkeyClient.register(
                 optionsPayload: options,
                 relyingPartyIdentifier: relyingPartyIdentifier
@@ -273,6 +279,10 @@ final class MobileAppViewModel: ObservableObject {
             reviewerOnboardingMessage = nil
             return true
         } catch {
+            let nsErr = error as NSError
+            netLog.error(
+                "Add passkey failed. type=\(String(describing: type(of: error)), privacy: .public) domain=\(nsErr.domain, privacy: .public) code=\(nsErr.code) description=\(nsErr.localizedDescription, privacy: .public) userInfo=\(String(describing: nsErr.userInfo), privacy: .public)"
+            )
             reviewerOnboardingMessage = nil
             errorMessage = (error as NSError).localizedDescription
             return false
@@ -309,6 +319,12 @@ final class MobileAppViewModel: ObservableObject {
                 token: nil
             )
             let relyingPartyIdentifier = rpID(from: options) ?? backendURL.host ?? ""
+            logPasskeyOptions(
+                context: "register",
+                backendURL: backendURL,
+                optionsPayload: options,
+                relyingPartyIdentifier: relyingPartyIdentifier
+            )
             let credential = try await passkeyClient.register(
                 optionsPayload: options,
                 relyingPartyIdentifier: relyingPartyIdentifier
@@ -327,6 +343,10 @@ final class MobileAppViewModel: ObservableObject {
             reviewerOnboardingMessage = nil
             return true
         } catch {
+            let nsErr = error as NSError
+            netLog.error(
+                "Register account failed. type=\(String(describing: type(of: error)), privacy: .public) domain=\(nsErr.domain, privacy: .public) code=\(nsErr.code) description=\(nsErr.localizedDescription, privacy: .public) userInfo=\(String(describing: nsErr.userInfo), privacy: .public)"
+            )
             reviewerOnboardingMessage = nil
             errorMessage = (error as NSError).localizedDescription
             return false
@@ -343,6 +363,12 @@ final class MobileAppViewModel: ObservableObject {
             token: nil
         )
         let relyingPartyIdentifier = rpID(from: options) ?? backendURL.host ?? ""
+        logPasskeyOptions(
+            context: "login",
+            backendURL: backendURL,
+            optionsPayload: options,
+            relyingPartyIdentifier: relyingPartyIdentifier
+        )
         let credential = try await passkeyClient.authenticate(
             optionsPayload: options,
             relyingPartyIdentifier: relyingPartyIdentifier
@@ -820,6 +846,22 @@ final class MobileAppViewModel: ObservableObject {
     private func rpID(from optionsPayload: [String: Any]) -> String? {
         let publicKey = (optionsPayload["publicKey"] as? [String: Any]) ?? optionsPayload
         return publicKey["rpId"] as? String
+    }
+
+    private func logPasskeyOptions(
+        context: String,
+        backendURL: URL,
+        optionsPayload: [String: Any],
+        relyingPartyIdentifier: String
+    ) {
+        let publicKey = (optionsPayload["publicKey"] as? [String: Any]) ?? optionsPayload
+        let optionRPID = publicKey["rpId"] as? String ?? "<missing>"
+        let challengeText = publicKey["challenge"] as? String ?? "<missing>"
+        let allowCredentialCount = (publicKey["allowCredentials"] as? [[String: Any]])?.count ?? 0
+        let userVerification = publicKey["userVerification"] as? String ?? "<missing>"
+        netLog.notice(
+            "Passkey options \(context, privacy: .public). backend=\(backendURL.absoluteString, privacy: .public) backendHost=\(backendURL.host ?? "<missing>", privacy: .public) optionRPID=\(optionRPID, privacy: .public) chosenRPID=\(relyingPartyIdentifier, privacy: .public) challengeLength=\(challengeText.count) allowCredentials=\(allowCredentialCount) userVerification=\(userVerification, privacy: .public)"
+        )
     }
 
     private func ensureBackendReady(backendURL: URL) async throws {
