@@ -969,6 +969,14 @@ def test_check_ios_ui_e2e_starts_waits_runs_and_stops(monkeypatch) -> None:
     ]
 
 
+def test_check_ios_ci_runs_only_mac_native_e2e_prerequisites() -> None:
+    assert [pre.body.__name__ for pre in tasks.check_ios_ci.pre] == [
+        "install_xcodegen",
+        "check_ios_e2e",
+        "check_ios_ui_e2e",
+    ]
+
+
 def test_install_deps_runs_python_and_js_bootstrap(monkeypatch) -> None:
     calls: list[tuple[str, object]] = []
 

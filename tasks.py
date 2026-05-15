@@ -1784,18 +1784,15 @@ def check_ios_ui_e2e(
 @task(
     pre=[
         install_xcodegen,
-        check_ios_package,
         check_ios_e2e,
-        generate_ios_project,
-        build_ios_simulator,
         check_ios_ui_e2e,
     ]
 )
 def check_ios_ci(c) -> None:
-    """Run the full native iOS CI flow.
+    """Run the native iOS e2e CI flow.
 
-    This includes package checks, live backend e2e, simulator UI e2e,
-    project generation, and simulator build.
+    Swift package coverage runs in the separate Linux Swift CI job. The UI e2e
+    task generates the Xcode project and xcodebuild test builds the simulator app.
     """
 
 

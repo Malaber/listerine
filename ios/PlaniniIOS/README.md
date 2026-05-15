@@ -222,8 +222,12 @@ for only the individual `pr-<PR>` app host to serve the AASA response.
 
 Two workflows now automate most of the iOS delivery path:
 
-- `.github/workflows/ci.yml` runs the Linux Swift package tests in parallel with the Python checks.
+- `.github/workflows/ci.yml` runs Swift package tests on Linux, and runs native iOS e2e/UI e2e on GitHub-hosted macOS runners.
 - `.github/workflows/ios-build-and-testflight.yml` bootstraps the backend dependencies on GitHub-hosted macOS runners, runs `inv check-ios-ci`, and optionally archives/exports/uploads a signed build to TestFlight.
+
+`inv check-ios-ci` is intentionally limited to the native iOS e2e checks that need macOS.
+Swift package coverage stays in the Linux Swift job, and the UI e2e task performs the required
+Xcode project generation and simulator app build as part of `xcodebuild test`.
 
 ### Secrets needed for TestFlight uploads
 
