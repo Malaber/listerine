@@ -49,6 +49,14 @@
     {
       "idiom": "watch",
       "scale": "2x",
+      "size": "50x50",
+      "role": "longLook",
+      "subtype": "44mm",
+      "filename": "Icon-50@2x.png"
+    },
+    {
+      "idiom": "watch",
+      "scale": "2x",
       "size": "86x86",
       "role": "quickLook",
       "subtype": "38mm",
