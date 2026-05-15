@@ -42,17 +42,17 @@
       "idiom": "watch",
       "scale": "2x",
       "size": "44x44",
-      "role": "longLook",
-      "subtype": "42mm",
+      "role": "appLauncher",
+      "subtype": "40mm",
       "filename": "Icon-44@2x.png"
     },
     {
       "idiom": "watch",
       "scale": "2x",
       "size": "50x50",
-      "role": "longLook",
+      "role": "appLauncher",
       "subtype": "44mm",
-      "filename": "Icon-50@2x.png"
+      "filename": "Icon-50x50@2x.png"
     },
     {
       "idiom": "watch",

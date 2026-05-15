@@ -96,7 +96,7 @@ IOS_WATCH_APP_ICON_FILES = {
     "Icon-29@3x.png": 87,
     "Icon-40@2x.png": 80,
     "Icon-44@2x.png": 88,
-    "Icon-50@2x.png": 100,
+    "Icon-50x50@2x.png": 100,
     "Icon-86@2x.png": 172,
     "Icon-98@2x.png": 196,
     "Icon-108@2x.png": 216,
