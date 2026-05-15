@@ -1515,7 +1515,7 @@ def run_ios_ui_e2e(
     initial_list_name=DEFAULT_IOS_UI_E2E_INITIAL_LIST,
     access_token="",
     display_name="",
-    attempts=3,
+    attempts=1,
 ) -> None:
     artifact_path = ROOT / artifact_dir
     artifact_path.mkdir(parents=True, exist_ok=True)

@@ -800,7 +800,11 @@ def test_run_ios_ui_e2e_retries_once_before_succeeding(monkeypatch, tmp_path: Pa
     monkeypatch.setattr(tasks, "_ios_ui_test_env", lambda **kwargs: {})
     monkeypatch.setattr(tasks, "_write_ios_ui_e2e_summary", lambda artifact_dir: None)
 
-    tasks.run_ios_ui_e2e.body(Context(), artifact_dir="e2e-artifacts/ios-ui-e2e")
+    tasks.run_ios_ui_e2e.body(
+        Context(),
+        artifact_dir="e2e-artifacts/ios-ui-e2e",
+        attempts=2,
+    )
 
     assert len(calls) == 2
     assert capsys.readouterr().out.count("Retrying iOS UI e2e after xcodebuild failure") == 1
@@ -830,7 +834,7 @@ def test_run_ios_ui_e2e_prints_failure_summary_before_exiting(
         raise AssertionError("expected run_ios_ui_e2e to fail")
 
     captured = capsys.readouterr()
-    assert captured.out.count("Retrying iOS UI e2e after xcodebuild failure") == 2
+    assert "Retrying iOS UI e2e after xcodebuild failure" not in captured.out
     assert "iOS UI e2e failure summary:" in captured.out
     assert "testListViewFlow() [Failure]: Timed out waiting for response" in captured.out
 
