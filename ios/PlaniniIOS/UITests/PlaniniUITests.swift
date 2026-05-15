@@ -10,6 +10,14 @@ final class PlaniniUITests: XCTestCase {
 
     func testListViewFlow() throws {
         try assertLocalTestBackend()
+        let loginApp = XCUIApplication()
+        loginApp.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
+        loginApp.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
+        loginApp.launch()
+        XCTAssertTrue(loginApp.buttons["login-passkey-button"].waitForExistence(timeout: 10))
+        captureScreenshot(named: "promotion-login-dialogue")
+        loginApp.terminate()
+
         let session = if
             let accessToken = ProcessInfo.processInfo.environment["PLANINI_UI_TEST_ACCESS_TOKEN"],
             let displayName = ProcessInfo.processInfo.environment["PLANINI_UI_TEST_DISPLAY_NAME"],
@@ -33,6 +41,7 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(listTitle.waitForExistence(timeout: 10))
         app.tabBars.buttons["Lists"].tap()
         XCTAssertTrue(app.navigationBars["Lists"].waitForExistence(timeout: 5))
+        captureScreenshot(named: "promotion-list-of-lists")
         app.buttons["list-row-\(initialListName)"].tap()
         XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
         XCTAssertEqual(listTitle.label, initialListName)
@@ -75,6 +84,7 @@ final class PlaniniUITests: XCTestCase {
 
         app.staticTexts[itemName].tap()
         XCTAssertTrue(app.otherElements["edit-item-sheet"].waitForExistence(timeout: 3))
+        captureScreenshot(named: "promotion-edit-item-dialogue")
 
         let editNameField = app.textFields["edit-item-name-field"]
         editNameField.tap()
@@ -90,7 +100,9 @@ final class PlaniniUITests: XCTestCase {
                 accessToken: session.accessToken
             )
         )
+        scrollToElement(app.staticTexts[updatedName], in: app)
         captureScreenshot(named: "ios-ui-checked-item")
+        captureScreenshot(named: "promotion-filled-list")
 
         app.tabBars.buttons["Lists"].tap()
         returnToListsRootIfNeeded(app)
@@ -247,6 +259,15 @@ final class PlaniniUITests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
         return element.exists == false
+    }
+
+    private func scrollToElement(_ element: XCUIElement, in app: XCUIApplication, maxSwipes: Int = 10) {
+        for _ in 0..<maxSwipes {
+            if element.exists && element.isHittable {
+                return
+            }
+            app.swipeUp()
+        }
     }
 
     private func fetchItems(inListNamed listName: String, accessToken: String) throws -> [UITestItem] {
@@ -430,13 +451,25 @@ final class PlaniniUITests: XCTestCase {
         attachment.lifetime = .keepAlways
         add(attachment)
 
-        guard let artifactDirectory = ProcessInfo.processInfo.environment["PLANINI_UI_TEST_ARTIFACT_DIR"] else {
-            return
-        }
-        let directoryURL = URL(fileURLWithPath: artifactDirectory, isDirectory: true)
+        let directoryURL = screenshotArtifactDirectory()
         try? FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
         let fileURL = directoryURL.appending(path: "\(name).png")
         try? screenshot.pngRepresentation.write(to: fileURL)
+    }
+
+    private func screenshotArtifactDirectory() -> URL {
+        if let artifactDirectory = ProcessInfo.processInfo.environment["PLANINI_UI_TEST_ARTIFACT_DIR"],
+            artifactDirectory.isEmpty == false
+        {
+            return URL(fileURLWithPath: artifactDirectory, isDirectory: true)
+        }
+
+        return URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appending(path: "e2e-artifacts/ios-ui-e2e", directoryHint: .isDirectory)
     }
 
 }
