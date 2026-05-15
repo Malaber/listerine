@@ -1,7 +1,7 @@
 import asyncio
 import hashlib
 from html import unescape
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
 from uuid import UUID, uuid4
@@ -15,6 +15,7 @@ from app.api.v1.routes.auth import _expected_origins
 from app.core.database import AsyncSessionLocal
 from app.core.security import create_access_token
 from app.models import AuthSession, HouseholdInvite, HouseholdMember, Passkey, User
+from app.schemas.auth import PasskeyOut
 
 REGISTERED_CREDENTIAL_ID = bytes_to_base64url(b"credential-id")
 SECOND_CREDENTIAL_ID = bytes_to_base64url(b"second-credential-id")
@@ -57,6 +58,21 @@ async def _delete_user(user_id: UUID) -> None:
         user = await session.get(User, user_id)
         assert user is not None
         await session.delete(user)
+        await session.commit()
+
+
+async def _set_passkey_timestamps(
+    user_id: UUID,
+    *,
+    created_at: datetime,
+    last_used_at: datetime | None,
+) -> None:
+    async with AsyncSessionLocal() as session:
+        passkey = (
+            await session.execute(select(Passkey).where(Passkey.user_id == user_id))
+        ).scalar_one()
+        passkey.created_at = created_at
+        passkey.last_used_at = last_used_at
         await session.commit()
 
 
@@ -2090,6 +2106,36 @@ def test_user_can_add_multiple_passkeys_and_delete_one_after_confirming_another(
         f"/api/v1/auth/passkeys/{final_passkeys.json()[0]['id']}/delete/options"
     )
     assert cannot_delete_last.status_code == 400
+
+
+def test_passkey_listing_serializes_naive_database_timestamps_as_utc(client) -> None:
+    user_id = asyncio.run(_create_user(f"{uuid4()}@example.com"))
+    asyncio.run(
+        _set_passkey_timestamps(
+            user_id,
+            created_at=datetime(2026, 3, 18, 19, 9, tzinfo=UTC),
+            last_used_at=datetime(2026, 5, 12, 20, 13),
+        )
+    )
+    headers = {"Authorization": f"Bearer {create_access_token(user_id)}"}
+
+    response = client.get("/api/v1/auth/passkeys", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()[0]["created_at"] == "2026-03-18T19:09:00Z"
+    assert response.json()[0]["last_used_at"] == "2026-05-12T20:13:00Z"
+
+
+def test_passkey_schema_serializes_aware_timestamps_as_utc() -> None:
+    payload = PasskeyOut(
+        id=uuid4(),
+        name="Phone",
+        created_at=datetime(2026, 5, 12, 22, 13, tzinfo=timezone(timedelta(hours=2))),
+        last_used_at=None,
+    ).model_dump(mode="json")
+
+    assert payload["created_at"] == "2026-05-12T20:13:00Z"
+    assert payload["last_used_at"] is None
 
 
 def test_passkey_management_error_paths(client, monkeypatch) -> None:

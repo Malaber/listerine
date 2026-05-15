@@ -8,6 +8,8 @@ const artifactDir = process.env.PREVIEW_ARTIFACT_DIR ?? "e2e-artifacts/ui-e2e";
 const videoDir = path.join(artifactDir, "videos");
 const seedPath = process.env.E2E_SEED_PATH ?? "app/fixtures/review_seed_e2e.json";
 const deviceName = process.env.E2E_DEVICE ?? "desktop";
+const browserLocale = process.env.E2E_LOCALE ?? "en-US";
+const browserTimeZone = process.env.E2E_TIMEZONE ?? "Europe/Berlin";
 const knownDevices = new Map([["iphone", "iPhone 13"]]);
 const staleBlueAccentTokens = [
   "20, 42, 87",
@@ -46,6 +48,8 @@ function contextOptions() {
   if (!preset) {
     return {
       viewport: { width: 1440, height: 1200 },
+      locale: browserLocale,
+      timezoneId: browserTimeZone,
       recordVideo: {
         dir: videoDir,
         size: { width: 1440, height: 1200 },
@@ -57,6 +61,8 @@ function contextOptions() {
   assert(device, `Unknown Playwright device preset ${preset}`);
   return {
     ...device,
+    locale: browserLocale,
+    timezoneId: browserTimeZone,
     recordVideo: {
       dir: videoDir,
       size: device.viewport,
@@ -419,6 +425,26 @@ async function passkeysFromSession(requestContext) {
   return apiJson(requestContext, "/api/v1/auth/passkeys");
 }
 
+function normalizeText(value) {
+  return value.replace(/\s+/gu, " ").trim();
+}
+
+function assertTimestampIncludesOffset(value, label) {
+  assert.equal(typeof value, "string", `${label} should be a timestamp string`);
+  assert(
+    /(?:Z|[+-]\d{2}:\d{2})$/.test(value),
+    `${label} should include a UTC offset so browsers can convert it to local time; got ${value}`,
+  );
+}
+
+function localizedBrowserDate(value, locale) {
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: browserTimeZone,
+  }).format(new Date(value));
+}
+
 async function openSettingsPage(page) {
   await page.getByRole("link", { name: "Settings" }).click();
   await page.waitForURL(/\/settings(\?|$)/);
@@ -442,6 +468,23 @@ async function runPasskeyManagementFlow(page, context, owner, rpId, authenticato
   await expectVisible(
     page.locator(".passkey-row").first(),
     "Expected seeded passkey row in settings",
+  );
+  const originalPasskey = originalPasskeys[0];
+  assertTimestampIncludesOffset(originalPasskey.created_at, "Passkey created_at");
+  assertTimestampIncludesOffset(originalPasskey.last_used_at, "Passkey last_used_at");
+  const locale = await page.evaluate(
+    () => window.__appI18n?.locale || document.documentElement.lang || "en",
+  );
+  const expectedCreatedAt = localizedBrowserDate(originalPasskey.created_at, locale);
+  const expectedLastUsedAt = localizedBrowserDate(originalPasskey.last_used_at, locale);
+  const originalPasskeyRowText = normalizeText(await page.locator(".passkey-row").first().innerText());
+  assert(
+    originalPasskeyRowText.includes(normalizeText(expectedCreatedAt)),
+    `Expected passkey created timestamp ${expectedCreatedAt} in local timezone; got ${originalPasskeyRowText}`,
+  );
+  assert(
+    originalPasskeyRowText.includes(normalizeText(expectedLastUsedAt)),
+    `Expected passkey last-used timestamp ${expectedLastUsedAt} in local timezone; got ${originalPasskeyRowText}`,
   );
 
   const seededCredential = (await authenticatorCredentials(authenticator))[0];
