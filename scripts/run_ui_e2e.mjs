@@ -734,18 +734,20 @@ async function scenarioFromSeed(seed, requestContext) {
   assert(groceryList, `Expected seeded list ${seed.e2e.primary_list}`);
   const checkedStressList = lists.find((entry) => entry.name === seed.e2e.checked_stress_list);
   assert(checkedStressList, `Expected seeded list ${seed.e2e.checked_stress_list}`);
-  const moveTargetList = lists.find(
+  const alternateList = lists.find(
     (entry) => entry.id !== groceryList.id && entry.id !== checkedStressList.id,
   );
-  assert(moveTargetList, "Expected another seeded list for item move coverage");
+  assert(alternateList, "Expected another seeded list for quick switching and item move coverage");
   return {
     checkedStressListId: checkedStressList.id,
     householdId: household.id,
     householdName: household.name,
     listId: groceryList.id,
     listName: groceryList.name,
-    moveTargetListId: moveTargetList.id,
-    moveTargetListName: moveTargetList.name,
+    moveTargetListId: alternateList.id,
+    moveTargetListName: alternateList.name,
+    quickSwitchListId: alternateList.id,
+    quickSwitchListName: alternateList.name,
   };
 }
 
@@ -958,6 +960,70 @@ async function runCheckedStressListFlow(page, stressListUrl) {
   await expectCheckedCardCount(checkedGroup, 258);
   assert.equal(await headingMeta.textContent(), "258 items");
   assert.equal(await checkedGroup.locator(".checked-items-load-more").count(), 0);
+}
+
+async function runListQuickSwitchFlow(page, scenario, primaryListUrl) {
+  logStep("Checking list quick switch control");
+  const switcher = page.locator("[data-list-switcher]");
+  await expectVisible(switcher, "Expected quick switch control when household has multiple lists");
+  await expectVisible(page.getByRole("link", { name: "All lists" }), "Expected clear dashboard link label");
+
+  const headerLayout = await page.evaluate(() => {
+    const kicker = document.querySelector(".list-kicker-row .dashboard-kicker");
+    const actions = document.querySelector(".list-kicker-row .list-hero-actions");
+    const titleRow = document.querySelector(".list-title-row");
+    const focusCard = document.querySelector(".list-focus-card");
+    if (
+      !(kicker instanceof HTMLElement) ||
+      !(actions instanceof HTMLElement) ||
+      !(titleRow instanceof HTMLElement) ||
+      !(focusCard instanceof HTMLElement)
+    ) {
+      throw new Error("Expected list kicker, header actions, title row, and focus card");
+    }
+
+    const kickerRect = kicker.getBoundingClientRect();
+    const actionsRect = actions.getBoundingClientRect();
+    const titleRect = titleRow.getBoundingClientRect();
+    const focusRect = focusCard.getBoundingClientRect();
+    return {
+      actionCenterOffset: Math.abs(
+        actionsRect.top + actionsRect.height / 2 - (kickerRect.top + kickerRect.height / 2),
+      ),
+      actionsBottom: actionsRect.bottom,
+      focusTop: focusRect.top,
+      titleBottom: titleRect.bottom,
+      titleTop: titleRect.top,
+    };
+  });
+  assert(
+    headerLayout.actionCenterOffset <= 22,
+    "Expected list settings and all-lists controls to stay inline with the shopping-list kicker",
+  );
+  assert(
+    headerLayout.actionsBottom <= headerLayout.titleTop,
+    "Expected list header controls to sit above the title switcher, not below the hero gap",
+  );
+  assert(
+    headerLayout.focusTop - headerLayout.titleBottom <= 80,
+    "Expected list content to sit directly below the title switcher without a mobile hero spacer",
+  );
+
+  const select = switcher.locator("[data-list-switcher-select]");
+  assert.equal(await select.inputValue(), scenario.listId);
+  await select.selectOption(scenario.quickSwitchListId);
+  await page.waitForURL(new URL(`/lists/${scenario.quickSwitchListId}`, baseUrl).toString());
+  await expectVisible(
+    page.locator("[data-list-title]", { hasText: scenario.quickSwitchListName }),
+    "Expected quick switch target list to load",
+  );
+
+  await page.locator("[data-list-switcher-select]").selectOption(scenario.listId);
+  await page.waitForURL(primaryListUrl);
+  await expectVisible(
+    page.locator("[data-list-title]", { hasText: scenario.listName }),
+    "Expected quick switch to return to the primary list",
+  );
 }
 
 async function runOfflineSyncFlow(page, requestContext, listId) {
@@ -1224,6 +1290,7 @@ async function main() {
     await expectVisible(page.locator(".item-card", { hasText: "Spaghetti" }), "Expected seeded items to load");
     await assertSeedMainCategoryColors(page);
     await assertBrownWhiteAccentChrome(page);
+    await runListQuickSwitchFlow(page, scenario, listUrl);
 
     if (deviceName === "desktop") {
       await page.keyboard.press("Enter");

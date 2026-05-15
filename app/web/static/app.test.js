@@ -17,15 +17,18 @@ import {
   isDemoList,
   languagePreferenceLabel,
   loadListDetail,
+  loadListSwitchTargets,
   loadMoreCheckedItems,
   normalizeLanguagePreference,
   openItemPanelForCategory,
   registerServiceWorker,
+  bindListSwitcher,
   renderCategoryOrderSettings,
   renderHouseholds,
   renderPasskeys,
   renderItems,
   renderItemSuggestions,
+  renderListSwitcher,
   restoreCheckedSuggestion,
   restoreDeletedItem,
   restoreToggledItem,
@@ -335,7 +338,13 @@ test("setAuthTab ignores incomplete auth markup", () => {
 function createListRoot() {
   const dom = new JSDOM(`
     <section data-list-detail data-list-id="list-1">
-      <h1 data-list-title>Weekly</h1>
+      <h1 class="list-title-heading">
+        <span data-list-title>Weekly</span>
+        <span class="list-switcher" data-list-switcher hidden>
+          <label for="list-switcher-select">Switch list</label>
+          <select id="list-switcher-select" data-list-switcher-select></select>
+        </span>
+      </h1>
       <div data-list-error hidden></div>
       <div data-list-success hidden></div>
       <p data-list-sync-status></p>
@@ -562,7 +571,13 @@ function createDemoListRoot() {
           data-demo-sync-text="Interactive demo running locally."
           data-demo-payload='${JSON.stringify(demoPayload)}'
         >
-          <h1 data-list-title></h1>
+          <h1 class="list-title-heading">
+            <span data-list-title></span>
+            <span class="list-switcher" data-list-switcher hidden>
+              <label for="list-switcher-select">Switch list</label>
+              <select id="list-switcher-select" data-list-switcher-select></select>
+            </span>
+          </h1>
           <form data-list-name-form>
             <input data-list-name-input name="name" value="" />
             <button type="submit" data-list-name-submit>Save list name</button>
@@ -625,6 +640,123 @@ function createCheckedItem(index) {
     sort_order: index,
   };
 }
+
+test("list switcher renders household lists and navigates to a different list", () => {
+  const { document, root, window } = createListRoot();
+  const originals = {
+    HTMLElement: globalThis.HTMLElement,
+    HTMLSelectElement: globalThis.HTMLSelectElement,
+    __appNavigateTo: globalThis.__appNavigateTo,
+  };
+  const navigations = [];
+  setGlobalProperty("HTMLElement", window.HTMLElement);
+  setGlobalProperty("HTMLSelectElement", window.HTMLSelectElement);
+  setGlobalProperty("__appNavigateTo", (url) => {
+    navigations.push(url);
+  });
+
+  try {
+    renderListSwitcher(root, { id: "list-1", name: "Weekly" }, [
+      { id: "list-1", name: "Weekly", householdName: "Home" },
+      { id: "list-2", name: "Party", householdName: "Home" },
+      { id: "", name: "Broken" },
+      { id: "list-3", name: "" },
+      null,
+    ]);
+    const switcher = document.querySelector("[data-list-switcher]");
+    const select = document.querySelector("[data-list-switcher-select]");
+    assert.equal(switcher.hidden, false);
+    assert.equal(select.disabled, false);
+    assert.deepEqual(
+      [...select.options].map((option) => [option.value, option.textContent]),
+      [["list-1", "Weekly"], ["list-2", "Party"]],
+    );
+    assert.deepEqual(
+      [...select.querySelectorAll("optgroup")].map((group) => group.label),
+      ["Home"],
+    );
+    assert.equal(select.value, "list-1");
+    assert.equal(document.querySelector(".list-title-heading").classList.contains("has-switcher"), true);
+
+    bindListSwitcher(root);
+    select.value = "list-2";
+    select.dispatchEvent(new window.Event("change"));
+    select.value = "list-1";
+    select.dispatchEvent(new window.Event("change"));
+    select.value = "";
+    select.dispatchEvent(new window.Event("change"));
+    assert.deepEqual(navigations, ["/lists/list-2"]);
+
+    renderListSwitcher(root, null, [{ id: "list-1", name: "Weekly" }]);
+    assert.equal(switcher.hidden, true);
+    assert.equal(select.disabled, true);
+    assert.equal(select.options.length, 0);
+    assert.equal(document.querySelector(".list-title-heading").classList.contains("has-switcher"), false);
+    renderListSwitcher(root, null, null);
+    bindListSwitcher(document.createElement("section"));
+  } finally {
+    setGlobalProperty("HTMLElement", originals.HTMLElement);
+    setGlobalProperty("HTMLSelectElement", originals.HTMLSelectElement);
+    setGlobalProperty("__appNavigateTo", originals.__appNavigateTo);
+  }
+});
+
+test("loadListDetail hydrates the live list switcher", async () => {
+  const { document, root, window } = createListRoot();
+  const originalFetch = globalThis.fetch;
+  const originals = {
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    HTMLSelectElement: globalThis.HTMLSelectElement,
+  };
+  const calls = [];
+  setDomGlobals({ window });
+  setGlobalProperty("fetch", async (url) => {
+    calls.push(url);
+    const responses = {
+      "/api/v1/lists/list-1": { id: "list-1", household_id: "home-1", name: "Weekly" },
+      "/api/v1/lists/list-1/items/window": { checked_remaining_count: 0, items: [] },
+      "/api/v1/lists/list-1/categories": [],
+      "/api/v1/lists/list-1/category-order": [],
+      "/api/v1/lists/list-1/disabled-categories": { category_ids: [] },
+      "/api/v1/households": [{ id: "home-1", name: "Home" }],
+      "/api/v1/households/home-1/lists": [
+        { id: "list-1", household_id: "home-1", name: "Weekly" },
+        { id: "list-2", household_id: "home-1", name: "Party" },
+      ],
+    };
+    return {
+      ok: true,
+      status: 200,
+      json: async () => responses[url],
+    };
+  });
+
+  try {
+    await loadListDetail(root, {
+      categoryOrder: new Map(),
+      categories: new Map(),
+      checkedRemainingCount: 0,
+      items: new Map(),
+    });
+  } finally {
+    setGlobalProperty("fetch", originalFetch);
+    restoreDomGlobals(originals);
+  }
+
+  assert.deepEqual(calls, [
+    "/api/v1/lists/list-1",
+    "/api/v1/lists/list-1/items/window",
+    "/api/v1/lists/list-1/categories",
+    "/api/v1/lists/list-1/category-order",
+    "/api/v1/lists/list-1/disabled-categories",
+    "/api/v1/households",
+    "/api/v1/households/home-1/lists",
+  ]);
+  assert.equal(document.querySelector("[data-list-title]").textContent, "Weekly");
+  assert.equal(document.querySelector("[data-list-switcher]").hidden, false);
+  assert.equal(document.querySelector("[data-list-switcher-select]").value, "list-1");
+});
 
 test("renderItems only shows loaded checked items before loading more", () => {
   const { document, root } = createListRoot();
@@ -1941,6 +2073,7 @@ test("demo list helpers reuse the real list page with local data", async () => {
 
     await loadListDetail(root, state);
     assert.equal(document.querySelector("[data-list-title]").textContent, "Saturday Groceries");
+    assert.equal(document.querySelector("[data-list-switcher]").hidden, true);
     assert.equal(document.querySelectorAll(".item-card").length, 2);
 
     const createdItem = createDemoItem(state, { name: "Dishwasher tabs", category_id: "pantry" });

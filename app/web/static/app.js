@@ -1276,6 +1276,87 @@ function setListSyncStatus(root, message) {
   }
 }
 
+function renderListSwitcher(root, groceryList, householdLists) {
+  const switcher = root.querySelector("[data-list-switcher]");
+  const select = root.querySelector("[data-list-switcher-select]");
+  if (!(switcher instanceof HTMLElement) || !(select instanceof HTMLSelectElement)) {
+    return;
+  }
+
+  const currentListId = groceryList?.id || root.dataset.listId || "";
+  const lists = Array.isArray(householdLists)
+    ? householdLists.filter((list) => list?.id && list?.name)
+    : [];
+  const hasOtherLists = lists.some((list) => list.id !== currentListId);
+
+  select.innerHTML = "";
+  switcher.hidden = !hasOtherLists;
+  select.disabled = !hasOtherLists;
+  const titleHeading = switcher.closest(".list-title-heading");
+  if (titleHeading instanceof HTMLElement) {
+    titleHeading.classList.toggle("has-switcher", hasOtherLists);
+  }
+  if (!hasOtherLists) {
+    return;
+  }
+
+  const groupedLists = new Map();
+  lists.forEach((list) => {
+    const householdName = list.householdName || "";
+    const group = groupedLists.get(householdName) || [];
+    group.push(list);
+    groupedLists.set(householdName, group);
+  });
+
+  groupedLists.forEach((group, householdName) => {
+    const parent = householdName ? document.createElement("optgroup") : select;
+    if (householdName) {
+      parent.label = householdName;
+    }
+    group.forEach((list) => {
+      const option = document.createElement("option");
+      option.value = list.id;
+      option.textContent = list.name;
+      parent.appendChild(option);
+    });
+    if (parent !== select) {
+      select.appendChild(parent);
+    }
+  });
+  select.value = currentListId;
+}
+
+async function loadListSwitchTargets() {
+  const households = await fetchJson("/api/v1/households");
+  const listResponses = await Promise.all(
+    households.map(async (household) => ({
+      householdName: household.name,
+      lists: await fetchJson(`/api/v1/households/${household.id}/lists`),
+    }))
+  );
+  return listResponses.flatMap((response) =>
+    response.lists.map((list) => ({
+      ...list,
+      householdName: response.householdName,
+    }))
+  );
+}
+
+function bindListSwitcher(root) {
+  const select = root.querySelector("[data-list-switcher-select]");
+  if (!(select instanceof HTMLSelectElement)) {
+    return;
+  }
+
+  select.addEventListener("change", () => {
+    const nextListId = select.value;
+    if (!nextListId || nextListId === root.dataset.listId) {
+      return;
+    }
+    navigateTo(`/lists/${nextListId}`);
+  });
+}
+
 function itemEditHistoryStorageKey(listId) {
   return `planini:item-edit-history:${listId}`;
 }
@@ -4213,6 +4294,7 @@ async function loadListDetail(root, state) {
     }
 
     setListName(root, state, payload.list.name);
+    renderListSwitcher(root, payload.list, []);
 
     const categories = Array.isArray(payload.categories) ? payload.categories : [];
     const categoryOrder = Array.isArray(payload.category_order) ? payload.category_order : [];
@@ -4239,22 +4321,23 @@ async function loadListDetail(root, state) {
   let itemWindow;
   let categories;
   let categoryOrder;
-  let lists;
   let disabledCategories;
+  let switchTargets = [];
 
   try {
     groceryList = await fetchJson(`/api/v1/lists/${listId}`);
-    [itemWindow, categories, categoryOrder, disabledCategories, lists] = await Promise.all([
+    [itemWindow, categories, categoryOrder, disabledCategories, switchTargets] = await Promise.all([
       fetchJson(`/api/v1/lists/${listId}/items/window`),
       fetchJson(`/api/v1/lists/${listId}/categories`),
       fetchJson(`/api/v1/lists/${listId}/category-order`),
       fetchJson(`/api/v1/lists/${listId}/disabled-categories`),
-      fetchJson(`/api/v1/households/${groceryList.household_id}/lists`),
+      loadListSwitchTargets().catch(() => []),
     ]);
   } catch (error) {
     const cachedState = loadOfflineListState(listId);
     if (cachedState) {
       applyOfflineListState(root, state, cachedState);
+      renderListSwitcher(root, null, []);
       setListMessage(
         root,
         "error",
@@ -4270,9 +4353,10 @@ async function loadListDetail(root, state) {
   }
 
   setListName(root, state, groceryList.name);
+  renderListSwitcher(root, groceryList, switchTargets);
 
   state.categories = new Map(categories.map((category) => [category.id, category]));
-  state.lists = lists;
+  state.lists = switchTargets.filter((list) => list.household_id === groceryList.household_id);
   state.categoryOrder = new Map(
     categoryOrder.map((entry) => [entry.category_id, entry.sort_order])
   );
@@ -4446,6 +4530,8 @@ async function initListDetail() {
     url.searchParams.delete("addItem");
     window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
   };
+
+  bindListSwitcher(root);
 
   root.querySelectorAll("[data-item-form-toggle]").forEach((toggle) => {
     toggle.addEventListener("click", () => {
@@ -5497,6 +5583,9 @@ export {
   initDashboard,
   setListMessage,
   setListSyncStatus,
+  renderListSwitcher,
+  loadListSwitchTargets,
+  bindListSwitcher,
   itemEditHistoryStorageKey,
   itemEditRedoHistoryStorageKey,
   normalizeItemEditPayload,

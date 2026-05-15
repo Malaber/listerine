@@ -626,23 +626,61 @@ main {
   align-items: start;
 }
 
+.list-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
 .list-hero-copy {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  flex: 1 1 24rem;
   gap: 0.45rem;
+  min-width: 0;
+  width: 100%;
+}
+
+.list-kicker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  width: 100%;
+  flex-wrap: nowrap;
+}
+
+.list-kicker-row .dashboard-kicker {
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .list-title-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.55rem;
-  justify-content: space-between;
-  width: min(100%, 28rem);
+  width: min(100%, 40rem);
 }
 
-.list-title-row h1 {
+.list-title-heading {
+  min-width: 0;
   margin: 0;
+  position: relative;
+  width: 100%;
+}
+
+.list-title-heading.has-switcher [data-list-title] {
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.list-title-heading .list-switcher {
+  display: block;
 }
 
 .list-settings-button {
@@ -659,7 +697,7 @@ main {
   font-weight: 700;
   line-height: 1;
   min-height: 2.35rem;
-  padding: 0.55rem 0.95rem;
+  padding: 0.55rem 0.8rem;
 }
 
 .list-settings-button:hover {
@@ -667,13 +705,55 @@ main {
   border-color: var(--border-strong);
 }
 
-.back-link {
+.list-switcher {
+  max-width: min(100%, 40rem);
+}
+
+.list-switcher[hidden] {
+  display: none;
+}
+
+.list-switcher label {
+  border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.list-switcher select {
+  width: min(100%, 40rem);
+  min-height: 3.1rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
   color: var(--brand-navy);
+  font: inherit;
+  line-height: 1.06;
+  padding: 0.05rem 2.4rem 0.12rem 0.2rem;
+}
+
+.list-switcher select:focus {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
   font-weight: 700;
   text-decoration: none;
 }
 
 .back-link:hover {
+  color: var(--brand-navy);
   text-decoration: underline;
 }
 
@@ -1949,26 +2029,45 @@ main {
     gap: 0.55rem;
   }
 
+  .list-hero-copy {
+    flex: 0 1 auto;
+  }
+
+  .list-hero-actions {
+    flex: 0 0 auto;
+    gap: 0.38rem;
+    justify-content: flex-end;
+    margin-left: auto;
+    min-width: 0;
+  }
+
+  .list-switcher select {
+    width: 100%;
+    min-height: 2.8rem;
+  }
+
   .list-title-row {
     width: 100%;
     align-items: flex-start;
     gap: 0.55rem;
   }
 
-  .list-title-row h1 {
+  .list-title-heading {
     font-size: clamp(1.7rem, 7.5vw, 2.25rem);
     line-height: 0.98;
   }
 
   .list-settings-button {
-    min-height: 2.35rem;
-    padding: 0.45rem 0.8rem;
-    font-size: 0.84rem;
+    min-height: 2.05rem;
+    padding: 0.36rem 0.55rem;
+    font-size: 0.76rem;
   }
 
   .back-link {
     align-self: flex-start;
-    padding: 0.45rem 0.75rem;
+    font-size: 0.76rem;
+    min-height: 2.05rem;
+    padding: 0.36rem 0.45rem;
   }
 
   .dashboard-card {

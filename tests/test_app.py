@@ -2573,6 +2573,8 @@ def test_web_pages_render_for_logged_in_user(client, monkeypatch) -> None:
     assert "data-item-suggestions" in list_detail.text
     assert "danger-button" in list_detail.text
     assert "data-list-sync-status" in list_detail.text
+    assert "data-list-switcher" in list_detail.text
+    assert "All lists" in list_detail.text
 
     settings = client.get("/settings")
     assert settings.status_code == 200
