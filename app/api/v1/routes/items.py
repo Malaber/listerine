@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_list_for_user
 from app.core.database import get_db
-from app.models import Category, GroceryItem, User
+from app.models import Category, GroceryItem, GroceryList, ListDisabledCategory, User
 from app.schemas.domain import (
     GroceryItemCreate,
     GroceryItemOfflineSyncIn,
@@ -72,15 +72,35 @@ def _checked_state_recorded_at(item: GroceryItem) -> datetime:
     return _as_utc(item.checked_state_recorded_at or item.checked_at or item.updated_at or fallback)
 
 
-async def _validate_category_id(db: AsyncSession, category_id: UUID | None) -> None:
+async def _validate_category_id(
+    db: AsyncSession, grocery_list: GroceryList, category_id: UUID | None
+) -> None:
     if category_id is None:
         return
 
-    result = await db.execute(select(Category.id).where(Category.id == category_id))
+    result = await db.execute(
+        select(Category.id).where(
+            Category.id == category_id,
+            (Category.household_id.is_(None))
+            | (Category.household_id == grocery_list.household_id),
+        )
+    )
     if result.scalar_one_or_none() is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Selected category does not exist.",
+        )
+
+    disabled_result = await db.execute(
+        select(ListDisabledCategory.id).where(
+            ListDisabledCategory.list_id == grocery_list.id,
+            ListDisabledCategory.category_id == category_id,
+        )
+    )
+    if disabled_result.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Selected category is disabled for this list.",
         )
 
 
@@ -141,8 +161,8 @@ async def create_item(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> GroceryItem:
-    await get_list_for_user(db, list_id, user.id)
-    await _validate_category_id(db, payload.category_id)
+    grocery_list = await get_list_for_user(db, list_id, user.id)
+    await _validate_category_id(db, grocery_list, payload.category_id)
     item = GroceryItem(
         list_id=list_id,
         name=payload.name,
@@ -221,7 +241,9 @@ async def update_item(
                 detail="Items can only move between lists in the same household.",
             )
     await _validate_category_id(
-        db, payload.category_id if "category_id" in payload.model_fields_set else None
+        db,
+        target_list,
+        payload.category_id if "category_id" in payload.model_fields_set else None,
     )
     for key, value in payload.model_dump(exclude_unset=True, exclude={"list_id"}).items():
         setattr(item, key, value)
@@ -283,7 +305,7 @@ async def sync_offline_items(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> GroceryItemOfflineSyncOut:
-    await get_list_for_user(db, list_id, user.id)
+    grocery_list = await get_list_for_user(db, list_id, user.id)
     client_item_ids: dict[str, UUID] = {}
     changed_items: dict[UUID, GroceryItem] = {}
     deleted_item_ids: list[str] = []
@@ -302,7 +324,7 @@ async def sync_offline_items(
 
         if mutation.type == "create":
             create_payload = _payload_model(GroceryItemCreate, mutation.payload)
-            await _validate_category_id(db, create_payload.category_id)
+            await _validate_category_id(db, grocery_list, create_payload.category_id)
             if mutation.client_item_id:
                 existing_result = await db.execute(
                     select(GroceryItem).where(
@@ -335,6 +357,7 @@ async def sync_offline_items(
             update_payload = _payload_model(GroceryItemUpdate, mutation.payload)
             await _validate_category_id(
                 db,
+                grocery_list,
                 (
                     update_payload.category_id
                     if "category_id" in update_payload.model_fields_set
