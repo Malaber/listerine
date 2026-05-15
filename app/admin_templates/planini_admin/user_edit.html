@@ -48,27 +48,74 @@
     </div>
     <div class="card-body border-bottom py-3">
       <p class="text-muted">
-        Generate a one-time link that lets this account register another passkey. The link remains
-        valid for 24 hours unless it is used first.
+        Generate a one-time link that lets this account register another passkey.
       </p>
+      {% if request.query_params.get("passkey_add_error") %}
+      <div class="alert alert-danger mt-3 mb-3" role="alert">
+        {{ request.query_params.get("passkey_add_error") }}
+      </div>
+      {% endif %}
       <form action="{{ url_for('admin:view-user-generate_passkey_add_link', pk=obj.id) }}" method="POST">
-        <button type="submit" class="btn btn-primary">Generate add-passkey link</button>
+        <div class="row align-items-end">
+          <div class="col-sm-4 col-lg-3">
+            <label class="form-label" for="passkey-add-valid-for-hours">Valid for hours</label>
+            <input
+              id="passkey-add-valid-for-hours"
+              name="valid_for_hours"
+              class="form-control"
+              type="number"
+              min="1"
+              max="720"
+              step="1"
+              value="{{ request.query_params.get('passkey_add_valid_for_hours') or 24 }}"
+              required
+            />
+          </div>
+          <div class="col-sm-auto mt-3 mt-sm-0">
+            <button type="submit" class="btn btn-primary">Generate add-passkey link</button>
+          </div>
+        </div>
       </form>
+      <h4 class="mt-4 mb-2">Valid links</h4>
       {% if request.query_params.get("passkey_add_link") %}
       <div class="alert alert-success mt-3 mb-3" role="alert">
         Add-passkey link ready for <strong>{{ request.query_params.get("passkey_add_email") or obj.email }}</strong>.
+        Valid for {{ request.query_params.get("passkey_add_valid_for_hours") }} hours.
       </div>
-      <div>
-        <label class="form-label" for="passkey-add-link">Add-passkey link</label>
-        <input
-          id="passkey-add-link"
-          class="form-control"
-          type="text"
-          value="{{ request.query_params.get('passkey_add_link') }}"
-          readonly
-          onclick="this.select()"
-        />
+      <div class="table-responsive">
+        <table class="table table-vcenter">
+          <thead>
+            <tr>
+              <th>Link</th>
+              <th>Valid until</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <label class="form-label visually-hidden" for="passkey-add-link">Add-passkey link</label>
+                <input
+                  id="passkey-add-link"
+                  class="form-control"
+                  type="text"
+                  value="{{ request.query_params.get('passkey_add_link') }}"
+                  readonly
+                  onclick="this.select()"
+                />
+              </td>
+              <td>
+                {{ request.query_params.get("passkey_add_expires_at") | replace("T", " ") }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
+      {% elif obj.passkey_reset_token_hash %}
+      <div class="alert alert-info mt-3 mb-0" role="alert">
+        This user has an existing add-passkey link. Generate a new link to reveal a copyable URL.
+      </div>
+      {% else %}
+      <p class="text-muted mb-0">No generated add-passkey link is visible.</p>
       {% endif %}
     </div>
   </div>

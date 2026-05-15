@@ -721,8 +721,21 @@ async function runAdminPasskeyAddLinkFlow(page, seed, rpId) {
       adminPage.getByRole("button", { name: "Generate add-passkey link" }),
       "Expected add-passkey link generator on the admin user edit page",
     );
+    await expectVisible(
+      adminPage.getByRole("heading", { name: "Valid links" }),
+      "Expected valid passkey add links section on the admin user edit page",
+    );
+    await adminPage.getByLabel("Valid for hours").fill("48");
     await adminPage.getByRole("button", { name: "Generate add-passkey link" }).click();
     await adminPage.waitForURL(/passkey_add_link=/);
+    await expectVisible(
+      adminPage.locator("text=Valid for 48 hours."),
+      "Expected generated admin link to show the configured duration",
+    );
+    await expectVisible(
+      adminPage.getByRole("columnheader", { name: "Valid until" }),
+      "Expected generated admin link to show its valid-until column",
+    );
     const generatedLink = await adminPage.locator("#passkey-add-link").inputValue();
     assert(
       generatedLink.includes("/passkey-add/"),

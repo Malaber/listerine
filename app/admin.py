@@ -1,3 +1,4 @@
+from datetime import timedelta
 from functools import lru_cache
 from pathlib import Path
 from uuid import UUID
@@ -14,6 +15,24 @@ from app.core.database import AsyncSessionLocal, engine
 from app.models import Category, User
 from app.services.passkey_reset import build_passkey_add_link, issue_passkey_reset
 from app.web.routes import _get_session_user
+
+
+PASSKEY_ADD_LINK_DEFAULT_HOURS = 24
+PASSKEY_ADD_LINK_MIN_HOURS = 1
+PASSKEY_ADD_LINK_MAX_HOURS = 720
+
+
+def _passkey_add_link_duration_hours(raw_value: object) -> int:
+    try:
+        duration_hours = int(str(raw_value or PASSKEY_ADD_LINK_DEFAULT_HOURS))
+    except ValueError as exc:
+        raise ValueError("Passkey add link duration must be a whole number of hours.") from exc
+    if duration_hours < PASSKEY_ADD_LINK_MIN_HOURS or duration_hours > PASSKEY_ADD_LINK_MAX_HOURS:
+        raise ValueError(
+            f"Passkey add link duration must be between {PASSKEY_ADD_LINK_MIN_HOURS} "
+            f"and {PASSKEY_ADD_LINK_MAX_HOURS} hours."
+        )
+    return duration_hours
 
 
 class SessionAdminAuth(AuthenticationBackend):
@@ -53,20 +72,38 @@ class UserAdmin(ModelView, model=User):
     @expose("/{pk}/passkey-add-link", methods=["POST"], include_in_schema=False)
     async def generate_passkey_add_link(self, request: Request) -> Response:
         user_id = UUID(request.path_params["pk"])
+        edit_url = request.url_for("admin:edit", identity=self.identity, pk=str(user_id))
+        form = await request.form()
+        try:
+            duration_hours = _passkey_add_link_duration_hours(form.get("valid_for_hours"))
+        except ValueError as exc:
+            return RedirectResponse(
+                url=str(
+                    edit_url.include_query_params(
+                        passkey_add_error=str(exc),
+                        passkey_add_valid_for_hours=form.get("valid_for_hours") or "",
+                    )
+                ),
+                status_code=303,
+            )
+
         async with AsyncSessionLocal() as session:
             user = await session.get(User, user_id)
             if user is None:
                 return RedirectResponse(url="/admin/user/list", status_code=303)
 
-            token, _ = await issue_passkey_reset(session, user)
+            token, expires_at = await issue_passkey_reset(
+                session, user, ttl=timedelta(hours=duration_hours)
+            )
 
         reset_link = build_passkey_add_link(str(request.base_url), token)
-        edit_url = request.url_for("admin:edit", identity=self.identity, pk=str(user_id))
         return RedirectResponse(
             url=str(
                 edit_url.include_query_params(
                     passkey_add_link=reset_link,
                     passkey_add_email=user.email,
+                    passkey_add_expires_at=expires_at.isoformat(),
+                    passkey_add_valid_for_hours=str(duration_hours),
                 )
             ),
             status_code=303,

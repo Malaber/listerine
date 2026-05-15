@@ -2765,13 +2765,18 @@ def test_admin_can_generate_passkey_add_link_from_admin_frontend(client, monkeyp
     page = client.get(_admin_user_edit_url(user_id))
     assert page.status_code == 200
     assert "Generate add-passkey link" in page.text
+    assert "Valid for hours" in page.text
+    assert "Valid links" in page.text
 
     response = client.post(
         _admin_user_passkey_add_link_url(user_id),
+        data={"valid_for_hours": "48"},
         follow_redirects=True,
     )
     assert response.status_code == 200
     assert "Add-passkey link ready for" in response.text
+    assert "Valid for 48 hours." in response.text
+    assert "Valid until" in response.text
 
     token = _extract_passkey_add_token_from_url(str(response.url))
 
@@ -2787,8 +2792,46 @@ def test_admin_can_generate_passkey_add_link_from_admin_frontend(client, monkeyp
     expires_at = user.passkey_reset_expires_at
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=UTC)
-    assert expires_at > datetime.now(UTC) + timedelta(hours=23, minutes=59)
-    assert expires_at < datetime.now(UTC) + timedelta(hours=24, minutes=1)
+    assert expires_at > datetime.now(UTC) + timedelta(hours=47, minutes=59)
+    assert expires_at < datetime.now(UTC) + timedelta(hours=48, minutes=1)
+
+
+def test_admin_passkey_add_link_duration_validation(client, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: _mock_verified_registration(),
+    )
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.settings.bootstrap_admin_email", "admin@example.com"
+    )
+
+    client.post(
+        "/api/v1/auth/register/options",
+        json={"email": "admin@example.com", "display_name": "Admin"},
+    )
+    verify = client.post("/api/v1/auth/register/verify", json=_passkey_finish_payload())
+    assert verify.status_code == 200
+
+    user_id = asyncio.run(_create_user("recover@example.com"))
+    response = client.post(
+        _admin_user_passkey_add_link_url(user_id),
+        data={"valid_for_hours": "bad"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "Passkey add link duration must be a whole number of hours." in response.text
+    assert "Add-passkey link ready for" not in response.text
+
+    async def _load_user() -> User:
+        async with AsyncSessionLocal() as session:
+            user = await session.get(User, user_id)
+            assert user is not None
+            return user
+
+    user = asyncio.run(_load_user())
+    assert user.passkey_reset_token_hash is None
+    assert user.passkey_reset_expires_at is None
 
 
 def test_admin_list_defaults_to_fifty_items_and_sortable_headers(client, monkeypatch) -> None:

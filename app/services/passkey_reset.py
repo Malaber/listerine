@@ -19,8 +19,8 @@ def create_passkey_reset_token() -> str:
     return secrets.token_urlsafe(32)
 
 
-def passkey_reset_expires_at() -> datetime:
-    return datetime.now(UTC) + PASSKEY_RESET_TTL
+def passkey_reset_expires_at(ttl: timedelta | None = None) -> datetime:
+    return datetime.now(UTC) + (ttl or PASSKEY_RESET_TTL)
 
 
 def passkey_reset_is_active(user: User, *, now: datetime | None = None) -> bool:
@@ -35,16 +35,18 @@ def passkey_reset_is_active(user: User, *, now: datetime | None = None) -> bool:
     return expires_at > current_time
 
 
-def set_passkey_reset(user: User, token: str) -> datetime:
-    expires_at = passkey_reset_expires_at()
+def set_passkey_reset(user: User, token: str, *, ttl: timedelta | None = None) -> datetime:
+    expires_at = passkey_reset_expires_at(ttl)
     user.passkey_reset_token_hash = hash_passkey_reset_token(token)
     user.passkey_reset_expires_at = expires_at
     return expires_at
 
 
-async def issue_passkey_reset(db: AsyncSession, user: User) -> tuple[str, datetime]:
+async def issue_passkey_reset(
+    db: AsyncSession, user: User, *, ttl: timedelta | None = None
+) -> tuple[str, datetime]:
     token = create_passkey_reset_token()
-    expires_at = set_passkey_reset(user, token)
+    expires_at = set_passkey_reset(user, token, ttl=ttl)
     await db.commit()
     return token, expires_at
 
