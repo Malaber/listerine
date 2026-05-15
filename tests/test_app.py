@@ -320,6 +320,7 @@ def test_full_flow(client) -> None:
     ) as ws:
         event = ws.receive_json()
         assert event["type"] == "list_snapshot"
+        assert event["payload"]["disabled_category_ids"] == []
         assert [entry["category_id"] for entry in event["payload"]["category_order"]] == [
             bakery_category["id"],
             category["id"],
@@ -340,6 +341,38 @@ def test_full_flow(client) -> None:
             category["id"],
             bakery_category["id"],
         ]
+
+        assert client.get(
+            f"/api/v1/lists/{list_id}/disabled-categories", headers=headers
+        ).json() == {"category_ids": []}
+        disabled_categories = client.put(
+            f"/api/v1/lists/{list_id}/disabled-categories",
+            json={"category_ids": [category["id"]]},
+            headers=headers,
+        )
+        assert disabled_categories.status_code == 200
+        assert disabled_categories.json() == {"category_ids": [category["id"]]}
+        disabled_event = ws.receive_json()
+        assert disabled_event["type"] == "category_disabled_categories_updated"
+        assert disabled_event["payload"]["category_ids"] == [category["id"]]
+        cleared_item_event = ws.receive_json()
+        assert cleared_item_event["type"] == "item_updated"
+        assert cleared_item_event["payload"]["item"]["category_id"] is None
+        assert (
+            client.post(
+                f"/api/v1/lists/{list_id}/items",
+                json={"name": "Yogurt", "category_id": category["id"]},
+                headers=headers,
+            ).status_code
+            == 400
+        )
+        enabled_categories = client.put(
+            f"/api/v1/lists/{list_id}/disabled-categories",
+            json={"category_ids": []},
+            headers=headers,
+        )
+        assert enabled_categories.status_code == 200
+        assert ws.receive_json()["type"] == "category_disabled_categories_updated"
 
         updated = client.patch(
             f"/api/v1/items/{item_id}",
@@ -548,6 +581,14 @@ def test_auth_and_access_error_paths(client) -> None:
         ).status_code
         == 400
     )
+    assert (
+        client.put(
+            f"/api/v1/lists/{list_res['id']}/disabled-categories",
+            json={"category_ids": [str(uuid4())]},
+            headers=headers,
+        ).status_code
+        == 400
+    )
     assert client.get(f"/api/v1/lists/{uuid4()}", headers=headers).status_code == 404
 
 
@@ -565,13 +606,18 @@ def test_list_category_order_rejects_duplicates_and_list_delete_cleans_up_orders
         json={"name": "Produce", "color": "#22c55e"},
         headers=admin_headers,
     ).json()
-
     duplicate_order = client.put(
         f"/api/v1/lists/{grocery_list['id']}/category-order",
         json={"category_ids": [category["id"], category["id"]]},
         headers=headers,
     )
     assert duplicate_order.status_code == 400
+    duplicate_disabled = client.put(
+        f"/api/v1/lists/{grocery_list['id']}/disabled-categories",
+        json={"category_ids": [category["id"], category["id"]]},
+        headers=headers,
+    )
+    assert duplicate_disabled.status_code == 400
 
     valid_order = client.put(
         f"/api/v1/lists/{grocery_list['id']}/category-order",
@@ -594,6 +640,12 @@ def test_list_category_order_rejects_duplicates_and_list_delete_cleans_up_orders
         headers=headers,
     )
     assert restored_order.status_code == 200
+    disabled_category = client.put(
+        f"/api/v1/lists/{grocery_list['id']}/disabled-categories",
+        json={"category_ids": [category["id"]]},
+        headers=headers,
+    )
+    assert disabled_category.status_code == 200
 
     deleted_list = client.delete(f"/api/v1/lists/{grocery_list['id']}", headers=headers)
     assert deleted_list.status_code == 200
@@ -648,6 +700,11 @@ def test_delete_category_clears_item_category_and_order(client) -> None:
         json={"name": "Produce", "color": "#22c55e"},
         headers=admin_headers,
     ).json()
+    disabled_only_category = client.post(
+        "/api/v1/categories",
+        json={"name": "Frozen", "color": "#38bdf8"},
+        headers=admin_headers,
+    ).json()
 
     item = client.post(
         f"/api/v1/lists/{grocery_list['id']}/items",
@@ -660,9 +717,19 @@ def test_delete_category_clears_item_category_and_order(client) -> None:
         headers=headers,
     )
     assert order.status_code == 200
+    disabled = client.put(
+        f"/api/v1/lists/{grocery_list['id']}/disabled-categories",
+        json={"category_ids": [disabled_only_category["id"]]},
+        headers=headers,
+    )
+    assert disabled.status_code == 200
 
     deleted_category = client.delete(f"/api/v1/categories/{category['id']}", headers=admin_headers)
     assert deleted_category.status_code == 200
+    deleted_disabled_category = client.delete(
+        f"/api/v1/categories/{disabled_only_category['id']}", headers=admin_headers
+    )
+    assert deleted_disabled_category.status_code == 200
 
     items = client.get(f"/api/v1/lists/{grocery_list['id']}/items", headers=headers).json()
     assert items[0]["id"] == item["id"]
@@ -816,6 +883,22 @@ def test_lists_include_open_item_count(client) -> None:
         headers=headers,
     ).json()
     assert renamed["open_item_count"] == 1
+    assert renamed["name"] == "Renamed"
+
+    trimmed = client.patch(
+        f"/api/v1/lists/{weekly['id']}",
+        json={"name": "  Market Run  "},
+        headers=headers,
+    ).json()
+    assert trimmed["name"] == "Market Run"
+    assert trimmed["open_item_count"] == 1
+
+    blank_rename = client.patch(
+        f"/api/v1/lists/{weekly['id']}",
+        json={"name": "   "},
+        headers=headers,
+    )
+    assert blank_rename.status_code == 400
 
 
 def test_offline_item_sync_replays_changes_idempotently(client) -> None:
@@ -985,12 +1068,23 @@ def test_offline_item_sync_accepts_create_without_client_item_id(client) -> None
 
 def test_offline_item_sync_rejects_invalid_mutations(client) -> None:
     headers = _auth_headers(client, f"{uuid4()}@example.com")
+    admin_headers = _auth_headers(client, f"{uuid4()}@example.com", is_admin=True)
     household = client.post("/api/v1/households", json={"name": "Home"}, headers=headers).json()
     grocery_list = client.post(
         f"/api/v1/households/{household['id']}/lists",
         json={"name": "Weekly"},
         headers=headers,
     ).json()
+    disabled_category = client.post(
+        "/api/v1/categories",
+        json={"name": "Produce"},
+        headers=admin_headers,
+    ).json()
+    client.put(
+        f"/api/v1/lists/{grocery_list['id']}/disabled-categories",
+        json={"category_ids": [disabled_category["id"]]},
+        headers=headers,
+    )
     recorded_at = datetime.now(UTC).isoformat()
 
     missing_name = client.post(
@@ -1035,10 +1129,26 @@ def test_offline_item_sync_rejects_invalid_mutations(client) -> None:
         },
         headers=headers,
     )
+    disabled_category_create = client.post(
+        f"/api/v1/lists/{grocery_list['id']}/items/sync",
+        json={
+            "mutations": [
+                {
+                    "mutation_id": "disabled-category-create",
+                    "type": "create",
+                    "client_item_id": "bad-disabled-local",
+                    "recorded_at": recorded_at,
+                    "payload": {"name": "Bad category", "category_id": disabled_category["id"]},
+                }
+            ]
+        },
+        headers=headers,
+    )
 
     assert missing_name.status_code == 422
     assert missing_checked.status_code == 422
     assert unknown_type.status_code == 400
+    assert disabled_category_create.status_code == 400
 
 
 def test_cross_household_forbidden(client) -> None:

@@ -642,8 +642,10 @@ async function registerAccountFromLogin(page, { displayName, email }, expectedUr
   );
   await page.locator('[data-passkey-register] input[name="display_name"]').fill(displayName);
   await page.locator('[data-passkey-register] input[name="email"]').fill(email);
-  await page.locator("[data-passkey-register-button]").click();
-  await page.waitForURL(expectedUrlPattern, { waitUntil: "commit", timeout: 10_000 });
+  await Promise.all([
+    page.waitForURL(expectedUrlPattern, { waitUntil: "commit", timeout: 10_000 }),
+    page.locator("[data-passkey-register-button]").click(),
+  ]);
 }
 
 async function loginAsAdmin(page, user) {
@@ -860,6 +862,80 @@ async function swipeItemRight(card) {
       clientY: y,
     }));
   });
+}
+
+async function dragCategoryAfter(page, sourceName, targetName) {
+  await page.evaluate(
+    ({ sourceName, targetName }) => {
+      const rowByName = (name) =>
+        [...document.querySelectorAll(".settings-category-row")].find((row) =>
+          row.textContent?.includes(name),
+        );
+      const sourceRow = rowByName(sourceName);
+      const targetRow = rowByName(targetName);
+      const handle = sourceRow?.querySelector("[data-settings-category-grabber]");
+      const root = handle?.closest("[data-list-detail]");
+      if (!(handle instanceof HTMLElement) || !(targetRow instanceof HTMLElement) || !(root instanceof HTMLElement)) {
+        throw new Error(`Could not find category drag rows ${sourceName} and ${targetName}`);
+      }
+
+      const handleRect = handle.getBoundingClientRect();
+      const targetRect = targetRow.getBoundingClientRect();
+      const x = targetRect.left + targetRect.width / 2;
+      const y = targetRect.top + targetRect.height * 0.75;
+      const pointerId = 77;
+      const base = {
+        bubbles: true,
+        cancelable: true,
+        pointerId,
+        pointerType: "touch",
+        isPrimary: true,
+      };
+      handle.dispatchEvent(new PointerEvent("pointerdown", {
+        ...base,
+        buttons: 1,
+        clientX: handleRect.left + handleRect.width / 2,
+        clientY: handleRect.top + handleRect.height / 2,
+      }));
+      root.dispatchEvent(new PointerEvent("pointermove", {
+        ...base,
+        buttons: 1,
+        clientX: x,
+        clientY: y,
+      }));
+      window.__planiniFinishCategoryDrag = () => {
+        root.dispatchEvent(new PointerEvent("pointerup", {
+          ...base,
+          buttons: 0,
+          clientX: x,
+          clientY: y,
+        }));
+        delete window.__planiniFinishCategoryDrag;
+      };
+    },
+    { sourceName, targetName },
+  );
+
+  await expectVisible(
+    page.locator(".settings-category-row.is-drop-after"),
+    "Expected category reorder to mark the insertion gap",
+  );
+  await page.evaluate(() => window.__planiniFinishCategoryDrag?.());
+  await page.waitForFunction(
+    ({ sourceName, targetName }) => {
+      const labels = [...document.querySelectorAll(".settings-category-row strong")].map(
+        (node) => node.textContent?.trim(),
+      );
+      return labels.indexOf(sourceName) > labels.indexOf(targetName);
+    },
+    { sourceName, targetName },
+    { timeout: 5000 },
+  );
+  await page.waitForFunction(
+    () => !document.querySelector("[data-category-order-status]:not([hidden])"),
+    null,
+    { timeout: 5000 },
+  );
 }
 
 async function revealCheckedItemCard(page, text) {
@@ -1344,24 +1420,124 @@ async function main() {
       editForm.locator(".category-radio-option .category-radio-copy span"),
     );
     assert(!aliasTexts.some((text) => text.includes("Also found as")), "Alias helper text should stay hidden");
+    await expectHidden(
+      editForm.getByRole("button", { name: "Save changes" }),
+      "Edit modal should live-save without a save button",
+    );
     await editForm.locator(".category-radio-option", { hasText: "Backwaren" }).click();
     await editForm.locator('input[name="quantity_text"]').fill("4 loaves");
-    await editForm.locator('input[name="note"]').fill("for the weekend");
-    await editForm.getByRole("button", { name: "Save changes" }).click();
     await expectVisible(
-      page.locator("[data-list-success]", { hasText: "Item updated." }),
-      "Expected item update success before closing the edit modal",
+      editForm.locator("[data-item-edit-status]", { hasText: "Saved." }),
+      "Expected quantity edit to live-save after debounce",
     );
+    await editForm.locator('input[name="note"]').fill("for the weekend");
     await page.locator("[data-item-edit-panel] .add-item-close[data-item-edit-close]").click();
-    await expectHidden(page.locator("[data-item-edit-overlay]"), "Edit modal should close before opening settings");
+    await expectHidden(page.locator("[data-item-edit-overlay]"), "Immediate close should flush pending edit");
+    await expectVisible(
+      itemCard(page, "Tomaten").locator(".item-meta", { hasText: "for the weekend" }),
+      "Close-triggered save should keep note edit",
+    );
     await expectVisible(itemCard(page, "Tomaten"), "Updated item should remain visible");
     await expectVisible(
       itemCard(page, "Tomaten").locator(".item-meta", { hasText: "4 loaves" }),
       "Updated quantity should render",
     );
+    await itemCard(page, "Tomaten").click();
+    await expectVisible(
+      page.locator("[data-item-edit-panel]").getByRole("heading", { name: "Tomaten" }),
+      "Expected Tomaten edit modal before undoing a live edit",
+    );
+    await expectVisible(
+      page.locator("[data-item-edit-header-actions]"),
+      "Edit history controls and close button should stay in the sticky header",
+    );
+    const editHeaderMetrics = await page.locator("[data-item-edit-panel] .add-item-panel-header").evaluate((header) => {
+      const panel = header.closest("[data-item-edit-panel]");
+      const undo = header.querySelector("[data-item-edit-undo]");
+      const icon = undo?.querySelector(".item-edit-history-icon");
+      if (!(panel instanceof HTMLElement) || !(undo instanceof HTMLElement) || !(icon instanceof Element)) {
+        return null;
+      }
+      const headerRect = header.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      const undoRect = undo.getBoundingClientRect();
+      const iconRect = icon.getBoundingClientRect();
+      return {
+        backgroundColor: window.getComputedStyle(header).backgroundColor,
+        headerLeft: headerRect.left,
+        headerRight: headerRect.right,
+        headerTop: headerRect.top,
+        iconHeight: iconRect.height,
+        iconWidth: iconRect.width,
+        panelLeft: panelRect.left,
+        panelRight: panelRect.right,
+        panelTop: panelRect.top,
+        undoHeight: undoRect.height,
+        undoWidth: undoRect.width,
+      };
+    });
+    assert(editHeaderMetrics, "Expected measurable edit header controls");
+    assert(
+      editHeaderMetrics.headerLeft <= editHeaderMetrics.panelLeft + 1
+        && editHeaderMetrics.headerRight >= editHeaderMetrics.panelRight - 1,
+      "Edit sticky header background should reach the panel edges",
+    );
+    assert(
+      editHeaderMetrics.headerTop <= editHeaderMetrics.panelTop + 2,
+      "Edit sticky header background should cover the panel top edge",
+    );
+    assert(
+      editHeaderMetrics.backgroundColor !== "rgba(0, 0, 0, 0)",
+      "Edit sticky header should have a visible background",
+    );
+    assert(
+      editHeaderMetrics.undoWidth <= 44
+        && editHeaderMetrics.undoHeight <= 40
+        && editHeaderMetrics.iconWidth <= 18
+        && editHeaderMetrics.iconHeight <= 18,
+      "Edit history icons should stay compact",
+    );
+    await editForm.locator('input[name="quantity_text"]').fill("wrong amount");
+    await expectVisible(
+      editForm.locator("[data-item-edit-status]", { hasText: "Saved." }),
+      "Expected wrong quantity to live-save before undo",
+    );
+    await page.getByRole("button", { name: "Undo last edit" }).click();
+    await page.waitForFunction(
+      () => document.querySelector('[data-item-edit-form] input[name="quantity_text"]')?.value === "4 loaves",
+      { timeout: 5000 },
+    );
+    await expectVisible(
+      itemCard(page, "Tomaten").locator(".item-meta", { hasText: "4 loaves" }),
+      "Undo should restore previous live-saved quantity",
+    );
+    await page.getByRole("button", { name: "Redo edit" }).click();
+    await page.waitForFunction(
+      () => document.querySelector('[data-item-edit-form] input[name="quantity_text"]')?.value === "wrong amount",
+      { timeout: 5000 },
+    );
+    await page.getByRole("button", { name: "Undo last edit" }).click();
+    await page.waitForFunction(
+      () => document.querySelector('[data-item-edit-form] input[name="quantity_text"]')?.value === "4 loaves",
+      { timeout: 5000 },
+    );
+    await page.locator("[data-item-edit-panel] .add-item-close[data-item-edit-close]").click();
+    await expectHidden(page.locator("[data-item-edit-overlay]"), "Edit modal should close before opening settings");
 
     await page.getByRole("button", { name: "Open list settings" }).click();
     await expectVisible(page.getByRole("heading", { name: "Category order" }), "Expected settings modal");
+    const settingsPanel = page.locator("[data-list-settings-panel]");
+    const renamedListName = `E2E Market ${Date.now()}`;
+    await settingsPanel.getByLabel("List name").fill(renamedListName);
+    await settingsPanel.getByRole("button", { name: "Save list name" }).click();
+    await expectVisible(
+      page.locator("[data-list-success]", { hasText: "List name saved." }),
+      "Expected list rename success",
+    );
+    await expectVisible(page.getByRole("heading", { name: renamedListName }), "List title should update");
+    const renamedList = await apiJson(context.request, `/api/v1/lists/${scenario.listId}`);
+    assert.equal(renamedList.name, renamedListName, "List rename should persist through the API");
+    scenario.listName = renamedListName;
     await assertSeedSettingsCategoryColors(page);
     const topCategoryBefore = (
       await textList(page.locator(".item-category-group > .item-category-header h3"))
@@ -1425,6 +1601,54 @@ async function main() {
       "New item should land in the Backwaren section",
     );
 
+    await page.getByRole("button", { name: "Open list settings" }).click();
+    await expectVisible(page.getByRole("heading", { name: "Category order" }), "Expected settings modal");
+    const backwarenDisableRow = settingsPanel.locator(".settings-category-row", { hasText: "Backwaren" });
+    await dragCategoryAfter(page, "Backwaren", "Nudeln");
+    await backwarenDisableRow.getByRole("button", { name: /Disable Backwaren/i }).click();
+    await expectVisible(
+      page.locator("[data-category-disable-confirm-panel]", { hasText: "Disable Backwaren?" }),
+      "Disabling a populated category should use the app confirmation modal",
+    );
+    await page.locator("[data-category-disable-confirm-confirm]").click();
+    await expectVisible(
+      backwarenDisableRow.locator(".settings-category-copy", { hasText: "Disabled for this list" }),
+      "Disabled category should be visibly marked",
+    );
+    await page.locator("[data-list-settings-panel] .add-item-close").click();
+    await page.waitForFunction(
+      (name) => {
+        const uncategorized = [...document.querySelectorAll(".item-category-group")].find((group) =>
+          group.querySelector(".item-category-header h3")?.textContent?.includes("Uncategorized"),
+        );
+        return Boolean(
+          uncategorized &&
+            [...uncategorized.querySelectorAll(".item-card")].some((card) =>
+              card.textContent?.includes(name),
+            ),
+        );
+      },
+      freshThingName,
+      { timeout: 5000 },
+    );
+    await page.getByRole("button", { name: "Add item" }).click();
+    const addMoreFields = addForm.locator(".item-more-fields");
+    if (!(await addMoreFields.evaluate((node) => node.open))) {
+      await addMoreFields.locator("summary").click();
+    }
+    await addForm.locator("[data-item-category-search]").fill("brot");
+    await expectHidden(
+      addForm.locator(".category-radio-option", { hasText: "Backwaren" }),
+      "Disabled category should not be selectable when adding items",
+    );
+    await page.locator("[data-item-panel] .add-item-close").click();
+    await page.getByRole("button", { name: "Open list settings" }).click();
+    await settingsPanel
+      .locator(".settings-category-row", { hasText: "Backwaren" })
+      .getByRole("button", { name: /Enable Backwaren/i })
+      .click();
+    await page.locator("[data-list-settings-panel] .add-item-close").click();
+
     const toast = page.locator("[data-list-toast]");
     await freshThingCard.getByRole("button").first().click();
     await expectVisible(toast, "Expected temporary undo toast");
@@ -1451,7 +1675,7 @@ async function main() {
   const summary = [
     "## UI E2E",
     "",
-    `Browser UI flow passed for ${deviceName} using seeded real database data and passkey auth for route rendering, login gating, multi-passkey enrollment and deletion, add/edit flows, fuzzy duplicate suggestions, undo toasts, category alias search, admin navigation, websocket updates, and household invite acceptance.`,
+    `Browser UI flow passed for ${deviceName} using seeded real database data and passkey auth for route rendering, login gating, multi-passkey enrollment and deletion, add/edit flows, fuzzy duplicate suggestions, undo toasts, category alias search, category disabling, admin navigation, websocket updates, and household invite acceptance.`,
     "",
   ].join("\n");
   await fs.writeFile(path.join(artifactDir, "summary.md"), summary);
