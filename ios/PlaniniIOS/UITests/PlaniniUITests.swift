@@ -287,7 +287,7 @@ final class PlaniniUITests: XCTestCase {
     private func assertReviewerOnboardingAvailable(in app: XCUIApplication) {
         let helpMenu = app.buttons["login-help-menu"]
         XCTAssertTrue(helpMenu.waitForExistence(timeout: 3))
-        helpMenu.tap()
+        helpMenu.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
 
         let helpButton = firstExistingElement(
             [
