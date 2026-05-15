@@ -75,6 +75,9 @@ STABLE_TAG_PATTERN = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 
 IOS_APP_ICON_SOURCE_PATH = ROOT / "app" / "web" / "static" / "img" / "planini.svg"
 IOS_APP_ICONSET_PATH = ROOT / "ios" / "PlaniniIOS" / "Assets.xcassets" / "AppIcon.appiconset"
+IOS_WATCH_APP_ICONSET_PATH = (
+    ROOT / "ios" / "PlaniniIOS" / "Assets.xcassets" / "WatchAppIcon.appiconset"
+)
 IOS_APP_ICON_FILES = {
     "Icon-20@2x.png": 40,
     "Icon-20@3x.png": 60,
@@ -84,6 +87,18 @@ IOS_APP_ICON_FILES = {
     "Icon-40@3x.png": 120,
     "Icon-60@2x.png": 120,
     "Icon-60@3x.png": 180,
+    "Icon-1024.png": 1024,
+}
+IOS_WATCH_APP_ICON_FILES = {
+    "Icon-24@2x.png": 48,
+    "Icon-27.5@2x.png": 55,
+    "Icon-29@2x.png": 58,
+    "Icon-29@3x.png": 87,
+    "Icon-40@2x.png": 80,
+    "Icon-44@2x.png": 88,
+    "Icon-86@2x.png": 172,
+    "Icon-98@2x.png": 196,
+    "Icon-108@2x.png": 216,
     "Icon-1024.png": 1024,
 }
 
@@ -740,27 +755,37 @@ def generate_ios_app_icons(c) -> None:
     if not IOS_APP_ICON_SOURCE_PATH.exists():
         raise Exit(f"Missing app icon source SVG: {IOS_APP_ICON_SOURCE_PATH}")
 
-    IOS_APP_ICONSET_PATH.mkdir(parents=True, exist_ok=True)
+    iconsets = {
+        IOS_APP_ICONSET_PATH: IOS_APP_ICON_FILES,
+        IOS_WATCH_APP_ICONSET_PATH: IOS_WATCH_APP_ICON_FILES,
+    }
 
-    for filename, size in IOS_APP_ICON_FILES.items():
-        output_path = IOS_APP_ICONSET_PATH / filename
-        cairosvg.svg2png(
-            url=str(IOS_APP_ICON_SOURCE_PATH),
-            write_to=str(output_path),
-            output_width=size,
-            output_height=size,
-        )
-        print(f"Generated {output_path.relative_to(ROOT)} ({size}x{size})")
+    for iconset_path, icon_files in iconsets.items():
+        iconset_path.mkdir(parents=True, exist_ok=True)
+        for filename, size in icon_files.items():
+            output_path = iconset_path / filename
+            cairosvg.svg2png(
+                url=str(IOS_APP_ICON_SOURCE_PATH),
+                write_to=str(output_path),
+                output_width=size,
+                output_height=size,
+            )
+            print(f"Generated {output_path.relative_to(ROOT)} ({size}x{size})")
 
 
 @task
 def check_ios_app_icons(c) -> None:
     """Fail if generated iOS AppIcon PNGs are missing locally."""
 
+    iconsets = {
+        IOS_APP_ICONSET_PATH: IOS_APP_ICON_FILES,
+        IOS_WATCH_APP_ICONSET_PATH: IOS_WATCH_APP_ICON_FILES,
+    }
     missing = [
-        IOS_APP_ICONSET_PATH / filename
-        for filename in IOS_APP_ICON_FILES
-        if not (IOS_APP_ICONSET_PATH / filename).exists()
+        iconset_path / filename
+        for iconset_path, icon_files in iconsets.items()
+        for filename in icon_files
+        if not (iconset_path / filename).exists()
     ]
 
     if missing:
