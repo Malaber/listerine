@@ -11,7 +11,11 @@ from pydantic import ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from starlette.requests import Request
 
-from app.admin import SessionAdminAuth, get_application_version
+from app.admin import (
+    SessionAdminAuth,
+    _passkey_add_link_duration_hours,
+    get_application_version,
+)
 from app.api.v1.routes.auth import (
     _auth_flow_session_is_valid,
     _apply_bootstrap_admin_email,
@@ -79,6 +83,10 @@ class DummyDB:
     def __init__(self) -> None:
         self.commit_calls = 0
         self.refresh_calls = 0
+        self.added = []
+
+    def add(self, obj) -> None:
+        self.added.append(obj)
 
     async def commit(self) -> None:
         self.commit_calls += 1
@@ -133,27 +141,65 @@ def test_access_token_expiry_uses_configured_window() -> None:
 
 def test_passkey_reset_helpers_manage_token_state() -> None:
     token = create_passkey_reset_token()
-    user = SimpleNamespace(passkey_reset_token_hash=None, passkey_reset_expires_at=None)
+    user = SimpleNamespace(id=uuid4())
 
     assert len(hash_passkey_reset_token(token)) == 64
-    assert passkey_reset_is_active(user) is False
 
-    expires_at = set_passkey_reset(user, token)
-    assert user.passkey_reset_token_hash == hash_passkey_reset_token(token)
-    assert passkey_reset_is_active(user) is True
+    link = set_passkey_reset(user, token)
+    assert link.user_id == user.id
+    assert link.token_hash == hash_passkey_reset_token(token)
+    assert link.used_at is None
+    assert passkey_reset_is_active(link) is True
 
-    user.passkey_reset_expires_at = expires_at.replace(tzinfo=None)
-    assert passkey_reset_is_active(user) is True
+    link.expires_at = link.expires_at.replace(tzinfo=None)
+    assert passkey_reset_is_active(link) is True
 
-    clear_passkey_reset(user)
-    assert user.passkey_reset_token_hash is None
-    assert user.passkey_reset_expires_at is None
-    assert passkey_reset_is_active(user) is False
+    link.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+    assert passkey_reset_is_active(link) is False
+
+    link.expires_at = datetime.now(UTC) + timedelta(hours=1)
+    clear_passkey_reset(link)
+    assert link.used_at is not None
+    assert passkey_reset_is_active(link) is False
+    assert link.is_active() is False
+
+    link.used_at = None
+    link.token_hash = ""
+    assert passkey_reset_is_active(link) is False
+
+
+def test_passkey_reset_helpers_accept_custom_ttl() -> None:
+    token = create_passkey_reset_token()
+    user = SimpleNamespace(id=uuid4())
+
+    link = set_passkey_reset(user, token, ttl=timedelta(hours=72))
+    link.id = uuid4()
+
+    assert link.token_hash == hash_passkey_reset_token(token)
+    assert link.expires_at > datetime.now(UTC) + timedelta(hours=71, minutes=59)
+    assert link.expires_at < datetime.now(UTC) + timedelta(hours=72, minutes=1)
+    assert len(link.short_id) == 8
+    assert link.remaining_hours == 72
+
+
+def test_admin_passkey_add_link_duration_parser() -> None:
+    assert _passkey_add_link_duration_hours(None) == 24
+    assert _passkey_add_link_duration_hours("48") == 48
+
+    with pytest.raises(ValueError, match="whole number"):
+        _passkey_add_link_duration_hours("1.5")
+    with pytest.raises(ValueError, match="between 1 and 720"):
+        _passkey_add_link_duration_hours("0")
+    with pytest.raises(ValueError, match="between 1 and 720"):
+        _passkey_add_link_duration_hours("721")
 
 
 def test_build_passkey_add_link_normalizes_base_url() -> None:
     assert build_passkey_add_link("https://example.com/", "abc123") == (
         "https://example.com/passkey-add/abc123"
+    )
+    assert build_passkey_add_link("https://example.com/", "abc123", identifier="link-1") == (
+        "https://example.com/passkey-add/abc123#identifier=link-1"
     )
 
 
@@ -163,15 +209,17 @@ def test_build_passkey_add_link_requires_base_url() -> None:
 
 
 def test_issue_passkey_reset_commits_to_database() -> None:
-    user = SimpleNamespace(passkey_reset_token_hash=None, passkey_reset_expires_at=None)
+    user = SimpleNamespace(id=uuid4())
     db = DummyDB()
 
-    token, expires_at = asyncio.run(issue_passkey_reset(db, user))
+    token, link = asyncio.run(issue_passkey_reset(db, user))
 
     assert token
-    assert expires_at == user.passkey_reset_expires_at
-    assert user.passkey_reset_token_hash == hash_passkey_reset_token(token)
+    assert db.added == [link]
+    assert link.user_id == user.id
+    assert link.token_hash == hash_passkey_reset_token(token)
     assert db.commit_calls == 1
+    assert db.refresh_calls == 1
 
 
 def test_websocket_hub_connect_broadcast_disconnect() -> None:

@@ -722,12 +722,37 @@ async function runAdminPasskeyAddLinkFlow(page, seed, rpId) {
       adminPage.getByRole("button", { name: "Generate add-passkey link" }),
       "Expected add-passkey link generator on the admin user edit page",
     );
+    await expectVisible(
+      adminPage.getByRole("heading", { name: "Valid links" }),
+      "Expected valid passkey add links section on the admin user edit page",
+    );
+    await adminPage.getByLabel("Valid for hours").fill("48");
     await adminPage.getByRole("button", { name: "Generate add-passkey link" }).click();
-    await adminPage.waitForURL(/passkey_add_link=/);
+    await expectVisible(
+      adminPage.locator("#passkey-add-link"),
+      "Expected generated admin link input after creating an add-passkey link",
+    );
+    await expectVisible(
+      adminPage.locator("text=Valid for 48 hours."),
+      "Expected generated admin link to show the configured duration",
+    );
+    await expectVisible(
+      adminPage.getByRole("columnheader", { name: "Valid until" }),
+      "Expected generated admin link to show its valid-until column",
+    );
     const generatedLink = await adminPage.locator("#passkey-add-link").inputValue();
     assert(
-      generatedLink.includes("/passkey-add/"),
-      `Expected generated admin link to use /passkey-add/, got ${generatedLink}`,
+      generatedLink.includes("/passkey-add/") && generatedLink.includes("#identifier="),
+      `Expected generated admin link to use /passkey-add/token#identifier=..., got ${generatedLink}`,
+    );
+
+    logStep("Updating the generated add-passkey link duration from the valid links table");
+    await adminPage.locator("[data-passkey-link-duration]").first().fill("72");
+    await adminPage.getByRole("button", { name: "Update duration" }).first().click();
+    await adminPage.waitForURL(/passkey_add_notice=/);
+    await expectVisible(
+      adminPage.locator("text=duration updated to 72 hours."),
+      "Expected generated admin link duration update confirmation",
     );
 
     const recipientPage = await recipientContext.newPage();
@@ -755,7 +780,7 @@ async function runAdminPasskeyAddLinkFlow(page, seed, rpId) {
     const replayPage = await replayContext.newPage();
     try {
       await replayPage.goto(generatedLink, { waitUntil: "networkidle" });
-      await replayPage.waitForURL(/\/login(\?|$)/);
+      await replayPage.waitForURL(/\/login([?#]|$)/);
     } finally {
       await replayPage.close();
     }

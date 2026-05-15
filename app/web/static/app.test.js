@@ -90,6 +90,7 @@ import {
   confirmCategoryDisable,
   saveCategoryOrderInBackground,
   setCategoryDropIndicator,
+  addPasskeyWithLink,
   transitionAuthPanels,
   setAuthTab,
 } from "./app.js";
@@ -325,6 +326,79 @@ test("setAuthTab toggles panels, selected state, focus, and panel height", () =>
   } finally {
     restoreDomGlobals(originals);
     setGlobalProperty("window", originalWindow);
+    dom.window.close();
+  }
+});
+
+test("addPasskeyWithLink submits token from the one-time link path", async () => {
+  const dom = new JSDOM(`
+    <section data-passkey-add-link data-passkey-add-token="secret-token">
+      <p data-auth-error hidden></p>
+      <p data-auth-success hidden></p>
+    </section>
+  `, { url: "https://example.test/passkey-add/secret-token#identifier=abc" });
+  const originals = {
+    FormData: globalThis.FormData,
+    HTMLElement: globalThis.HTMLElement,
+    HTMLButtonElement: globalThis.HTMLButtonElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    HTMLSelectElement: globalThis.HTMLSelectElement,
+  };
+  const originalFetch = globalThis.fetch;
+  const originalNavigator = globalThis.navigator;
+  const originalWindow = globalThis.window;
+  const originalCredential = globalThis.PublicKeyCredential;
+  const root = dom.window.document.querySelector("[data-passkey-add-link]");
+  const calls = [];
+
+  setDomGlobals(dom);
+  setGlobalProperty("window", dom.window);
+  setGlobalProperty("PublicKeyCredential", function PublicKeyCredential() {});
+  setGlobalProperty("navigator", {
+    credentials: {
+      create: async () => ({
+        id: "credential-id",
+        rawId: new Uint8Array([1, 2]).buffer,
+        response: {},
+        type: "public-key",
+      }),
+    },
+  });
+  setGlobalProperty("fetch", async (url, options) => {
+    const payload = JSON.parse(options.body);
+    calls.push({ url, payload });
+    return {
+      ok: true,
+      status: 200,
+      json: async () => {
+        if (url === "/api/v1/auth/passkey-add/secret-token/options") {
+          return {
+            challenge: "AQID",
+            user: { id: "BAUG" },
+            excludeCredentials: [{ id: "Bwg", type: "public-key" }],
+          };
+        }
+        return { email: "recover@example.com" };
+      },
+    };
+  });
+
+  try {
+    await addPasskeyWithLink(root);
+    assert.deepEqual(calls.map((call) => call.url), [
+      "/api/v1/auth/passkey-add/secret-token/options",
+      "/api/v1/auth/passkey-add/secret-token/verify",
+    ]);
+    assert.deepEqual(calls[0].payload, {});
+    assert.equal(calls[1].payload.credential.id, "credential-id");
+    assert.equal(root.querySelector("[data-auth-success]").hidden, false);
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("fetch", originalFetch);
+    setGlobalProperty("navigator", originalNavigator);
+    setGlobalProperty("window", originalWindow);
+    setGlobalProperty("PublicKeyCredential", originalCredential);
     dom.window.close();
   }
 });
