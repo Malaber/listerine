@@ -365,14 +365,14 @@ def test_ios_ui_test_env_uses_absolute_artifact_path(tmp_path: Path, monkeypatch
 
     env = tasks._ios_ui_test_env(
         base_url="http://localhost:8018",
-        bootstrap_base_url="http://127.0.0.1:8018",
+        bootstrap_base_url="http://localhost:8018",
         user_email="ios@example.com",
         artifact_dir="e2e-artifacts/ios-ui-e2e",
         initial_list_name="Browser Test Shop",
     )
 
     assert env["PLANINI_UI_TEST_BASE_URL"] == "http://localhost:8018"
-    assert env["PLANINI_UI_TEST_BOOTSTRAP_BASE_URL"] == "http://127.0.0.1:8018"
+    assert env["PLANINI_UI_TEST_BOOTSTRAP_BASE_URL"] == "http://localhost:8018"
     assert env["PLANINI_UI_TEST_USER_EMAIL"] == "ios@example.com"
     assert env["PLANINI_UI_TEST_INITIAL_LIST_NAME"] == "Browser Test Shop"
     assert env["PLANINI_UI_TEST_ARTIFACT_DIR"] == str(
@@ -390,7 +390,7 @@ def test_ios_ui_test_env_includes_injected_session_values(tmp_path: Path, monkey
 
     env = tasks._ios_ui_test_env(
         base_url="http://localhost:8018",
-        bootstrap_base_url="http://127.0.0.1:8018",
+        bootstrap_base_url="http://localhost:8018",
         user_email="ios@example.com",
         artifact_dir="e2e-artifacts/ios-ui-e2e",
         initial_list_name="Browser Test Shop",
@@ -750,7 +750,7 @@ def test_run_ios_ui_e2e_invokes_xcodebuild_with_expected_env(monkeypatch, tmp_pa
     tasks.run_ios_ui_e2e.body(
         Context(),
         base_url="http://localhost:8018",
-        bootstrap_base_url="http://127.0.0.1:8018",
+        bootstrap_base_url="http://localhost:8018",
         user_email="ios@example.com",
         artifact_dir="e2e-artifacts/ios-ui-e2e",
         device_name="iPhone 17",
@@ -770,7 +770,7 @@ def test_run_ios_ui_e2e_invokes_xcodebuild_with_expected_env(monkeypatch, tmp_pa
             {
                 "env": {
                     "PLANINI_UI_TEST_BASE_URL": "http://localhost:8018",
-                    "PLANINI_UI_TEST_BOOTSTRAP_BASE_URL": "http://127.0.0.1:8018",
+                    "PLANINI_UI_TEST_BOOTSTRAP_BASE_URL": "http://localhost:8018",
                     "PLANINI_UI_TEST_USER_EMAIL": "ios@example.com",
                     "PLANINI_UI_TEST_ARTIFACT_DIR": "e2e-artifacts/ios-ui-e2e",
                     "PLANINI_UI_TEST_INITIAL_LIST_NAME": "Browser Test Shop",
@@ -956,7 +956,7 @@ def test_check_ios_ui_e2e_starts_waits_runs_and_stops(monkeypatch) -> None:
             "run",
             {
                 "base_url": "http://localhost:8018",
-                "bootstrap_base_url": "http://127.0.0.1:8018",
+                "bootstrap_base_url": "http://localhost:8018",
                 "user_email": "ios@example.com",
                 "artifact_dir": "e2e-artifacts/ios-ui-e2e",
                 "device_name": "iPhone 17",

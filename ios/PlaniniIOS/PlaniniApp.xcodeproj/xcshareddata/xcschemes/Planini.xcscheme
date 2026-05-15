@@ -15,7 +15,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "4E911D4D424651A104F1C399"
+               BlueprintIdentifier = "6E903985EFEC0F724E79D572"
                BuildableName = "Planini.app"
                BlueprintName = "Planini"
                ReferencedContainer = "container:PlaniniApp.xcodeproj">
@@ -29,7 +29,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "06743117C96695329D07FE18"
+               BlueprintIdentifier = "7A3ABE956F63693B9585D08D"
                BuildableName = "PlaniniWatchApp.app"
                BlueprintName = "PlaniniWatchApp"
                ReferencedContainer = "container:PlaniniApp.xcodeproj">
@@ -43,7 +43,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "EA75BD7BB6403AF944FB7F0B"
+               BlueprintIdentifier = "DEBF93F3E0CDE651B6065A38"
                BuildableName = "PlaniniWatchExtension.appex"
                BlueprintName = "PlaniniWatchExtension"
                ReferencedContainer = "container:PlaniniApp.xcodeproj">
@@ -57,7 +57,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "1F7657A9A94B006441CAE68F"
+               BlueprintIdentifier = "3180F3469A0A460B5E6E607B"
                BuildableName = "PlaniniWatchWidgetExtension.appex"
                BlueprintName = "PlaniniWatchWidgetExtension"
                ReferencedContainer = "container:PlaniniApp.xcodeproj">
@@ -69,12 +69,12 @@
       buildConfiguration = "Debug"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
-      shouldUseLaunchSchemeArgsEnv = "YES"
+      shouldUseLaunchSchemeArgsEnv = "NO"
       onlyGenerateCoverageForSpecifiedTargets = "NO">
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "4E911D4D424651A104F1C399"
+            BlueprintIdentifier = "6E903985EFEC0F724E79D572"
             BuildableName = "Planini.app"
             BlueprintName = "Planini"
             ReferencedContainer = "container:PlaniniApp.xcodeproj">
@@ -86,7 +86,7 @@
             parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "469CB328A278D84136A808DA"
+               BlueprintIdentifier = "2DDAD55DE417376D7015B238"
                BuildableName = "PlaniniUITests.xctest"
                BlueprintName = "PlaniniUITests"
                ReferencedContainer = "container:PlaniniApp.xcodeproj">
@@ -95,6 +95,43 @@
       </Testables>
       <CommandLineArguments>
       </CommandLineArguments>
+      <EnvironmentVariables>
+         <EnvironmentVariable
+            key = "PLANINI_UI_TEST_ACCESS_TOKEN"
+            value = "$(PLANINI_UI_TEST_ACCESS_TOKEN)"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "PLANINI_UI_TEST_ARTIFACT_DIR"
+            value = "$(PLANINI_UI_TEST_ARTIFACT_DIR)"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "PLANINI_UI_TEST_BASE_URL"
+            value = "$(PLANINI_UI_TEST_BASE_URL)"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "PLANINI_UI_TEST_BOOTSTRAP_BASE_URL"
+            value = "$(PLANINI_UI_TEST_BOOTSTRAP_BASE_URL)"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "PLANINI_UI_TEST_DISPLAY_NAME"
+            value = "$(PLANINI_UI_TEST_DISPLAY_NAME)"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "PLANINI_UI_TEST_INITIAL_LIST_NAME"
+            value = "$(PLANINI_UI_TEST_INITIAL_LIST_NAME)"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "PLANINI_UI_TEST_USER_EMAIL"
+            value = "$(PLANINI_UI_TEST_USER_EMAIL)"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+      </EnvironmentVariables>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"
@@ -110,7 +147,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "4E911D4D424651A104F1C399"
+            BlueprintIdentifier = "6E903985EFEC0F724E79D572"
             BuildableName = "Planini.app"
             BlueprintName = "Planini"
             ReferencedContainer = "container:PlaniniApp.xcodeproj">
@@ -127,7 +164,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "4E911D4D424651A104F1C399"
+            BlueprintIdentifier = "6E903985EFEC0F724E79D572"
             BuildableName = "Planini.app"
             BlueprintName = "Planini"
             ReferencedContainer = "container:PlaniniApp.xcodeproj">

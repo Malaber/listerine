@@ -1508,7 +1508,7 @@ def run_ios_e2e(
 def run_ios_ui_e2e(
     c,
     base_url=DEFAULT_IOS_UI_E2E_BASE_URL,
-    bootstrap_base_url=f"http://127.0.0.1:{DEFAULT_IOS_UI_E2E_PORT}",
+    bootstrap_base_url=DEFAULT_IOS_UI_E2E_BASE_URL,
     user_email=DEFAULT_IOS_E2E_USER_EMAIL,
     artifact_dir=DEFAULT_IOS_UI_E2E_ARTIFACT_DIR,
     device_name=DEFAULT_IOS_UI_E2E_DEVICE,
@@ -1769,7 +1769,7 @@ def check_ios_ui_e2e(
         run_ios_ui_e2e(
             c,
             base_url=f"http://localhost:{port}",
-            bootstrap_base_url=f"http://127.0.0.1:{port}",
+            bootstrap_base_url=f"http://localhost:{port}",
             user_email=user_email,
             artifact_dir=artifact_dir,
             device_name=device_name,

@@ -10,13 +10,8 @@ final class PlaniniUITests: XCTestCase {
 
     func testListViewFlow() throws {
         try assertLocalTestBackend()
-        let session = if
-            let accessToken = ProcessInfo.processInfo.environment["PLANINI_UI_TEST_ACCESS_TOKEN"],
-            let displayName = ProcessInfo.processInfo.environment["PLANINI_UI_TEST_DISPLAY_NAME"],
-            accessToken.isEmpty == false,
-            displayName.isEmpty == false
-        {
-            UITestSession(accessToken: accessToken, displayName: displayName)
+        let session = if let injectedSession {
+            injectedSession
         } else {
             try bootstrapSession(email: userEmail)
         }
@@ -107,13 +102,8 @@ final class PlaniniUITests: XCTestCase {
 
     func testListReceivesLiveUpdates() throws {
         try assertLocalTestBackend()
-        let session = if
-            let accessToken = ProcessInfo.processInfo.environment["PLANINI_UI_TEST_ACCESS_TOKEN"],
-            let displayName = ProcessInfo.processInfo.environment["PLANINI_UI_TEST_DISPLAY_NAME"],
-            accessToken.isEmpty == false,
-            displayName.isEmpty == false
-        {
-            UITestSession(accessToken: accessToken, displayName: displayName)
+        let session = if let injectedSession {
+            injectedSession
         } else {
             try bootstrapSession(email: userEmail)
         }
@@ -161,7 +151,7 @@ final class PlaniniUITests: XCTestCase {
 
     private var baseURL: URL {
         if
-            let value = ProcessInfo.processInfo.environment["PLANINI_UI_TEST_BASE_URL"],
+            let value = environmentValue("PLANINI_UI_TEST_BASE_URL"),
             let url = URL(string: value)
         {
             return url
@@ -171,21 +161,43 @@ final class PlaniniUITests: XCTestCase {
 
     private var bootstrapBaseURL: URL {
         if
-            let value = ProcessInfo.processInfo.environment["PLANINI_UI_TEST_BOOTSTRAP_BASE_URL"],
+            let value = environmentValue("PLANINI_UI_TEST_BOOTSTRAP_BASE_URL"),
             let url = URL(string: value)
         {
             return url
         }
-        return URL(string: "http://127.0.0.1:8018")!
+        return URL(string: "http://localhost:8018")!
     }
 
     private var userEmail: String {
-        guard let configuredEmail = ProcessInfo.processInfo.environment["PLANINI_UI_TEST_USER_EMAIL"],
-            configuredEmail.isEmpty == false
+        guard let configuredEmail = environmentValue("PLANINI_UI_TEST_USER_EMAIL")
         else {
             return seededEmail
         }
         return configuredEmail
+    }
+
+    private var injectedSession: UITestSession? {
+        guard
+            let accessToken = environmentValue("PLANINI_UI_TEST_ACCESS_TOKEN"),
+            let displayName = environmentValue("PLANINI_UI_TEST_DISPLAY_NAME")
+        else {
+            return nil
+        }
+        return UITestSession(accessToken: accessToken, displayName: displayName)
+    }
+
+    private func environmentValue(_ key: String) -> String? {
+        guard
+            let value = ProcessInfo.processInfo.environment[key]?.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            ),
+            value.isEmpty == false,
+            value.hasPrefix("$(") == false
+        else {
+            return nil
+        }
+        return value
     }
 
     private func assertLocalTestBackend() throws {
