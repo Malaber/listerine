@@ -121,6 +121,10 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(listTitle.waitForExistence(timeout: 10))
         XCTAssertEqual(listTitle.label, initialListName)
         XCTAssertTrue(app.staticTexts["Loose item"].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            app.otherElements["live-updates-ready"].waitForExistence(timeout: 10),
+            "Expected live updates socket to receive its initial list snapshot before mutating the list outside the app."
+        )
 
         let uniqueSuffix = UUID().uuidString.prefix(8)
         let itemName = "UI Live \(uniqueSuffix)"

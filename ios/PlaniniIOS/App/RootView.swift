@@ -241,6 +241,11 @@ private struct ListDetailScreen: View {
                         Text("\(viewModel.sections.reduce(0) { $0 + $1.itemCount }) items across \(viewModel.sections.count) sections")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
+                        if viewModel.isRunningUITests, viewModel.liveUpdatesReadyListID == list.id {
+                            Color.clear
+                                .frame(width: 1, height: 1)
+                                .accessibilityIdentifier("live-updates-ready")
+                        }
                     }
                     .padding(.vertical, 4)
                 }
