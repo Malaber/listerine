@@ -264,6 +264,9 @@ def test_full_flow(client) -> None:
         f"/api/v1/households/{household_id}/lists", json={"name": "Weekly"}, headers=headers
     ).json()
     list_id = grocery_list["id"]
+    target_list = client.post(
+        f"/api/v1/households/{household_id}/lists", json={"name": "Errands"}, headers=headers
+    ).json()
 
     assert (
         client.get(f"/api/v1/households/{household_id}/lists", headers=headers).status_code == 200
@@ -312,6 +315,11 @@ def test_full_flow(client) -> None:
         headers=headers,
     ).json()
     item_id = item["id"]
+    moved_item = client.post(
+        f"/api/v1/lists/{list_id}/items",
+        json={"name": "Move me", "category_id": category["id"]},
+        headers=headers,
+    ).json()
 
     assert client.get(f"/api/v1/lists/{list_id}/items", headers=headers).status_code == 200
 
@@ -355,9 +363,13 @@ def test_full_flow(client) -> None:
         disabled_event = ws.receive_json()
         assert disabled_event["type"] == "category_disabled_categories_updated"
         assert disabled_event["payload"]["category_ids"] == [category["id"]]
-        cleared_item_event = ws.receive_json()
-        assert cleared_item_event["type"] == "item_updated"
-        assert cleared_item_event["payload"]["item"]["category_id"] is None
+        cleared_item_events = [ws.receive_json(), ws.receive_json()]
+        assert [event["type"] for event in cleared_item_events] == ["item_updated", "item_updated"]
+        assert {event["payload"]["item"]["id"] for event in cleared_item_events} == {
+            item_id,
+            moved_item["id"],
+        }
+        assert all(event["payload"]["item"]["category_id"] is None for event in cleared_item_events)
         assert (
             client.post(
                 f"/api/v1/lists/{list_id}/items",
@@ -381,6 +393,21 @@ def test_full_flow(client) -> None:
         ).json()
         assert updated["note"] == "2%"
         assert ws.receive_json()["type"] == "item_updated"
+
+        moved = client.patch(
+            f"/api/v1/items/{moved_item['id']}",
+            json={"list_id": target_list["id"], "note": "moved over"},
+            headers=headers,
+        ).json()
+        assert moved["list_id"] == target_list["id"]
+        assert moved["note"] == "moved over"
+        move_event = ws.receive_json()
+        assert move_event["type"] == "item_deleted"
+        assert move_event["payload"]["item"]["id"] == moved_item["id"]
+        target_items = client.get(
+            f"/api/v1/lists/{target_list['id']}/items", headers=headers
+        ).json()
+        assert any(entry["id"] == moved_item["id"] for entry in target_items)
 
         checked = client.post(f"/api/v1/items/{item_id}/check", headers=headers).json()
         assert checked["checked"] is True
@@ -590,6 +617,28 @@ def test_auth_and_access_error_paths(client) -> None:
         == 400
     )
     assert client.get(f"/api/v1/lists/{uuid4()}", headers=headers).status_code == 404
+
+    other_household = client.post(
+        "/api/v1/households", json={"name": "Other"}, headers=headers
+    ).json()
+    other_list = client.post(
+        f"/api/v1/households/{other_household['id']}/lists",
+        json={"name": "Other list"},
+        headers=headers,
+    ).json()
+    item = client.post(
+        f"/api/v1/lists/{list_res['id']}/items",
+        json={"name": "Milk"},
+        headers=headers,
+    ).json()
+    assert (
+        client.patch(
+            f"/api/v1/items/{item['id']}",
+            json={"list_id": other_list["id"]},
+            headers=headers,
+        ).status_code
+        == 400
+    )
 
 
 def test_list_category_order_rejects_duplicates_and_list_delete_cleans_up_orders(client) -> None:
