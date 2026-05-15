@@ -16,6 +16,7 @@ final class PlaniniUITests: XCTestCase {
         loginApp.launch()
         XCTAssertTrue(loginApp.buttons["login-passkey-button"].waitForExistence(timeout: 10))
         captureScreenshot(named: "promotion-login-dialogue")
+        assertReviewerOnboardingAvailable(in: loginApp)
         loginApp.terminate()
 
         let session = if
@@ -268,6 +269,41 @@ final class PlaniniUITests: XCTestCase {
             }
             app.swipeUp()
         }
+    }
+
+    private func assertReviewerOnboardingAvailable(in app: XCUIApplication) {
+        let helpMenu = app.buttons["login-help-menu"]
+        XCTAssertTrue(helpMenu.waitForExistence(timeout: 3))
+        helpMenu.tap()
+
+        let helpButton = app.buttons["Having trouble signing in?"]
+        XCTAssertTrue(helpButton.waitForExistence(timeout: 3))
+        helpButton.tap()
+
+        XCTAssertTrue(app.otherElements["reviewer-onboarding-sheet"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.textFields["passkey-add-link-field"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.textFields["registration-display-name-field"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.textFields["registration-email-field"].waitForExistence(timeout: 3))
+        captureScreenshot(named: "ios-ui-reviewer-onboarding")
+
+        let passkeyField = app.textFields["passkey-add-link-field"]
+        passkeyField.tap()
+        passkeyField.typeText("\(baseURL.absoluteString)/passkey-add/missing-reviewer-token")
+        app.buttons["passkey-add-submit-button"].tap()
+        XCTAssertTrue(app.alerts["Error"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Passkey add link not found"].exists)
+        app.alerts["Error"].buttons["OK"].tap()
+
+        let nameField = app.textFields["registration-display-name-field"]
+        nameField.tap()
+        nameField.typeText("App Reviewer")
+        let emailField = app.textFields["registration-email-field"]
+        emailField.tap()
+        emailField.typeText("reviewer@example.com")
+        XCTAssertTrue(app.buttons["registration-submit-button"].isEnabled)
+
+        app.buttons["Cancel"].tap()
+        XCTAssertFalse(app.otherElements["reviewer-onboarding-sheet"].exists)
     }
 
     private func fetchItems(inListNamed listName: String, accessToken: String) throws -> [UITestItem] {

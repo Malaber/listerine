@@ -660,6 +660,7 @@ def _write_ios_entitlements(host: str) -> None:
                 "\t</array>",
                 "\t<key>com.apple.developer.associated-domains</key>",
                 "\t<array>",
+                f"\t\t<string>applinks:{host}</string>",
                 f"\t\t<string>webcredentials:{host}</string>",
                 "\t</array>",
                 "</dict>",

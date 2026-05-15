@@ -5,6 +5,46 @@ import AuthenticationServices
 import UIKit
 
 struct ApplePasskeyClient {
+    func register(optionsPayload: [String: Any], relyingPartyIdentifier: String) async throws -> [String: Any] {
+        let publicKey = (optionsPayload["publicKey"] as? [String: Any]) ?? optionsPayload
+        guard
+            let challengeText = publicKey["challenge"] as? String,
+            let challenge = Data(base64URLEncoded: challengeText),
+            let user = publicKey["user"] as? [String: Any],
+            let userIDText = user["id"] as? String,
+            let userID = Data(base64URLEncoded: userIDText)
+        else {
+            throw AppError.invalidResponse
+        }
+
+        let userName = (user["name"] as? String) ?? (user["displayName"] as? String) ?? "Planini"
+        let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: relyingPartyIdentifier)
+        let request = provider.createCredentialRegistrationRequest(
+            challenge: challenge,
+            name: userName,
+            userID: userID
+        )
+
+        let authorization = try await PasskeyCoordinator().perform(request: request)
+        guard
+            let credential = authorization.credential as? ASAuthorizationPlatformPublicKeyCredentialRegistration,
+            let attestationObject = credential.rawAttestationObject
+        else {
+            throw AppError.server("Passkey registration failed.")
+        }
+
+        return [
+            "id": credential.credentialID.base64URLEncodedString(),
+            "rawId": credential.credentialID.base64URLEncodedString(),
+            "type": "public-key",
+            "response": [
+                "clientDataJSON": credential.rawClientDataJSON.base64URLEncodedString(),
+                "attestationObject": attestationObject.base64URLEncodedString(),
+            ],
+            "clientExtensionResults": [:],
+        ]
+    }
+
     func authenticate(optionsPayload: [String: Any], relyingPartyIdentifier: String) async throws -> [String: Any] {
         let publicKey = (optionsPayload["publicKey"] as? [String: Any]) ?? optionsPayload
         guard
@@ -79,6 +119,12 @@ private final class PasskeyCoordinator: NSObject, ASAuthorizationControllerDeleg
 }
 #else
 struct ApplePasskeyClient {
+    func register(optionsPayload: [String: Any], relyingPartyIdentifier: String) async throws -> [String: Any] {
+        _ = optionsPayload
+        _ = relyingPartyIdentifier
+        throw AppError.server("Passkeys are unavailable on this platform.")
+    }
+
     func authenticate(optionsPayload: [String: Any], relyingPartyIdentifier: String) async throws -> [String: Any] {
         _ = optionsPayload
         _ = relyingPartyIdentifier

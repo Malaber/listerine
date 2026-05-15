@@ -19,6 +19,8 @@ struct RootView: View {
     @EnvironmentObject private var viewModel: MobileAppViewModel
     @State private var selectedTab: AppTab = .favorite
     @State private var presentedError: AppErrorAlert?
+    @State private var showingReviewerOnboarding = false
+    @State private var passkeyAddLinkInput = ""
 
     var body: some View {
         Group {
@@ -26,10 +28,33 @@ struct RootView: View {
                 NavigationStack {
                     loginPane
                         .navigationTitle("Planini")
+                        .toolbar {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Menu {
+                                    Button {
+                                        showingReviewerOnboarding = true
+                                    } label: {
+                                        Label("Having trouble signing in?", systemImage: "questionmark.circle")
+                                    }
+                                    .accessibilityIdentifier("login-help-trouble-button")
+                                } label: {
+                                    Image(systemName: "ellipsis.circle")
+                                }
+                                .accessibilityIdentifier("login-help-menu")
+                            }
+                        }
                 }
             } else {
                 appTabs
             }
+        }
+        .sheet(isPresented: $showingReviewerOnboarding) {
+            ReviewerOnboardingSheet(initialPasskeyAddInput: passkeyAddLinkInput)
+        }
+        .onOpenURL { url in
+            guard MobileAppViewModel.passkeyAddToken(from: url.absoluteString) != nil else { return }
+            passkeyAddLinkInput = url.absoluteString
+            showingReviewerOnboarding = true
         }
         .onChange(of: viewModel.errorMessage) { newValue in
             if let newValue, newValue.isEmpty == false {
@@ -106,6 +131,114 @@ struct RootView: View {
             .accessibilityIdentifier("tab-settings")
         }
         .accessibilityIdentifier("main-tab-view")
+    }
+}
+
+private struct ReviewerOnboardingSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var viewModel: MobileAppViewModel
+
+    let initialPasskeyAddInput: String
+
+    @State private var passkeyAddInput: String
+    @State private var registrationDisplayName = ""
+    @State private var registrationEmail = ""
+    @State private var isWorking = false
+
+    init(initialPasskeyAddInput: String) {
+        self.initialPasskeyAddInput = initialPasskeyAddInput
+        _passkeyAddInput = State(initialValue: initialPasskeyAddInput)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Add passkey") {
+                    TextField("Passkey add link or key", text: $passkeyAddInput, axis: .vertical)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .accessibilityIdentifier("passkey-add-link-field")
+
+                    Button {
+                        Task {
+                            isWorking = true
+                            let added = await viewModel.addPasskeyFromLinkInput(passkeyAddInput)
+                            isWorking = false
+                            if added {
+                                AppHaptics.confirmation()
+                                dismiss()
+                            }
+                        }
+                    } label: {
+                        Label("Add passkey", systemImage: "person.badge.key")
+                    }
+                    .disabled(isWorking || viewModel.isAuthenticating || trimmedPasskeyAddInput.isEmpty)
+                    .accessibilityIdentifier("passkey-add-submit-button")
+                }
+
+                Section("Create account") {
+                    TextField("Name", text: $registrationDisplayName)
+                        .textContentType(.name)
+                        .accessibilityIdentifier("registration-display-name-field")
+
+                    TextField("Email", text: $registrationEmail)
+                        .keyboardType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .textContentType(.emailAddress)
+                        .accessibilityIdentifier("registration-email-field")
+
+                    Button {
+                        Task {
+                            isWorking = true
+                            let created = await viewModel.registerAccount(
+                                displayName: registrationDisplayName,
+                                email: registrationEmail
+                            )
+                            isWorking = false
+                            if created {
+                                AppHaptics.confirmation()
+                                dismiss()
+                            }
+                        }
+                    } label: {
+                        Label("Create account", systemImage: "person.crop.circle.badge.plus")
+                    }
+                    .disabled(isWorking || viewModel.isAuthenticating || trimmedName.isEmpty || trimmedEmail.isEmpty)
+                    .accessibilityIdentifier("registration-submit-button")
+                }
+
+                if let message = viewModel.reviewerOnboardingMessage, message.isEmpty == false {
+                    Section {
+                        Text(message)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .navigationTitle("Sign-in help")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+        .onChange(of: initialPasskeyAddInput) { newValue in
+            passkeyAddInput = newValue
+        }
+        .accessibilityIdentifier("reviewer-onboarding-sheet")
+    }
+
+    private var trimmedPasskeyAddInput: String {
+        passkeyAddInput.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var trimmedName: String {
+        registrationDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var trimmedEmail: String {
+        registrationEmail.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 

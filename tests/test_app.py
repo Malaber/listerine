@@ -1649,6 +1649,19 @@ def test_apple_app_site_association_returns_webcredentials_apps(client, monkeypa
 
     assert response.status_code == 200
     assert response.json() == {
+        "applinks": {
+            "details": [
+                {
+                    "appID": "VWKG94374J.de.malaber.planini",
+                    "paths": ["/passkey-add/*"],
+                    "components": [
+                        {
+                            "/": "/passkey-add/*",
+                        }
+                    ],
+                }
+            ],
+        },
         "webcredentials": {
             "apps": ["VWKG94374J.de.malaber.planini"],
         }

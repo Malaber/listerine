@@ -208,6 +208,20 @@ async def apple_app_site_association() -> JSONResponse:
         raise HTTPException(status_code=404, detail="Apple app site association is not configured")
     return JSONResponse(
         {
+            "applinks": {
+                "details": [
+                    {
+                        "appID": app_id,
+                        "paths": ["/passkey-add/*"],
+                        "components": [
+                            {
+                                "/": "/passkey-add/*",
+                            }
+                        ],
+                    }
+                    for app_id in settings.webcredentials_apps
+                ],
+            },
             "webcredentials": {
                 "apps": settings.webcredentials_apps,
             }
