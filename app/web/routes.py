@@ -224,7 +224,7 @@ async def apple_app_site_association() -> JSONResponse:
             },
             "webcredentials": {
                 "apps": settings.webcredentials_apps,
-            }
+            },
         }
     )
 

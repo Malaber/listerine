@@ -25,6 +25,8 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Install Invoke
         run: python -m pip install invoke
+      - name: Install native image dependencies
+        run: brew install cairo
       - name: Bootstrap backend dependencies
         run: python -m invoke bootstrap-ci
       - name: Run native iOS CI flow
