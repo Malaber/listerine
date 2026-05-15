@@ -29,7 +29,11 @@ from app.core.database import get_db
 from app.core.security import create_access_token
 from app.models import Passkey, User
 from app.services.auth_sessions import create_auth_session, revoke_auth_session
-from app.services.passkey_reset import clear_passkey_reset, get_user_for_passkey_reset_token
+from app.services.passkey_reset import (
+    clear_passkey_reset,
+    get_passkey_add_link_for_token,
+    get_user_for_passkey_reset_token,
+)
 from app.schemas.auth import (
     PasskeyFinishRequest,
     PasskeyLoginStartRequest,
@@ -628,10 +632,11 @@ async def finish_passkey_add_from_link(
         request.session.pop(_PASSKEY_RESET_SESSION_KEY, None)
         raise HTTPException(status_code=400, detail="Passkey add session expired")
 
-    user = await get_user_for_passkey_reset_token(db, token, with_passkeys=True)
-    if user is None or pending.get("user_id") != str(user.id):
+    link = await get_passkey_add_link_for_token(db, token, with_passkeys=True)
+    if link is None or pending.get("user_id") != str(link.user.id):
         request.session.pop(_PASSKEY_RESET_SESSION_KEY, None)
         raise HTTPException(status_code=404, detail="Passkey add link not found")
+    user = link.user
 
     try:
         verified = _verify_registration_with_expected_origins(
@@ -659,7 +664,7 @@ async def finish_passkey_add_from_link(
             sign_count=verified.sign_count,
         )
     )
-    clear_passkey_reset(user)
+    clear_passkey_reset(link)
     await db.commit()
     await db.refresh(user)
     request.session.pop(_PASSKEY_RESET_SESSION_KEY, None)

@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="auth-shell" data-passkey-add-link data-passkey-add-token="{{ token }}">
+<section
+  class="auth-shell"
+  data-passkey-add-link
+  data-passkey-add-token="{{ token }}"
+>
   <div class="auth-copy">
     <h1>{{ t("auth.passkey_add.title") }}</h1>
     <p>{{ t("auth.passkey_add.one_time_link", email=email) }}</p>
