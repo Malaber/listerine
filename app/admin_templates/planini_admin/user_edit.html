@@ -50,14 +50,16 @@
       <p class="text-muted">
         Generate a one-time link that lets this account register another passkey.
       </p>
-      {% if request.query_params.get("passkey_add_error") %}
+      {% set passkey_add_error = passkey_add_error if passkey_add_error is defined and passkey_add_error else request.query_params.get("passkey_add_error") %}
+      {% set passkey_add_notice = passkey_add_notice if passkey_add_notice is defined and passkey_add_notice else request.query_params.get("passkey_add_notice") %}
+      {% if passkey_add_error %}
       <div class="alert alert-danger mt-3 mb-3" role="alert">
-        {{ request.query_params.get("passkey_add_error") }}
+        {{ passkey_add_error }}
       </div>
       {% endif %}
-      {% if request.query_params.get("passkey_add_notice") %}
+      {% if passkey_add_notice %}
       <div class="alert alert-success mt-3 mb-3" role="alert">
-        {{ request.query_params.get("passkey_add_notice") }}
+        {{ passkey_add_notice }}
       </div>
       {% endif %}
       <form action="{{ url_for('admin:view-user-generate_passkey_add_link', pk=obj.id) }}" method="POST">
@@ -81,12 +83,12 @@
           </div>
         </div>
       </form>
-      {% if request.query_params.get("passkey_add_link") %}
+      {% if passkey_add is defined and passkey_add %}
       <div class="alert alert-success mt-3 mb-3" role="alert">
         Add-passkey link
-        {{ request.query_params.get("passkey_add_identifier") }}
-        ready for <strong>{{ request.query_params.get("passkey_add_email") or obj.email }}</strong>.
-        Valid for {{ request.query_params.get("passkey_add_valid_for_hours") }} hours.
+        {{ passkey_add.identifier }}
+        ready for <strong>{{ passkey_add.email or obj.email }}</strong>.
+        Valid for {{ passkey_add.valid_for_hours }} hours.
       </div>
       <div class="mb-3">
         <label class="form-label" for="passkey-add-link">New add-passkey link</label>
@@ -94,7 +96,7 @@
           id="passkey-add-link"
           class="form-control"
           type="text"
-          value="{{ request.query_params.get('passkey_add_link') }}"
+          value="{{ passkey_add.link }}"
           readonly
           onclick="this.select()"
         />

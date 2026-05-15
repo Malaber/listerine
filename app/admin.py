@@ -9,6 +9,7 @@ from markupsafe import Markup
 from sqladmin import Admin, ModelView, expose
 from sqladmin.authentication import AuthenticationBackend
 from sqladmin.authentication import login_required
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
@@ -73,6 +74,36 @@ class UserAdmin(ModelView, model=User):
     def form_edit_query(self, request: Request):
         return super().form_edit_query(request).options(selectinload(User.passkey_add_links))
 
+    async def _render_edit(
+        self,
+        request: Request,
+        user: User,
+        *,
+        passkey_add: dict[str, object] | None = None,
+        passkey_add_error: str | None = None,
+        passkey_add_notice: str | None = None,
+    ) -> Response:
+        form_class = await self.scaffold_form(self._form_edit_rules)
+        return await self.templates.TemplateResponse(
+            request,
+            self.edit_template,
+            {
+                "obj": user,
+                "model_view": self,
+                "form": form_class(obj=user),
+                "passkey_add": passkey_add,
+                "passkey_add_error": passkey_add_error,
+                "passkey_add_notice": passkey_add_notice,
+            },
+        )
+
+    async def _load_user_with_add_links(self, user_id: UUID) -> User | None:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(User).options(selectinload(User.passkey_add_links)).where(User.id == user_id)
+            )
+            return result.scalar_one_or_none()
+
     @expose("/{pk}/passkey-add-link", methods=["POST"], include_in_schema=False)
     async def generate_passkey_add_link(self, request: Request) -> Response:
         user_id = UUID(request.path_params["pk"])
@@ -100,18 +131,19 @@ class UserAdmin(ModelView, model=User):
                 session, user, ttl=timedelta(hours=duration_hours)
             )
 
-        reset_link = build_passkey_add_link(str(request.base_url), token)
-        return RedirectResponse(
-            url=str(
-                edit_url.include_query_params(
-                    passkey_add_link=reset_link,
-                    passkey_add_email=user.email,
-                    passkey_add_identifier=link.short_id,
-                    passkey_add_expires_at=link.expires_at.isoformat(),
-                    passkey_add_valid_for_hours=str(duration_hours),
-                )
-            ),
-            status_code=303,
+        user = await self._load_user_with_add_links(user_id)
+        assert user is not None
+        reset_link = build_passkey_add_link(str(request.base_url), token, identifier=link.short_id)
+        return await self._render_edit(
+            request,
+            user,
+            passkey_add={
+                "link": reset_link,
+                "email": user.email,
+                "identifier": link.short_id,
+                "expires_at": link.expires_at.isoformat(),
+                "valid_for_hours": str(duration_hours),
+            },
         )
 
     @expose(

@@ -24,6 +24,14 @@ class PasskeyFinishRequest(BaseModel):
     credential: dict[str, Any]
 
 
+class PasskeyAddLinkStartRequest(BaseModel):
+    token: str = Field(min_length=1)
+
+
+class PasskeyAddLinkFinishRequest(PasskeyAddLinkStartRequest):
+    credential: dict[str, Any]
+
+
 class PasskeyOut(ORMModel):
     id: UUID
     name: str

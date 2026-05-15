@@ -33,7 +33,15 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("token_hash"),
     )
+    op.drop_column("users", "passkey_reset_expires_at")
+    op.drop_column("users", "passkey_reset_token_hash")
 
 
 def downgrade() -> None:
+    op.add_column(
+        "users", sa.Column("passkey_reset_token_hash", sa.String(length=64), nullable=True)
+    )
+    op.add_column(
+        "users", sa.Column("passkey_reset_expires_at", sa.DateTime(timezone=True), nullable=True)
+    )
     op.drop_table("passkey_add_links")
