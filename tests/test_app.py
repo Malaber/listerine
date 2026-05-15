@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import re
 from html import unescape
 from datetime import UTC, datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -14,7 +15,7 @@ from app.api.v1.routes.households import _as_utc
 from app.api.v1.routes.auth import _expected_origins
 from app.core.database import AsyncSessionLocal
 from app.core.security import create_access_token
-from app.models import AuthSession, HouseholdInvite, HouseholdMember, Passkey, User
+from app.models import AuthSession, HouseholdInvite, HouseholdMember, Passkey, PasskeyAddLink, User
 from app.schemas.auth import PasskeyOut
 
 REGISTERED_CREDENTIAL_ID = bytes_to_base64url(b"credential-id")
@@ -133,11 +134,29 @@ def _register_session_user(client, monkeypatch, email: str) -> UUID:
     return UUID(response.json()["id"])
 
 
-def _extract_passkey_add_token_from_url(url: str) -> str:
-    query = parse_qs(urlparse(url).query)
-    link = query["passkey_add_link"][0]
-    assert "/passkey-add/" in link
-    return link.rsplit("/", 1)[-1]
+def _extract_passkey_add_link_from_html(html: str) -> str:
+    match = re.search(r'id="passkey-add-link"[^>]+value="([^"]+)"', html, flags=re.S)
+    assert match is not None
+    return unescape(match.group(1))
+
+
+def _extract_passkey_add_token_from_link(link: str) -> str:
+    parsed = urlparse(link)
+    assert parsed.path.startswith("/passkey-add/")
+    assert parsed.fragment.startswith("identifier=")
+    assert parse_qs(parsed.fragment)["identifier"][0]
+    return parsed.path.rsplit("/", maxsplit=1)[-1]
+
+
+async def _get_passkey_add_link(token: str) -> PasskeyAddLink:
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(PasskeyAddLink).where(
+                PasskeyAddLink.token_hash == hashlib.sha256(token.encode("utf-8")).hexdigest()
+            )
+        )
+        link = result.scalar_one()
+        return link
 
 
 def _admin_user_edit_url(user_id: UUID) -> str:
@@ -146,6 +165,10 @@ def _admin_user_edit_url(user_id: UUID) -> str:
 
 def _admin_user_passkey_add_link_url(user_id: UUID) -> str:
     return f"/admin/user/{user_id}/passkey-add-link"
+
+
+def _admin_user_passkey_add_link_duration_url(user_id: UUID, link_id: UUID) -> str:
+    return f"/admin/user/{user_id}/passkey-add-links/{link_id}/duration"
 
 
 def _register_admin_session(client, monkeypatch, email: str = "admin@example.com") -> UUID:
@@ -2765,30 +2788,143 @@ def test_admin_can_generate_passkey_add_link_from_admin_frontend(client, monkeyp
     page = client.get(_admin_user_edit_url(user_id))
     assert page.status_code == 200
     assert "Generate add-passkey link" in page.text
+    assert "Valid for hours" in page.text
+    assert "Valid links" in page.text
 
     response = client.post(
         _admin_user_passkey_add_link_url(user_id),
+        data={"valid_for_hours": "48"},
         follow_redirects=True,
     )
     assert response.status_code == 200
-    assert "Add-passkey link ready for" in response.text
+    assert "Add-passkey link" in response.text
+    assert "ready for" in response.text
+    assert "Valid for 48 hours." in response.text
+    assert "Valid until" in response.text
+    assert "New add-passkey link" in response.text
 
-    token = _extract_passkey_add_token_from_url(str(response.url))
+    generated_link = _extract_passkey_add_link_from_html(response.text)
+    token = _extract_passkey_add_token_from_link(generated_link)
+    parsed_link = urlparse(generated_link)
+    first_link = asyncio.run(_get_passkey_add_link(token))
+    assert parsed_link.fragment == f"identifier={first_link.short_id}"
+    assert first_link.user_id == user_id
+    assert first_link.used_at is None
+    assert first_link.short_id in response.text
+    assert first_link.token_hash == hashlib.sha256(token.encode("utf-8")).hexdigest()
 
-    async def _load_user() -> User:
-        async with AsyncSessionLocal() as session:
-            user = await session.get(User, user_id)
-            assert user is not None
-            return user
-
-    user = asyncio.run(_load_user())
-    assert user.passkey_reset_token_hash == hashlib.sha256(token.encode("utf-8")).hexdigest()
-    assert user.passkey_reset_expires_at is not None
-    expires_at = user.passkey_reset_expires_at
+    expires_at = first_link.expires_at
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=UTC)
-    assert expires_at > datetime.now(UTC) + timedelta(hours=23, minutes=59)
-    assert expires_at < datetime.now(UTC) + timedelta(hours=24, minutes=1)
+    assert expires_at > datetime.now(UTC) + timedelta(hours=47, minutes=59)
+    assert expires_at < datetime.now(UTC) + timedelta(hours=48, minutes=1)
+
+    second_response = client.post(
+        _admin_user_passkey_add_link_url(user_id),
+        data={"valid_for_hours": "24"},
+        follow_redirects=True,
+    )
+    assert second_response.status_code == 200
+    second_link_value = _extract_passkey_add_link_from_html(second_response.text)
+    second_token = _extract_passkey_add_token_from_link(second_link_value)
+    second_link = asyncio.run(_get_passkey_add_link(second_token))
+
+    edit_page = client.get(_admin_user_edit_url(user_id))
+    assert edit_page.status_code == 200
+    assert first_link.short_id in edit_page.text
+    assert second_link.short_id in edit_page.text
+    assert token not in edit_page.text
+    assert second_token not in edit_page.text
+
+    update = client.post(
+        _admin_user_passkey_add_link_duration_url(user_id, first_link.id),
+        data={"valid_for_hours": "72"},
+        follow_redirects=True,
+    )
+    assert update.status_code == 200
+    assert f"Passkey add link {first_link.short_id} duration updated to 72 hours." in update.text
+
+    async def _load_updated_link() -> PasskeyAddLink:
+        async with AsyncSessionLocal() as session:
+            link = await session.get(PasskeyAddLink, first_link.id)
+            assert link is not None
+            return link
+
+    updated_link = asyncio.run(_load_updated_link())
+    expires_at = updated_link.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    assert expires_at > datetime.now(UTC) + timedelta(hours=71, minutes=59)
+    assert expires_at < datetime.now(UTC) + timedelta(hours=72, minutes=1)
+
+    invalid_update = client.post(
+        _admin_user_passkey_add_link_duration_url(user_id, first_link.id),
+        data={"valid_for_hours": "bad"},
+        follow_redirects=True,
+    )
+    assert invalid_update.status_code == 200
+    assert "Passkey add link duration must be a whole number of hours." in invalid_update.text
+
+    missing_update = client.post(
+        _admin_user_passkey_add_link_duration_url(user_id, uuid4()),
+        data={"valid_for_hours": "72"},
+        follow_redirects=True,
+    )
+    assert missing_update.status_code == 200
+    assert "Edit User" in missing_update.text
+
+    async def _mark_link_used() -> None:
+        async with AsyncSessionLocal() as session:
+            link = await session.get(PasskeyAddLink, first_link.id)
+            assert link is not None
+            link.used_at = datetime.now(UTC)
+            await session.commit()
+
+    asyncio.run(_mark_link_used())
+    used_update = client.post(
+        _admin_user_passkey_add_link_duration_url(user_id, first_link.id),
+        data={"valid_for_hours": "72"},
+        follow_redirects=True,
+    )
+    assert used_update.status_code == 200
+    assert "Used passkey add links cannot be extended." in used_update.text
+
+
+def test_admin_passkey_add_link_duration_validation(client, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.verify_registration_response",
+        lambda **_: _mock_verified_registration(),
+    )
+    monkeypatch.setattr(
+        "app.api.v1.routes.auth.settings.bootstrap_admin_email", "admin@example.com"
+    )
+
+    client.post(
+        "/api/v1/auth/register/options",
+        json={"email": "admin@example.com", "display_name": "Admin"},
+    )
+    verify = client.post("/api/v1/auth/register/verify", json=_passkey_finish_payload())
+    assert verify.status_code == 200
+
+    user_id = asyncio.run(_create_user("recover@example.com"))
+    response = client.post(
+        _admin_user_passkey_add_link_url(user_id),
+        data={"valid_for_hours": "bad"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "Passkey add link duration must be a whole number of hours." in response.text
+    assert "Add-passkey link ready for" not in response.text
+
+    async def _count_links() -> int:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(PasskeyAddLink).where(PasskeyAddLink.user_id == user_id)
+            )
+            return len(list(result.scalars()))
+
+    assert asyncio.run(_count_links()) == 0
 
 
 def test_admin_list_defaults_to_fifty_items_and_sortable_headers(client, monkeypatch) -> None:
@@ -2878,11 +3014,13 @@ def test_passkey_add_link_adds_passkey_and_clears_token(client, monkeypatch) -> 
         _admin_user_passkey_add_link_url(target_user_id),
         follow_redirects=True,
     )
-    token = _extract_passkey_add_token_from_url(str(generate.url))
+    generated_link = _extract_passkey_add_link_from_html(generate.text)
+    token = _extract_passkey_add_token_from_link(generated_link)
+    link = asyncio.run(_get_passkey_add_link(token))
 
-    add_page = client.get(f"/passkey-add/{token}")
+    add_page = client.get(generated_link.split("#", maxsplit=1)[0])
     assert add_page.status_code == 200
-    assert 'data-passkey-add-token="' in add_page.text
+    assert f'data-passkey-add-token="{token}"' in add_page.text
     assert "recover@example.com" in add_page.text
 
     options = client.post(f"/api/v1/auth/passkey-add/{token}/options", json={})
@@ -2895,16 +3033,21 @@ def test_passkey_add_link_adds_passkey_and_clears_token(client, monkeypatch) -> 
     assert finish.status_code == 200
     assert finish.json()["email"] == "recover@example.com"
 
-    async def _load_user_and_passkeys() -> tuple[User, list[Passkey]]:
+    async def _load_user_passkeys_and_link() -> tuple[User, list[Passkey], PasskeyAddLink]:
         async with AsyncSessionLocal() as session:
             user = await session.get(User, target_user_id)
             assert user is not None
             result = await session.execute(select(Passkey).where(Passkey.user_id == target_user_id))
-            return user, list(result.scalars())
+            link_result = await session.execute(
+                select(PasskeyAddLink).where(
+                    PasskeyAddLink.token_hash == hashlib.sha256(token.encode("utf-8")).hexdigest()
+                )
+            )
+            link = link_result.scalar_one()
+            return user, list(result.scalars()), link
 
-    user, passkeys = asyncio.run(_load_user_and_passkeys())
-    assert user.passkey_reset_token_hash is None
-    assert user.passkey_reset_expires_at is None
+    _, passkeys, link = asyncio.run(_load_user_passkeys_and_link())
+    assert link.used_at is not None
     assert len(passkeys) == 3
     assert [passkey.name for passkey in passkeys] == ["Passkey 1", "Passkey 2", "Passkey 3"]
     assert passkeys[-1].credential_id == bytes_to_base64url(b"replacement-credential-id")
@@ -2968,10 +3111,12 @@ def test_passkey_add_link_flow_rejects_expired_or_missing_state(client, monkeypa
         _admin_user_passkey_add_link_url(target_user_id),
         follow_redirects=True,
     )
-    token = _extract_passkey_add_token_from_url(str(generate.url))
+    generated_link = _extract_passkey_add_link_from_html(generate.text)
+    token = _extract_passkey_add_token_from_link(generated_link)
+    link = asyncio.run(_get_passkey_add_link(token))
 
     client.cookies.clear()
-    page = client.get(f"/passkey-add/{token}", follow_redirects=False)
+    page = client.get(generated_link.split("#", maxsplit=1)[0], follow_redirects=False)
     assert page.status_code == 200
     assert "Create another passkey" in page.text
 
@@ -2987,9 +3132,9 @@ def test_passkey_add_link_flow_rejects_expired_or_missing_state(client, monkeypa
 
     async def _expire_link() -> None:
         async with AsyncSessionLocal() as session:
-            user = await session.get(User, target_user_id)
-            assert user is not None
-            user.passkey_reset_expires_at = datetime.now(UTC) - timedelta(minutes=1)
+            stored_link = await session.get(PasskeyAddLink, link.id)
+            assert stored_link is not None
+            stored_link.expires_at = datetime.now(UTC) - timedelta(minutes=1)
             await session.commit()
 
     asyncio.run(_expire_link())
@@ -3001,7 +3146,7 @@ def test_passkey_add_link_flow_rejects_expired_or_missing_state(client, monkeypa
     assert expired_verify.status_code == 404
     assert expired_verify.json()["detail"] == "Passkey add link not found"
 
-    expired_page = client.get(f"/passkey-add/{token}", follow_redirects=False)
+    expired_page = client.get(generated_link.split("#", maxsplit=1)[0], follow_redirects=False)
     assert expired_page.status_code == 303
     assert expired_page.headers["location"] == "/login"
     assert client.post(f"/api/v1/auth/passkey-add/{token}/options", json={}).status_code == 404
@@ -3030,7 +3175,8 @@ def test_passkey_add_link_rejects_credential_registered_to_another_account(
         _admin_user_passkey_add_link_url(target_user_id),
         follow_redirects=True,
     )
-    token = _extract_passkey_add_token_from_url(str(generate.url))
+    generated_link = _extract_passkey_add_link_from_html(generate.text)
+    token = _extract_passkey_add_token_from_link(generated_link)
 
     options = client.post(f"/api/v1/auth/passkey-add/{token}/options", json={})
     assert options.status_code == 200

@@ -21,8 +21,6 @@ class User(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
-    passkey_reset_token_hash: Mapped[str | None] = mapped_column(String(64))
-    passkey_reset_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     passkeys = relationship(
         "Passkey",
         back_populates="user",
@@ -33,4 +31,10 @@ class User(Base):
         "AuthSession",
         back_populates="user",
         cascade="all, delete-orphan",
+    )
+    passkey_add_links = relationship(
+        "PasskeyAddLink",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="PasskeyAddLink.created_at",
     )
