@@ -22,7 +22,7 @@ from app.core.database import get_db
 from app.i18n import encode_catalog, translator_for
 from app.models import User
 from app.services.auth_sessions import create_auth_session, get_session_user, revoke_auth_session
-from app.services.passkey_reset import get_user_for_passkey_add_identifier
+from app.services.passkey_reset import get_user_for_passkey_reset_token
 from app.api.v1.routes.auth import _load_user_with_passkeys_by_email
 
 router = APIRouter(tags=["web"])
@@ -476,11 +476,11 @@ async def invite_detail(
     )
 
 
-@router.get("/passkey-add", response_class=HTMLResponse, response_model=None)
+@router.get("/passkey-add/{token}", response_class=HTMLResponse, response_model=None)
 async def passkey_add_page(
-    request: Request, identifier: str, db: AsyncSession = Depends(get_db)
+    request: Request, token: str, db: AsyncSession = Depends(get_db)
 ) -> Response:
-    user = await get_user_for_passkey_add_identifier(db, identifier)
+    user = await get_user_for_passkey_reset_token(db, token)
     if user is None:
         return RedirectResponse(url="/login", status_code=303)
 
@@ -493,6 +493,6 @@ async def passkey_add_page(
             session_user,
             email=user.email,
             display_name=user.display_name,
-            identifier=identifier,
+            token=token,
         ),
     )

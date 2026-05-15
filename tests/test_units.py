@@ -199,7 +199,7 @@ def test_build_passkey_add_link_normalizes_base_url() -> None:
         "https://example.com/passkey-add/abc123"
     )
     assert build_passkey_add_link("https://example.com/", "abc123", identifier="link-1") == (
-        "https://example.com/passkey-add?identifier=link-1#abc123"
+        "https://example.com/passkey-add/abc123#identifier=link-1"
     )
 
 

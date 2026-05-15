@@ -741,8 +741,8 @@ async function runAdminPasskeyAddLinkFlow(page, seed, rpId) {
     );
     const generatedLink = await adminPage.locator("#passkey-add-link").inputValue();
     assert(
-      generatedLink.includes("/passkey-add?identifier=") && generatedLink.includes("#"),
-      `Expected generated admin link to use /passkey-add?identifier=...#token, got ${generatedLink}`,
+      generatedLink.includes("/passkey-add/") && generatedLink.includes("#identifier="),
+      `Expected generated admin link to use /passkey-add/token#identifier=..., got ${generatedLink}`,
     );
 
     logStep("Updating the generated add-passkey link duration from the valid links table");

@@ -5240,26 +5240,17 @@ async function loginWithPasskey(root, form) {
   navigateTo(root.getAttribute("data-next-url") || "/");
 }
 
-function passkeyAddTokenFromLocation(locationLike = window.location) {
-  const rawHash = locationLike?.hash || "";
-  if (!rawHash.startsWith("#")) {
-    return "";
-  }
-  return decodeURIComponent(rawHash.slice(1));
-}
-
 async function addPasskeyWithLink(root) {
-  const token = passkeyAddTokenFromLocation();
+  const token = root.getAttribute("data-passkey-add-token");
   if (!token) {
     throw new Error(translate("auth.passkey_add.missing_token", {}, "Passkey add link is missing."));
   }
 
-  const options = await postJson("/api/v1/auth/passkey-add/options", { token });
+  const options = await postJson(`/api/v1/auth/passkey-add/${token}/options`, {});
   const credential = await navigator.credentials.create({
     publicKey: publicKeyFromJSON(options),
   });
-  await postJson("/api/v1/auth/passkey-add/verify", {
-    token,
+  await postJson(`/api/v1/auth/passkey-add/${token}/verify`, {
     credential: credentialToJSON(credential),
   });
   setMessage(root, "success", translate("auth.passkey_add.created_redirect", {}, "Additional passkey created. Redirecting to your dashboard..."));
@@ -5719,7 +5710,6 @@ export {
   initListDetail,
   registerWithPasskey,
   loginWithPasskey,
-  passkeyAddTokenFromLocation,
   addPasskeyWithLink,
   handlePasskeyLoginClick,
   transitionAuthPanels,

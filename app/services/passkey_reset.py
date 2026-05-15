@@ -1,7 +1,6 @@
 import hashlib
 import secrets
 from datetime import UTC, datetime, timedelta
-from urllib.parse import urlencode
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -62,11 +61,10 @@ def build_passkey_add_link(base_url: str, token: str, *, identifier: str | None 
     normalized_base_url = base_url.strip().rstrip("/")
     if not normalized_base_url:
         raise ValueError("Base URL is required")
-    query = f"?{urlencode({'identifier': identifier})}" if identifier is not None else ""
-    link = f"{normalized_base_url}/passkey-add{query}"
+    link = f"{normalized_base_url}/passkey-add/{token}"
     if identifier is not None:
-        return f"{link}#{token}"
-    return f"{link}/{token}"
+        return f"{link}#identifier={identifier}"
+    return link
 
 
 def clear_passkey_reset(link: PasskeyAddLink) -> None:
@@ -91,24 +89,6 @@ async def get_passkey_add_link_for_token(
     if link is None or not passkey_reset_is_active(link):
         return None
     return link
-
-
-async def get_user_for_passkey_add_identifier(
-    db: AsyncSession,
-    identifier: str,
-) -> User | None:
-    result = await db.execute(select(PasskeyAddLink).options(selectinload(PasskeyAddLink.user)))
-    link = next(
-        (
-            entry
-            for entry in result.scalars()
-            if entry.short_id == identifier and passkey_reset_is_active(entry)
-        ),
-        None,
-    )
-    if link is None:
-        return None
-    return link.user
 
 
 async def get_user_for_passkey_reset_token(

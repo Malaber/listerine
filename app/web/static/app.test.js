@@ -90,7 +90,6 @@ import {
   confirmCategoryDisable,
   saveCategoryOrderInBackground,
   setCategoryDropIndicator,
-  passkeyAddTokenFromLocation,
   addPasskeyWithLink,
   transitionAuthPanels,
   setAuthTab,
@@ -331,19 +330,13 @@ test("setAuthTab toggles panels, selected state, focus, and panel height", () =>
   }
 });
 
-test("passkeyAddTokenFromLocation reads token from URL fragment", () => {
-  assert.equal(passkeyAddTokenFromLocation({ hash: "#abc%20123" }), "abc 123");
-  assert.equal(passkeyAddTokenFromLocation({ hash: "" }), "");
-  assert.equal(passkeyAddTokenFromLocation(null), "");
-});
-
-test("addPasskeyWithLink submits fragment token without putting it in the API path", async () => {
+test("addPasskeyWithLink submits token from the one-time link path", async () => {
   const dom = new JSDOM(`
-    <section data-passkey-add-link>
+    <section data-passkey-add-link data-passkey-add-token="secret-token">
       <p data-auth-error hidden></p>
       <p data-auth-success hidden></p>
     </section>
-  `, { url: "https://example.test/passkey-add?identifier=abc#secret-token" });
+  `, { url: "https://example.test/passkey-add/secret-token#identifier=abc" });
   const originals = {
     FormData: globalThis.FormData,
     HTMLElement: globalThis.HTMLElement,
@@ -379,7 +372,7 @@ test("addPasskeyWithLink submits fragment token without putting it in the API pa
       ok: true,
       status: 200,
       json: async () => {
-        if (url === "/api/v1/auth/passkey-add/options") {
+        if (url === "/api/v1/auth/passkey-add/secret-token/options") {
           return {
             challenge: "AQID",
             user: { id: "BAUG" },
@@ -394,11 +387,10 @@ test("addPasskeyWithLink submits fragment token without putting it in the API pa
   try {
     await addPasskeyWithLink(root);
     assert.deepEqual(calls.map((call) => call.url), [
-      "/api/v1/auth/passkey-add/options",
-      "/api/v1/auth/passkey-add/verify",
+      "/api/v1/auth/passkey-add/secret-token/options",
+      "/api/v1/auth/passkey-add/secret-token/verify",
     ]);
-    assert.equal(calls[0].payload.token, "secret-token");
-    assert.equal(calls[1].payload.token, "secret-token");
+    assert.deepEqual(calls[0].payload, {});
     assert.equal(calls[1].payload.credential.id, "credential-id");
     assert.equal(root.querySelector("[data-auth-success]").hidden, false);
   } finally {

@@ -35,8 +35,6 @@ from app.services.passkey_reset import (
     get_user_for_passkey_reset_token,
 )
 from app.schemas.auth import (
-    PasskeyAddLinkFinishRequest,
-    PasskeyAddLinkStartRequest,
     PasskeyFinishRequest,
     PasskeyLoginStartRequest,
     PasskeyNameRequest,
@@ -594,7 +592,8 @@ async def finish_add_passkey(
     return passkey
 
 
-async def _begin_passkey_add_from_token(
+@router.post("/passkey-add/{token}/options")
+async def begin_passkey_add_from_link(
     token: str, request: Request, db: AsyncSession = Depends(get_db)
 ) -> dict[str, object]:
     user = await get_user_for_passkey_reset_token(db, token)
@@ -624,16 +623,8 @@ async def _begin_passkey_add_from_token(
     return json.loads(options_to_json(options))
 
 
-@router.post("/passkey-add/options")
-async def begin_passkey_add_from_link_body(
-    payload: PasskeyAddLinkStartRequest,
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-) -> dict[str, object]:
-    return await _begin_passkey_add_from_token(payload.token, request, db)
-
-
-async def _finish_passkey_add_from_token(
+@router.post("/passkey-add/{token}/verify", response_model=UserOut)
+async def finish_passkey_add_from_link(
     token: str, payload: PasskeyFinishRequest, request: Request, db: AsyncSession = Depends(get_db)
 ) -> User:
     pending = request.session.get(_PASSKEY_RESET_SESSION_KEY)
@@ -679,15 +670,6 @@ async def _finish_passkey_add_from_token(
     request.session.pop(_PASSKEY_RESET_SESSION_KEY, None)
     await create_auth_session(request, db, user)
     return user
-
-
-@router.post("/passkey-add/verify", response_model=UserOut)
-async def finish_passkey_add_from_link_body(
-    payload: PasskeyAddLinkFinishRequest,
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-) -> User:
-    return await _finish_passkey_add_from_token(payload.token, payload, request, db)
 
 
 @router.post("/passkeys/{passkey_id}/rename/options")

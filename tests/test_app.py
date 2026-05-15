@@ -142,10 +142,10 @@ def _extract_passkey_add_link_from_html(html: str) -> str:
 
 def _extract_passkey_add_token_from_link(link: str) -> str:
     parsed = urlparse(link)
-    assert parsed.path == "/passkey-add"
-    assert parse_qs(parsed.query)["identifier"][0]
-    assert parsed.fragment
-    return parsed.fragment
+    assert parsed.path.startswith("/passkey-add/")
+    assert parsed.fragment.startswith("identifier=")
+    assert parse_qs(parsed.fragment)["identifier"][0]
+    return parsed.path.rsplit("/", maxsplit=1)[-1]
 
 
 async def _get_passkey_add_link(token: str) -> PasskeyAddLink:
@@ -2807,7 +2807,7 @@ def test_admin_can_generate_passkey_add_link_from_admin_frontend(client, monkeyp
     token = _extract_passkey_add_token_from_link(generated_link)
     parsed_link = urlparse(generated_link)
     first_link = asyncio.run(_get_passkey_add_link(token))
-    assert parsed_link.query == f"identifier={first_link.short_id}"
+    assert parsed_link.fragment == f"identifier={first_link.short_id}"
     assert first_link.user_id == user_id
     assert first_link.used_at is None
     assert first_link.short_id in response.text
@@ -3020,19 +3020,15 @@ def test_passkey_add_link_adds_passkey_and_clears_token(client, monkeypatch) -> 
 
     add_page = client.get(generated_link.split("#", maxsplit=1)[0])
     assert add_page.status_code == 200
-    assert 'data-passkey-add-token="' not in add_page.text
-    assert f'data-passkey-add-identifier="{link.short_id}"' in add_page.text
+    assert f'data-passkey-add-token="{token}"' in add_page.text
     assert "recover@example.com" in add_page.text
 
-    options = client.post("/api/v1/auth/passkey-add/options", json={"token": token})
+    options = client.post(f"/api/v1/auth/passkey-add/{token}/options", json={})
     assert options.status_code == 200
 
     finish = client.post(
-        "/api/v1/auth/passkey-add/verify",
-        json={
-            "token": token,
-            **_passkey_finish_payload(bytes_to_base64url(b"replacement-credential-id")),
-        },
+        f"/api/v1/auth/passkey-add/{token}/verify",
+        json=_passkey_finish_payload(bytes_to_base64url(b"replacement-credential-id")),
     )
     assert finish.status_code == 200
     assert finish.json()["email"] == "recover@example.com"
@@ -3056,7 +3052,7 @@ def test_passkey_add_link_adds_passkey_and_clears_token(client, monkeypatch) -> 
     assert [passkey.name for passkey in passkeys] == ["Passkey 1", "Passkey 2", "Passkey 3"]
     assert passkeys[-1].credential_id == bytes_to_base64url(b"replacement-credential-id")
 
-    assert client.post("/api/v1/auth/passkey-add/options", json={"token": token}).status_code == 404
+    assert client.post(f"/api/v1/auth/passkey-add/{token}/options", json={}).status_code == 404
     assert client.get("/", follow_redirects=False).status_code == 200
 
 
@@ -3125,13 +3121,13 @@ def test_passkey_add_link_flow_rejects_expired_or_missing_state(client, monkeypa
     assert "Create another passkey" in page.text
 
     missing_state = client.post(
-        "/api/v1/auth/passkey-add/verify",
-        json={"token": token, **_passkey_finish_payload()},
+        f"/api/v1/auth/passkey-add/{token}/verify",
+        json=_passkey_finish_payload(),
     )
     assert missing_state.status_code == 400
     assert missing_state.json()["detail"] == "Passkey add session expired"
 
-    refresh_options = client.post("/api/v1/auth/passkey-add/options", json={"token": token})
+    refresh_options = client.post(f"/api/v1/auth/passkey-add/{token}/options", json={})
     assert refresh_options.status_code == 200
 
     async def _expire_link() -> None:
@@ -3144,8 +3140,8 @@ def test_passkey_add_link_flow_rejects_expired_or_missing_state(client, monkeypa
     asyncio.run(_expire_link())
 
     expired_verify = client.post(
-        "/api/v1/auth/passkey-add/verify",
-        json={"token": token, **_passkey_finish_payload()},
+        f"/api/v1/auth/passkey-add/{token}/verify",
+        json=_passkey_finish_payload(),
     )
     assert expired_verify.status_code == 404
     assert expired_verify.json()["detail"] == "Passkey add link not found"
@@ -3153,7 +3149,7 @@ def test_passkey_add_link_flow_rejects_expired_or_missing_state(client, monkeypa
     expired_page = client.get(generated_link.split("#", maxsplit=1)[0], follow_redirects=False)
     assert expired_page.status_code == 303
     assert expired_page.headers["location"] == "/login"
-    assert client.post("/api/v1/auth/passkey-add/options", json={"token": token}).status_code == 404
+    assert client.post(f"/api/v1/auth/passkey-add/{token}/options", json={}).status_code == 404
 
 
 def test_passkey_add_link_rejects_credential_registered_to_another_account(
@@ -3182,12 +3178,12 @@ def test_passkey_add_link_rejects_credential_registered_to_another_account(
     generated_link = _extract_passkey_add_link_from_html(generate.text)
     token = _extract_passkey_add_token_from_link(generated_link)
 
-    options = client.post("/api/v1/auth/passkey-add/options", json={"token": token})
+    options = client.post(f"/api/v1/auth/passkey-add/{token}/options", json={})
     assert options.status_code == 200
 
     finish = client.post(
-        "/api/v1/auth/passkey-add/verify",
-        json={"token": token, **_passkey_finish_payload()},
+        f"/api/v1/auth/passkey-add/{token}/verify",
+        json=_passkey_finish_payload(),
     )
     assert finish.status_code == 400
     assert finish.json()["detail"] == "That passkey is already registered"

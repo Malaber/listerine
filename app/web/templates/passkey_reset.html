@@ -3,7 +3,7 @@
 <section
   class="auth-shell"
   data-passkey-add-link
-  {% if identifier %}data-passkey-add-identifier="{{ identifier }}"{% endif %}
+  data-passkey-add-token="{{ token }}"
 >
   <div class="auth-copy">
     <h1>{{ t("auth.passkey_add.title") }}</h1>
