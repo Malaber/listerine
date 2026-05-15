@@ -916,6 +916,22 @@ def test_lists_include_open_item_count(client) -> None:
         headers=headers,
     ).json()
     assert renamed["open_item_count"] == 1
+    assert renamed["name"] == "Renamed"
+
+    trimmed = client.patch(
+        f"/api/v1/lists/{weekly['id']}",
+        json={"name": "  Market Run  "},
+        headers=headers,
+    ).json()
+    assert trimmed["name"] == "Market Run"
+    assert trimmed["open_item_count"] == 1
+
+    blank_rename = client.patch(
+        f"/api/v1/lists/{weekly['id']}",
+        json={"name": "   "},
+        headers=headers,
+    )
+    assert blank_rename.status_code == 400
 
 
 def test_offline_item_sync_replays_changes_idempotently(client) -> None:

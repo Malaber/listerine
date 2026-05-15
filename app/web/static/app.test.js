@@ -30,9 +30,11 @@ import {
   restoreDeletedItem,
   restoreToggledItem,
   saveCategoryOrder,
+  saveListName,
   setCategoryOrder,
   setDemoItemChecked,
   setLanguageSettingsOpen,
+  setListName,
   setListSyncStatus,
   itemEditHistoryStorageKey,
   readItemEditFormPayload,
@@ -337,6 +339,10 @@ function createListRoot() {
       <div data-list-error hidden></div>
       <div data-list-success hidden></div>
       <p data-list-sync-status></p>
+      <form data-list-name-form>
+        <input data-list-name-input name="name" value="Weekly" />
+        <button type="submit" data-list-name-submit>Save list name</button>
+      </form>
       <div data-list-toast hidden>
         <p data-list-toast-message></p>
         <button type="button" data-list-toast-undo>Undo</button>
@@ -409,6 +415,11 @@ function createQuickAddRoot() {
       <body>
         <section data-list-detail data-list-id="list-1">
           <button type="button" data-item-form-toggle aria-expanded="false">Add</button>
+          <h1 data-list-title>Weekly</h1>
+          <form data-list-name-form>
+            <input data-list-name-input name="name" value="Weekly" />
+            <button type="submit" data-list-name-submit>Save list name</button>
+          </form>
           <div data-list-error hidden></div>
           <div data-list-success hidden></div>
           <div data-item-panel-overlay hidden>
@@ -552,6 +563,10 @@ function createDemoListRoot() {
           data-demo-payload='${JSON.stringify(demoPayload)}'
         >
           <h1 data-list-title></h1>
+          <form data-list-name-form>
+            <input data-list-name-input name="name" value="" />
+            <button type="submit" data-list-name-submit>Save list name</button>
+          </form>
           <p data-list-sync-status></p>
           <input data-item-name-input value="" />
           <input data-item-category-search value="" />
@@ -649,6 +664,65 @@ test("renderHouseholds shows open item counts on list links", () => {
   assert.equal(document.querySelector('[href="/lists/list-1"] small').textContent, "1 open item");
   assert.equal(document.querySelector('[href="/lists/list-2"] small').textContent, "3 open items");
   assert.equal(document.body.textContent.includes("Open list"), false);
+});
+
+test("saveListName trims, patches, and persists the list title", async () => {
+  const { document, root, window } = createListRoot();
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  const state = createState([]);
+  let request;
+
+  setGlobalProperty("window", window);
+  setGlobalProperty("fetch", async (url, options) => {
+    request = { url, options };
+    return new Response(
+      JSON.stringify({
+        id: "list-1",
+        household_id: "household-1",
+        name: "Market Run",
+        archived: false,
+        open_item_count: 2,
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+  });
+
+  try {
+    setListName(root, state, "Weekly");
+    const groceryList = await saveListName(root, state, "  Market Run  ");
+
+    assert.equal(request.url, "/api/v1/lists/list-1");
+    assert.equal(request.options.method, "PATCH");
+    assert.deepEqual(JSON.parse(request.options.body), { name: "Market Run" });
+    assert.equal(groceryList.name, "Market Run");
+    assert.equal(state.listName, "Market Run");
+    assert.equal(document.querySelector("[data-list-title]").textContent, "Market Run");
+    assert.equal(document.querySelector("[data-list-name-input]").value, "Market Run");
+    assert.equal(
+      JSON.parse(window.localStorage.getItem(offlineListStorageKey("list-1"))).title,
+      "Market Run",
+    );
+
+    await assert.rejects(saveListName(root, state, "   "), /Please enter a list name\./);
+  } finally {
+    setGlobalProperty("fetch", originalFetch);
+    setGlobalProperty("window", originalWindow);
+  }
+});
+
+test("saveListName updates demo payload locally", async () => {
+  const { document, payload, root } = createDemoListRoot();
+  const state = { ...createState([]), demoPayload: payload };
+
+  setListName(root, state, payload.list.name);
+  const groceryList = await saveListName(root, state, "Demo Market");
+
+  assert.equal(groceryList.name, "Demo Market");
+  assert.equal(state.demoPayload.list.name, "Demo Market");
+  assert.equal(JSON.parse(root.dataset.demoPayload).list.name, "Demo Market");
+  assert.equal(document.querySelector("[data-list-title]").textContent, "Demo Market");
+  assert.equal(document.querySelector("[data-list-name-input]").value, "Demo Market");
 });
 
 test("renderItems uses brown fallback swatches for uncategorized and checked groups", () => {

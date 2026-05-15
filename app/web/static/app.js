@@ -1816,6 +1816,36 @@ function listTitleText(root) {
   return root.querySelector("[data-list-title]")?.textContent?.trim() || "";
 }
 
+function setListName(root, state, name) {
+  state.listName = name;
+  root.querySelector("[data-list-title]").textContent = name;
+  root.querySelector("[data-list-name-input]").value = name;
+}
+
+async function saveListName(root, state, name) {
+  const trimmedName = name.trim();
+  if (!trimmedName) {
+    throw new Error(translate("list_detail.list_name_required", {}, "Please enter a list name."));
+  }
+
+  if (isDemoList(root)) {
+    state.demoPayload.list.name = trimmedName;
+    root.dataset.demoPayload = JSON.stringify(state.demoPayload);
+    setListName(root, state, trimmedName);
+    return state.demoPayload.list;
+  }
+
+  const listId = root.dataset.listId;
+  const groceryList = await fetchJson(`/api/v1/lists/${listId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: trimmedName }),
+  });
+  setListName(root, state, groceryList.name);
+  persistOfflineListState(root, state);
+  return groceryList;
+}
+
 function persistOfflineListState(root, state) {
   if (typeof window === "undefined" || isDemoList(root)) {
     return;
@@ -1845,10 +1875,7 @@ function persistOfflineListState(root, state) {
 }
 
 function applyOfflineListState(root, state, cachedState) {
-  const title = root.querySelector("[data-list-title]");
-  if (title && cachedState.title) {
-    title.textContent = cachedState.title;
-  }
+  setListName(root, state, cachedState.title || listTitleText(root));
 
   state.categories = new Map((cachedState.categories || []).map((category) => [category.id, category]));
   state.lists = cachedState.lists || [];
@@ -3423,6 +3450,7 @@ function setListSettingsOpen(root, state, isOpen) {
   if (isOpen) {
     setItemPanelOpen(root, false);
     setItemEditPanelOpen(root, state, null);
+    setListName(root, state, state.listName || listTitleText(root));
     renderCategoryOrderSettings(root, state);
   }
 
@@ -4184,10 +4212,7 @@ async function loadListDetail(root, state) {
       throw new Error(translate("list_detail.load_failed", {}, "Could not load the list."));
     }
 
-    const title = root.querySelector("[data-list-title]");
-    if (title) {
-      title.textContent = payload.list.name;
-    }
+    setListName(root, state, payload.list.name);
 
     const categories = Array.isArray(payload.categories) ? payload.categories : [];
     const categoryOrder = Array.isArray(payload.category_order) ? payload.category_order : [];
@@ -4244,10 +4269,7 @@ async function loadListDetail(root, state) {
     throw error;
   }
 
-  const title = root.querySelector("[data-list-title]");
-  if (title) {
-    title.textContent = groceryList.name;
-  }
+  setListName(root, state, groceryList.name);
 
   state.categories = new Map(categories.map((category) => [category.id, category]));
   state.lists = lists;
@@ -4397,6 +4419,7 @@ async function initListDetail() {
     itemEditSaveTimerId: null,
     items: new Map(),
     lists: [],
+    listName: "",
     nextDemoId: 1,
     offlineSyncInFlight: null,
     openItemMenuId: null,
@@ -4453,6 +4476,31 @@ async function initListDetail() {
     node.addEventListener("click", () => {
       setListSettingsOpen(root, state, false);
     });
+  });
+
+  root.querySelector("[data-list-name-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const input = root.querySelector("[data-list-name-input]");
+    const submitButton = root.querySelector("[data-list-name-submit]");
+    submitButton.disabled = true;
+    try {
+      await saveListName(root, state, input.value);
+      setListMessage(
+        root,
+        "success",
+        translate("list_detail.list_name_saved", {}, "List name saved."),
+      );
+    } catch (error) {
+      setListMessage(
+        root,
+        "error",
+        error instanceof Error
+          ? error.message
+          : translate("list_detail.list_name_save_failed", {}, "Could not save list name."),
+      );
+    } finally {
+      submitButton.disabled = false;
+    }
   });
 
   nameInput?.addEventListener("input", () => {
@@ -5475,6 +5523,8 @@ export {
   redoItemEdit,
   offlineListStorageKey,
   loadOfflineListState,
+  setListName,
+  saveListName,
   createOfflineId,
   isBrowserOffline,
   isOfflineRequestError,

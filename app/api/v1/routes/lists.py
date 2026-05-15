@@ -317,9 +317,10 @@ async def patch_list(
     db: AsyncSession = Depends(get_db),
 ) -> GroceryListOut:
     grocery_list = await get_list_for_user(db, list_id, user.id)
-    if not payload.name.strip():
+    name = payload.name.strip()
+    if not name:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
-    grocery_list.name = payload.name
+    grocery_list.name = name
     await db.commit()
     await db.refresh(grocery_list)
     return _serialize_list(grocery_list, await _open_item_count(db, list_id))
