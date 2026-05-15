@@ -779,7 +779,7 @@ async function runAdminPasskeyAddLinkFlow(page, seed, rpId) {
     const replayPage = await replayContext.newPage();
     try {
       await replayPage.goto(generatedLink, { waitUntil: "networkidle" });
-      await replayPage.waitForURL(/\/login(\?|$)/);
+      await replayPage.waitForURL(/\/login([?#]|$)/);
     } finally {
       await replayPage.close();
     }
