@@ -369,6 +369,7 @@ final class MobileAppViewModel: ObservableObject {
             optionsPayload: options,
             relyingPartyIdentifier: relyingPartyIdentifier
         )
+        await logAssociatedDomainProbe(domain: relyingPartyIdentifier)
         let credential = try await passkeyClient.authenticate(
             optionsPayload: options,
             relyingPartyIdentifier: relyingPartyIdentifier
@@ -862,6 +863,36 @@ final class MobileAppViewModel: ObservableObject {
         netLog.notice(
             "Passkey options \(context, privacy: .public). backend=\(backendURL.absoluteString, privacy: .public) backendHost=\(backendURL.host ?? "<missing>", privacy: .public) optionRPID=\(optionRPID, privacy: .public) chosenRPID=\(relyingPartyIdentifier, privacy: .public) challengeLength=\(challengeText.count) allowCredentials=\(allowCredentialCount) userVerification=\(userVerification, privacy: .public)"
         )
+    }
+
+    private func logAssociatedDomainProbe(domain: String) async {
+        let urls = [
+            "https://\(domain)/.well-known/apple-app-site-association",
+            "https://\(domain)/apple-app-site-association",
+            "https://app-site-association.cdn-apple.com/a/v1/\(domain)",
+        ]
+        for urlText in urls {
+            guard let url = URL(string: urlText) else { continue }
+            do {
+                var request = URLRequest(url: url)
+                request.setValue("application/json", forHTTPHeaderField: "Accept")
+                let (data, response) = try await URLSession.shared.data(for: request)
+                let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+                let contentType = (response as? HTTPURLResponse)?.value(
+                    forHTTPHeaderField: "Content-Type"
+                ) ?? "<missing>"
+                let body = String(data: data, encoding: .utf8) ?? "<non-utf8>"
+                let containsAppID = body.contains("VWKG94374J.de.malaber.planini")
+                netLog.notice(
+                    "AASA probe url=\(urlText, privacy: .public) status=\(status) contentType=\(contentType, privacy: .public) containsAppID=\(containsAppID) bodyPrefix=\(String(body.prefix(300)), privacy: .public)"
+                )
+            } catch {
+                let nsErr = error as NSError
+                netLog.error(
+                    "AASA probe failed url=\(urlText, privacy: .public) domain=\(nsErr.domain, privacy: .public) code=\(nsErr.code) description=\(nsErr.localizedDescription, privacy: .public)"
+                )
+            }
+        }
     }
 
     private func ensureBackendReady(backendURL: URL) async throws {
