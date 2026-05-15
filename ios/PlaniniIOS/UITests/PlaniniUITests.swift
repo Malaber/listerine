@@ -47,7 +47,8 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
         captureScreenshot(named: "ios-ui-add-item-sheet")
 
-        let itemName = "UI Test Fresh Herbs"
+        let uniqueSuffix = UUID().uuidString.prefix(8)
+        let itemName = "UI Test Herbs \(uniqueSuffix)"
         let itemQuantity = "1 bunch"
         let updatedName = "\(itemName) Updated"
 
