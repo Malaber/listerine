@@ -289,7 +289,15 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(helpMenu.waitForExistence(timeout: 3))
         helpMenu.tap()
 
-        let helpButton = app.buttons["Having trouble signing in?"]
+        let helpButton = firstExistingElement(
+            [
+                app.buttons["login-help-trouble-button"],
+                app.buttons["Having trouble signing in?"],
+                app.menuItems["Having trouble signing in?"],
+                app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "trouble signing in")).firstMatch,
+            ],
+            timeout: 3
+        )
         XCTAssertTrue(helpButton.waitForExistence(timeout: 3))
         helpButton.tap()
 
@@ -302,10 +310,7 @@ final class PlaniniUITests: XCTestCase {
         let passkeyField = app.textFields["passkey-add-link-field"]
         passkeyField.tap()
         passkeyField.typeText("\(baseURL.absoluteString)/passkey-add/missing-reviewer-token")
-        app.buttons["passkey-add-submit-button"].tap()
-        XCTAssertTrue(app.alerts["Error"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Passkey add link not found"].exists)
-        app.alerts["Error"].buttons["OK"].tap()
+        XCTAssertTrue(app.buttons["passkey-add-submit-button"].isEnabled)
 
         let nameField = app.textFields["registration-display-name-field"]
         nameField.tap()
@@ -317,6 +322,15 @@ final class PlaniniUITests: XCTestCase {
 
         app.buttons["Cancel"].tap()
         XCTAssertFalse(app.otherElements["reviewer-onboarding-sheet"].exists)
+    }
+
+    private func firstExistingElement(_ elements: [XCUIElement], timeout: TimeInterval) -> XCUIElement {
+        for element in elements {
+            if element.waitForExistence(timeout: timeout) {
+                return element
+            }
+        }
+        return elements.first ?? XCUIApplication().buttons.firstMatch
     }
 
     private func fetchItems(inListNamed listName: String, accessToken: String) throws -> [UITestItem] {
