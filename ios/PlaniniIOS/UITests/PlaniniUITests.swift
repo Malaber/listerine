@@ -54,7 +54,14 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertEqual(listTitle.label, initialListName)
         captureScreenshot(named: "ios-ui-favorite-list")
 
-        let quickAddUncategorized = app.buttons["quick-add-category-uncategorized"]
+        let quickAddUncategorized = firstExistingElement(
+            [
+                app.buttons["quick-add-category-uncategorized"],
+                app.buttons["Quick add uncategorized item"],
+                app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Quick add uncategorized")).firstMatch,
+            ],
+            timeout: 3
+        )
         XCTAssertTrue(quickAddUncategorized.waitForExistence(timeout: 3))
         quickAddUncategorized.tap()
         XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
