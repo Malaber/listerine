@@ -71,7 +71,7 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(app.buttons["add-item-save-button"].waitForExistence(timeout: 3))
         captureScreenshot(named: "ios-ui-category-quick-add")
         app.buttons["Cancel"].tap()
-        XCTAssertFalse(app.otherElements["add-item-sheet"].waitForExistence(timeout: 2))
+        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 3))
 
         app.buttons["add-item-button"].tap()
         XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
@@ -85,7 +85,7 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(activeSuggestion.waitForExistence(timeout: 3))
         captureScreenshot(named: "ios-ui-add-item-suggestions")
         activeSuggestion.tap()
-        XCTAssertFalse(app.otherElements["add-item-sheet"].waitForExistence(timeout: 2))
+        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 3))
 
         let uniqueSuffix = UUID().uuidString.prefix(8)
         let itemName = "UI Test Herbs \(uniqueSuffix)"
