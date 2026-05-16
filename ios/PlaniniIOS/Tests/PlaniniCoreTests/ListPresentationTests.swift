@@ -175,12 +175,16 @@ struct ListPresentationTests {
         ]
 
         #expect(GroceryItemSuggestionMatcher.fuzzyItemNameDistance(itemName: "milch", query: "mi") == nil)
+        #expect(GroceryItemSuggestionMatcher.fuzzyItemNameDistance(itemName: "brot", query: "brot") == 0)
         #expect(GroceryItemSuggestionMatcher.fuzzyItemNameDistance(itemName: "brot", query: "broz") == 1)
+        #expect(GroceryItemSuggestionMatcher.fuzzyItemNameDistance(itemName: "hafermilch", query: "milch") == 0)
+        #expect(GroceryItemSuggestionMatcher.fuzzyItemNameDistance(itemName: "a", query: "abcde") == nil)
         #expect(GroceryItemSuggestionMatcher.itemSuggestionMatch(itemName: "Milch", query: "milch")?.rank == 0)
         #expect(GroceryItemSuggestionMatcher.itemSuggestionMatch(itemName: "Milchreis", query: "milch")?.rank == 1)
         #expect(GroceryItemSuggestionMatcher.itemSuggestionMatch(itemName: "Hafermilch", query: "milch")?.rank == 2)
         #expect(GroceryItemSuggestionMatcher.itemSuggestionMatch(itemName: "Spaghetti", query: "spaghetty")?.rank == 3)
         #expect(GroceryItemSuggestionMatcher.itemSuggestionMatch(itemName: "Brot", query: "reis") == nil)
+        #expect(GroceryItemSuggestionMatcher.suggestions(for: "   ", items: items, categories: categories).isEmpty)
 
         let suggestions = GroceryItemSuggestionMatcher.suggestions(
             for: "spaghetty",
@@ -188,23 +192,43 @@ struct ListPresentationTests {
             categories: categories
         )
 
+        #expect(suggestions.first?.id == suggestions.first?.item.id)
         #expect(suggestions.map(\.item.name) == ["Spaghetti"])
         #expect(suggestions.first?.category?.name == "Pantry")
         #expect(suggestions.first?.item.checked == true)
     }
 
-    @Test func itemSuggestionMatcherSortsActiveItemsBeforeCheckedMatches() {
+    @Test func itemSuggestionMatcherSortsTiesLikeWebSuggestions() {
         let listID = UUID()
-        let active = makeItem(name: "Tofu", listID: listID, checked: false)
-        let checked = makeItem(name: "Tofu smoked", listID: listID, checked: true)
+        let checked = makeItem(name: "Tofu", listID: listID, checked: true)
+        let active = makeItem(name: "tofu", listID: listID, checked: false)
 
-        let suggestions = GroceryItemSuggestionMatcher.suggestions(
+        let checkedTieSuggestions = GroceryItemSuggestionMatcher.suggestions(
             for: "tofu",
             items: [checked, active],
             categories: []
         )
+        #expect(checkedTieSuggestions.map(\.item.checked) == [false, true])
 
-        #expect(suggestions.map(\.item.name) == ["Tofu", "Tofu smoked"])
+        let distanceSuggestions = GroceryItemSuggestionMatcher.suggestions(
+            for: "abcde",
+            items: [
+                makeItem(name: "abxye", listID: listID, checked: false),
+                makeItem(name: "abxde", listID: listID, checked: false),
+            ],
+            categories: []
+        )
+        #expect(distanceSuggestions.map(\.item.name) == ["abxde", "abxye"])
+
+        let nameSuggestions = GroceryItemSuggestionMatcher.suggestions(
+            for: "tofu",
+            items: [
+                makeItem(name: "Tofu z", listID: listID, checked: false),
+                makeItem(name: "Tofu a", listID: listID, checked: false),
+            ],
+            categories: []
+        )
+        #expect(nameSuggestions.map(\.item.name) == ["Tofu a", "Tofu z"])
     }
 
     @Test func groceryItemSectionIDMatchesKind() {
