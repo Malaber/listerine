@@ -145,6 +145,45 @@ final class PlaniniUITests: XCTestCase {
         captureScreenshot(named: "ios-ui-settings")
     }
 
+    func testForceClosedAppRestoresSavedSession() throws {
+        try assertLocalTestBackend()
+        let session = if let injectedSession {
+            injectedSession
+        } else {
+            try bootstrapSession(email: userEmail)
+        }
+
+        let app = XCUIApplication()
+        app.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
+        app.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
+        app.launchEnvironment["PLANINI_UI_TEST_ACCESS_TOKEN"] = session.accessToken
+        app.launchEnvironment["PLANINI_UI_TEST_DISPLAY_NAME"] = session.displayName
+        app.launchEnvironment["PLANINI_UI_TEST_INITIAL_LIST_NAME"] = initialListName
+        app.launch()
+
+        let listTitle = app.staticTexts["list-detail-title"]
+        XCTAssertTrue(
+            openInitialListDetail(in: app, listTitle: listTitle),
+            "Expected bootstrapped list before force-closing the app."
+        )
+        XCTAssertFalse(app.buttons["login-passkey-button"].exists)
+        app.terminate()
+
+        let relaunchedApp = XCUIApplication()
+        relaunchedApp.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
+        relaunchedApp.launchEnvironment["PLANINI_UI_TEST_RESTORE_STORED_SESSION"] = "1"
+        relaunchedApp.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
+        relaunchedApp.launch()
+
+        let restoredListTitle = relaunchedApp.staticTexts["list-detail-title"]
+        XCTAssertTrue(
+            openInitialListDetail(in: relaunchedApp, listTitle: restoredListTitle),
+            "Expected saved session to survive force-close and restore the initial list."
+        )
+        XCTAssertFalse(relaunchedApp.buttons["login-passkey-button"].exists)
+        relaunchedApp.terminate()
+    }
+
     func testListReceivesLiveUpdates() throws {
         try assertLocalTestBackend()
         let session = if let injectedSession {
