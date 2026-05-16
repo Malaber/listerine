@@ -34,7 +34,7 @@ final class PlaniniUITests: XCTestCase {
         app.launch()
 
         let listTitle = app.staticTexts["list-detail-title"]
-        XCTAssertTrue(listTitle.waitForExistence(timeout: 10))
+        openInitialListIfNeeded(app, listTitle: listTitle)
         app.tabBars.buttons["Lists"].tap()
         let initialListRow = app.buttons["list-row-\(initialListName)"]
         XCTAssertTrue(initialListRow.waitForExistence(timeout: 10))
@@ -140,15 +140,7 @@ final class PlaniniUITests: XCTestCase {
         app.launch()
 
         let listTitle = app.staticTexts["list-detail-title"]
-        XCTAssertTrue(listTitle.waitForExistence(timeout: 10))
-        if listTitle.label != initialListName {
-            app.tabBars.buttons["Lists"].tap()
-            returnToListsRootIfNeeded(app)
-            let initialListRow = app.buttons["list-row-\(initialListName)"]
-            XCTAssertTrue(initialListRow.waitForExistence(timeout: 10))
-            initialListRow.tap()
-            XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
-        }
+        openInitialListIfNeeded(app, listTitle: listTitle)
         XCTAssertEqual(listTitle.label, initialListName)
         XCTAssertTrue(app.staticTexts["Loose item"].waitForExistence(timeout: 5))
         XCTAssertTrue(
@@ -557,6 +549,19 @@ final class PlaniniUITests: XCTestCase {
         if backButton.exists {
             backButton.tap()
         }
+    }
+
+    private func openInitialListIfNeeded(_ app: XCUIApplication, listTitle: XCUIElement) {
+        if listTitle.waitForExistence(timeout: 10), listTitle.label == initialListName {
+            return
+        }
+
+        app.tabBars.buttons["Lists"].tap()
+        returnToListsRootIfNeeded(app)
+        let initialListRow = app.buttons["list-row-\(initialListName)"]
+        XCTAssertTrue(initialListRow.waitForExistence(timeout: 10))
+        initialListRow.tap()
+        XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
     }
 
     private func captureScreenshot(named name: String) {
