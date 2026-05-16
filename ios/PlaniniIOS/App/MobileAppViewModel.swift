@@ -57,7 +57,6 @@ final class MobileAppViewModel: ObservableObject {
     @Published private(set) var categoryOrder: [ListCategoryOrderEntry] = []
     @Published var selectedListID: UUID?
     @Published private(set) var favoriteListID: UUID?
-    @Published private(set) var liveUpdatesReadyListID: UUID?
     @Published var quickAddItemName: String
     @Published var errorMessage: String?
 
@@ -111,11 +110,6 @@ final class MobileAppViewModel: ObservableObject {
         self.liveUpdates.onListChanged = { [weak self] listID in
             Task { @MainActor in
                 await self?.handleLiveListChanged(listID)
-            }
-        }
-        self.liveUpdates.onListReady = { [weak self] listID in
-            Task { @MainActor in
-                self?.handleLiveListReady(listID)
             }
         }
         sharedStateStore.save(makeSharedAppState())
@@ -298,7 +292,6 @@ final class MobileAppViewModel: ObservableObject {
             preferredListName.isEmpty == false,
             let matchingList = lists.first(where: { $0.name == preferredListName })
         {
-            liveUpdatesReadyListID = nil
             selectedListID = matchingList.id
             setFavoriteList(id: matchingList.id)
             try await reloadItems()
@@ -317,7 +310,6 @@ final class MobileAppViewModel: ObservableObject {
         categories = []
         categoryOrder = []
         selectedListID = nil
-        liveUpdatesReadyListID = nil
         errorMessage = nil
         userDefaults.removeObject(forKey: Self.authTokenKey)
         userDefaults.removeObject(forKey: Self.displayNameKey)
@@ -421,7 +413,6 @@ final class MobileAppViewModel: ObservableObject {
     func selectList(id: UUID) async {
         guard selectedListID != id else { return }
         selectedListID = id
-        liveUpdatesReadyListID = nil
         try? await reloadItems()
         updateLiveUpdatesConnection()
     }
@@ -432,7 +423,6 @@ final class MobileAppViewModel: ObservableObject {
             items = []
             categories = []
             categoryOrder = []
-            liveUpdatesReadyListID = nil
             updateLiveUpdatesConnection()
             watchSyncCoordinator.publishCurrentState()
             return
@@ -589,24 +579,15 @@ final class MobileAppViewModel: ObservableObject {
             authToken.isEmpty == false,
             let selectedListID
         else {
-            liveUpdatesReadyListID = nil
             liveUpdates.disconnect()
             return
         }
 
-        if liveUpdatesReadyListID != selectedListID {
-            liveUpdatesReadyListID = nil
-        }
         liveUpdates.connect(
             listID: selectedListID,
             backendURL: backendURL,
             authToken: authToken
         )
-    }
-
-    private func handleLiveListReady(_ listID: UUID) {
-        guard selectedListID == listID else { return }
-        liveUpdatesReadyListID = listID
     }
 
     private func handleLiveListChanged(_ listID: UUID) async {
@@ -779,7 +760,6 @@ final class MobileAppViewModel: ObservableObject {
 
 final class MobileListLiveUpdateClient {
     var onListChanged: ((UUID) -> Void)?
-    var onListReady: ((UUID) -> Void)?
 
     private var webSocketTask: URLSessionWebSocketTask?
     private var reconnectTask: Task<Void, Never>?
@@ -888,9 +868,6 @@ final class MobileListLiveUpdateClient {
         netLog.debug(
             "Received iPhone live updates event \(type, privacy: .public) for list \(listID.uuidString, privacy: .public)."
         )
-        if type == "list_snapshot" {
-            onListReady?(listID)
-        }
         onListChanged?(listID)
     }
 

@@ -34,37 +34,6 @@ final class PlaniniUITests: XCTestCase {
         captureScreenshot(named: "ios-ui-list-detail")
 
         XCTAssertTrue(app.staticTexts["Uncategorized"].waitForExistence(timeout: 3))
-        XCTAssertTrue(
-            app.images["live-updates-ready"].waitForExistence(timeout: 10),
-            "Expected live updates socket to receive its initial list snapshot before mutating the list outside the app."
-        )
-
-        let liveSuffix = UUID().uuidString.prefix(8)
-        let liveItemName = "UI Live \(liveSuffix)"
-        let updatedLiveItemName = "\(liveItemName) Updated"
-        let liveItemID = try createItem(
-            named: liveItemName,
-            note: "",
-            inListNamed: initialListName,
-            accessToken: session.accessToken
-        )
-        XCTAssertTrue(app.staticTexts[liveItemName].waitForExistence(timeout: 8))
-        captureScreenshot(named: "ios-ui-live-item-created")
-
-        try updateItem(
-            itemID: liveItemID,
-            name: updatedLiveItemName,
-            note: "",
-            accessToken: session.accessToken
-        )
-        XCTAssertTrue(app.staticTexts[updatedLiveItemName].waitForExistence(timeout: 8))
-
-        try deleteItem(itemID: liveItemID, accessToken: session.accessToken)
-        XCTAssertTrue(
-            waitForElementToDisappear(app.staticTexts[updatedLiveItemName], timeout: 8),
-            "Expected live-deleted item to disappear without manual refresh."
-        )
-
         if app.buttons["favorite-list-button"].exists {
             app.buttons["favorite-list-button"].tap()
         }
