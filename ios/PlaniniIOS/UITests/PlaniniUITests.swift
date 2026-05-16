@@ -84,6 +84,7 @@ final class PlaniniUITests: XCTestCase {
 
         app.buttons["add-item-button"].tap()
         XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         captureScreenshot(named: "ios-ui-add-item-sheet")
 
         let suggestionProbeField = app.textFields["add-item-name-field"]
@@ -97,6 +98,7 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 3))
 
         let uniqueSuffix = UUID().uuidString.prefix(8)
+        let enterSavedItemName = "UI Test Enter \(uniqueSuffix)"
         let itemName = "UI Test Herbs \(uniqueSuffix)"
         let itemQuantity = "1 bunch"
         let updatedName = "\(itemName) Updated"
@@ -105,7 +107,20 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
         let nameField = app.textFields["add-item-name-field"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 3))
-        nameField.tap()
+        nameField.typeText("\(enterSavedItemName)\n")
+        XCTAssertTrue(app.staticTexts[enterSavedItemName].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            waitForItem(
+                named: enterSavedItemName,
+                inListNamed: initialListName,
+                accessToken: session.accessToken
+            )
+        )
+
+        app.buttons["add-item-button"].tap()
+        XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        XCTAssertTrue(nameField.waitForExistence(timeout: 3))
         nameField.typeText(itemName)
 
         let quantityField = app.textFields["add-item-quantity-field"]
@@ -176,6 +191,7 @@ final class PlaniniUITests: XCTestCase {
         checkedSuggestionField.typeText(updatedName)
         let checkedSuggestion = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Add \(updatedName) back")).firstMatch
         XCTAssertTrue(checkedSuggestion.waitForExistence(timeout: 3))
+        scrollToHittable(checkedSuggestion, in: app)
         captureScreenshot(named: "ios-ui-checked-item-suggestion")
         tapElement(checkedSuggestion)
         XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 10))
@@ -540,6 +556,15 @@ final class PlaniniUITests: XCTestCase {
 
     private func scrollToElement(_ element: XCUIElement, in app: XCUIApplication, maxSwipes: Int = 10) {
         for _ in 0..<maxSwipes {
+            if element.exists {
+                return
+            }
+            app.swipeUp()
+        }
+    }
+
+    private func scrollToHittable(_ element: XCUIElement, in app: XCUIApplication, maxSwipes: Int = 6) {
+        for _ in 0..<maxSwipes {
             if element.exists && element.isHittable {
                 return
             }
@@ -744,6 +769,23 @@ final class PlaniniUITests: XCTestCase {
     }
 
     private func performRequest(_ request: URLRequest) throws -> Data {
+        var lastError: Error?
+        for attempt in 1...3 {
+            do {
+                return try performSingleRequest(request)
+            } catch {
+                lastError = error
+                guard isTransientNetworkError(error), attempt < 3 else {
+                    throw error
+                }
+                RunLoop.current.run(until: Date().addingTimeInterval(0.4 * Double(attempt)))
+            }
+        }
+
+        throw lastError ?? NSError(domain: "PlaniniUITests", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing response"])
+    }
+
+    private func performSingleRequest(_ request: URLRequest) throws -> Data {
         let semaphore = DispatchSemaphore(value: 0)
         var capturedData: Data?
         var capturedError: Error?
@@ -771,6 +813,18 @@ final class PlaniniUITests: XCTestCase {
             throw NSError(domain: "PlaniniUITests", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing bootstrap response"])
         }
         return capturedData
+    }
+
+    private func isTransientNetworkError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        guard nsError.domain == NSURLErrorDomain else {
+            return false
+        }
+        return [
+            NSURLErrorNetworkConnectionLost,
+            NSURLErrorTimedOut,
+            NSURLErrorCannotConnectToHost,
+        ].contains(nsError.code)
     }
 
     private func returnToListsRootIfNeeded(_ app: XCUIApplication) {

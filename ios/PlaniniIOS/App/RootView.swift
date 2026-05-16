@@ -638,10 +638,16 @@ private struct AddItemSheet: View {
     let initialCategoryID: UUID?
     let onSuggestionFocused: (UUID) -> Void
 
+    private enum FocusedField {
+        case name
+    }
+
     @State private var name = ""
     @State private var quantity = ""
     @State private var note = ""
     @State private var categoryID: UUID?
+    @State private var isSaving = false
+    @FocusState private var focusedField: FocusedField?
 
     init(initialCategoryID: UUID? = nil, onSuggestionFocused: @escaping (UUID) -> Void = { _ in }) {
         self.initialCategoryID = initialCategoryID
@@ -662,6 +668,9 @@ private struct AddItemSheet: View {
             Form {
                 Section("Item") {
                     TextField("Name", text: $name)
+                        .focused($focusedField, equals: .name)
+                        .submitLabel(.done)
+                        .onSubmit(saveItem)
                         .accessibilityIdentifier("add-item-name-field")
                     TextField("Quantity", text: $quantity)
                         .accessibilityIdentifier("add-item-quantity-field")
@@ -712,28 +721,42 @@ private struct AddItemSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        Task {
-                            let saved = await viewModel.addItem(
-                                name: name,
-                                quantity: quantity,
-                                note: note,
-                                categoryID: categoryID
-                            )
-                            if saved {
-                                AppHaptics.confirmation()
-                                dismiss()
-                            }
-                        }
+                        saveItem()
                     }
-                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(canSave == false)
                     .accessibilityIdentifier("add-item-save-button")
                 }
             }
         }
-        .onAppear {
+        .task {
             categoryID = initialCategoryID
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            focusedField = .name
         }
         .accessibilityIdentifier("add-item-sheet")
+    }
+
+    private var canSave: Bool {
+        isSaving == false && name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
+
+    private func saveItem() {
+        guard canSave else { return }
+        isSaving = true
+        Task {
+            let saved = await viewModel.addItem(
+                name: name,
+                quantity: quantity,
+                note: note,
+                categoryID: categoryID
+            )
+            if saved {
+                AppHaptics.confirmation()
+                dismiss()
+            } else {
+                isSaving = false
+            }
+        }
     }
 
     @MainActor
