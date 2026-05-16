@@ -134,6 +134,14 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(listTitle.waitForExistence(timeout: 10))
         XCTAssertEqual(listTitle.label, initialListName)
         XCTAssertTrue(app.staticTexts["Loose item"].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            waitForLiveUpdatesConnection(
+                app: app,
+                listName: initialListName,
+                accessToken: session.accessToken
+            ),
+            "Expected live updates to connect before checking external mutations."
+        )
 
         let uniqueSuffix = UUID().uuidString.prefix(8)
         let itemName = "UI Live \(uniqueSuffix)"
@@ -145,7 +153,7 @@ final class PlaniniUITests: XCTestCase {
             accessToken: session.accessToken
         )
 
-        XCTAssertTrue(app.staticTexts[itemName].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts[itemName].waitForExistence(timeout: 20))
         captureScreenshot(named: "ios-ui-live-item-created")
 
         try updateItem(
@@ -154,11 +162,11 @@ final class PlaniniUITests: XCTestCase {
             note: "",
             accessToken: session.accessToken
         )
-        XCTAssertTrue(app.staticTexts[updatedName].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts[updatedName].waitForExistence(timeout: 20))
 
         try deleteItem(itemID: itemID, accessToken: session.accessToken)
         XCTAssertTrue(
-            waitForElementToDisappear(app.staticTexts[updatedName], timeout: 8),
+            waitForElementToDisappear(app.staticTexts[updatedName], timeout: 20),
             "Expected live-deleted item to disappear without manual refresh."
         )
     }
@@ -273,6 +281,33 @@ final class PlaniniUITests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
         return element.exists == false
+    }
+
+    private func waitForLiveUpdatesConnection(
+        app: XCUIApplication,
+        listName: String,
+        accessToken: String,
+        timeout: TimeInterval = 20
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let probeName = "UI Live Ready \(UUID().uuidString.prefix(8))"
+            if let probeID = try? createItem(
+                named: probeName,
+                note: "",
+                inListNamed: listName,
+                accessToken: accessToken
+            ) {
+                let appeared = app.staticTexts[probeName].waitForExistence(timeout: 3)
+                try? deleteItem(itemID: probeID, accessToken: accessToken)
+                if appeared {
+                    _ = waitForElementToDisappear(app.staticTexts[probeName], timeout: 5)
+                    return true
+                }
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        }
+        return false
     }
 
     private func scrollToElement(_ element: XCUIElement, in app: XCUIApplication, maxSwipes: Int = 10) {

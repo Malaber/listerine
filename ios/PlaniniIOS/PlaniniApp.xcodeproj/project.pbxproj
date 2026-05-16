@@ -407,6 +407,7 @@
 /* Begin PBXShellScriptBuildPhase section */
 		2CCDF5478436F262DA1D97D6 /* Check Generated App Icons */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
@@ -425,6 +426,7 @@
 		};
 		2F838D9D72F5C4EC94028D5E /* Check Generated Watch App Icons */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);

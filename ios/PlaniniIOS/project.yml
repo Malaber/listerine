@@ -38,6 +38,7 @@ targets:
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.food-and-drink
     preBuildScripts:
       - name: Check Generated App Icons
+        basedOnDependencyAnalysis: false
         script: |
           set -euo pipefail
 
@@ -93,6 +94,7 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: WatchAppIcon
     preBuildScripts:
       - name: Check Generated Watch App Icons
+        basedOnDependencyAnalysis: false
         script: |
           set -euo pipefail
 
