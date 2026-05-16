@@ -239,7 +239,8 @@ No version bump commit is needed for normal TestFlight uploads.
 
 ### iOS build variants
 
-The workflow builds two signed variants when upload is enabled:
+The workflow builds signed variants when upload is enabled. Pushes to `main` build only the
+production variant. Branches with an open PR build production plus review variants.
 
 - `production`
   - backend URL: `IOS_PRODUCTION_BACKEND_URL`, default `https://planini.top`
@@ -251,8 +252,8 @@ The workflow builds two signed variants when upload is enabled:
   - display name: `Planini Review`
 
 For branch pushes, the review PR number is auto-detected from the open pull request for that branch.
-For manual workflow runs, pass `review_pr_number` if the branch cannot be auto-detected.
-TestFlight uploads only run for trusted `Malaber` repository pushes or manual dispatches with an open PR/review PR number. Pushes without a PR still run native iOS checks, but do not upload to TestFlight.
+For manual workflow runs on PR branches, pass `review_pr_number` if the branch cannot be auto-detected.
+TestFlight uploads only run for trusted `Malaber` repository pushes or manual dispatches on `main` or with an open PR/review PR number. Pushes without `main` or a PR still run native iOS checks, but do not upload to TestFlight.
 
 Both variants may use the same bundle identifier, in which case TestFlight shows them as builds of the same app and only one can be installed on a device at a time. To install production and review side by side, create a second App Store Connect app and Apple App ID for the review variant, then set `IOS_REVIEW_BUNDLE_IDENTIFIER` and the review provisioning profile secrets below.
 
@@ -315,7 +316,7 @@ Run the workflow manually with `export_ad_hoc = true`. It uploads `*-ad-hoc.ipa`
 
 ### How to use the workflow
 
-1. Push the branch to GitHub. Pushes run the native iOS checks and upload signed TestFlight variants when signing secrets are present.
+1. Push the branch to GitHub. Pushes run the native iOS checks and upload signed TestFlight variants when signing secrets are present. `main` uploads production only; PR branches upload production plus review.
 2. For a manual dry run, run the workflow with `upload_to_testflight = false`.
 3. For a manual upload, run it with `upload_to_testflight = true`.
 4. For local device sanity checks without TestFlight, also set `export_ad_hoc = true`, download the ad-hoc artifact, and install it on a device included in the ad-hoc profile.

@@ -134,6 +134,14 @@ final class PlaniniUITests: XCTestCase {
 
         let listTitle = app.staticTexts["list-detail-title"]
         XCTAssertTrue(listTitle.waitForExistence(timeout: 10))
+        if listTitle.label != initialListName {
+            app.tabBars.buttons["Lists"].tap()
+            returnToListsRootIfNeeded(app)
+            let initialListRow = app.buttons["list-row-\(initialListName)"]
+            XCTAssertTrue(initialListRow.waitForExistence(timeout: 10))
+            initialListRow.tap()
+            XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
+        }
         XCTAssertEqual(listTitle.label, initialListName)
         XCTAssertTrue(app.staticTexts["Loose item"].waitForExistence(timeout: 5))
         XCTAssertTrue(

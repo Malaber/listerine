@@ -51,6 +51,7 @@ jobs:
     outputs:
       review_pr_number: ${{ steps.review.outputs.review_pr_number }}
       review_backend_url: ${{ steps.review.outputs.review_backend_url }}
+      testflight_matrix: ${{ steps.review.outputs.testflight_matrix }}
     steps:
       - name: Resolve review backend
         id: review
@@ -59,7 +60,9 @@ jobs:
           INPUT_REVIEW_PR_NUMBER: ${{ inputs.review_pr_number }}
         run: |
           pr_number="$INPUT_REVIEW_PR_NUMBER"
-          if [ -z "$pr_number" ] && [ "$GITHUB_REF_TYPE" = "branch" ]; then
+          if [ "$GITHUB_REF_NAME" = "main" ]; then
+            pr_number=""
+          elif [ -z "$pr_number" ] && [ "$GITHUB_REF_TYPE" = "branch" ]; then
             pr_number="$(
               gh api \
                 "/repos/$GITHUB_REPOSITORY/pulls?head=$GITHUB_REPOSITORY_OWNER:$GITHUB_REF_NAME&state=open" \
@@ -70,6 +73,9 @@ jobs:
           if [ -n "$pr_number" ]; then
             echo "review_pr_number=$pr_number" >> "$GITHUB_OUTPUT"
             echo "review_backend_url=https://pr-$pr_number.pr.planini.malaber.de" >> "$GITHUB_OUTPUT"
+            echo 'testflight_matrix={"include":[{"variant":"production","build_variant_code":10},{"variant":"review","build_variant_code":20}]}' >> "$GITHUB_OUTPUT"
+          else
+            echo 'testflight_matrix={"include":[{"variant":"production","build_variant_code":10}]}' >> "$GITHUB_OUTPUT"
           fi
 
   ios_backend_e2e:
@@ -125,7 +131,10 @@ jobs:
       - review_context
     if: >-
       github.repository_owner == 'Malaber' &&
-      needs.review_context.outputs.review_pr_number != '' &&
+      (
+        github.ref_name == 'main' ||
+        needs.review_context.outputs.review_pr_number != ''
+      ) &&
       (
         github.event_name == 'push' ||
         (github.event_name == 'workflow_dispatch' && inputs.upload_to_testflight)
@@ -134,12 +143,7 @@ jobs:
     environment: testflight
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - variant: production
-            build_variant_code: 10
-          - variant: review
-            build_variant_code: 20
+      matrix: ${{ fromJson(needs.review_context.outputs.testflight_matrix) }}
     env:
       PYTHON_VERSION: '3.14'
       IOS_MARKETING_VERSION: ${{ needs.version.outputs.base_version }}
