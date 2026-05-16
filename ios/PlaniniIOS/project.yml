@@ -39,7 +39,10 @@ targets:
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.food-and-drink
     preBuildScripts:
       - name: Check Generated App Icons
-        basedOnDependencyAnalysis: false
+        inputFiles:
+          - $(PROJECT_DIR)/../../app/web/static/img/planini.svg
+        outputFiles:
+          - $(DERIVED_FILE_DIR)/check-generated-app-icons.stamp
         script: |
           set -euo pipefail
 
@@ -67,6 +70,8 @@ targets:
             echo "error: Run from repo root: .venv/bin/inv generate-ios-app-icons"
             exit 1
           fi
+
+          touch "${SCRIPT_OUTPUT_FILE_0}"
   PlaniniWatchApp:
     type: com.apple.product-type.application.watchapp2
     platform: watchOS
@@ -96,7 +101,10 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: WatchAppIcon
     preBuildScripts:
       - name: Check Generated Watch App Icons
-        basedOnDependencyAnalysis: false
+        inputFiles:
+          - $(PROJECT_DIR)/../../app/web/static/img/planini.svg
+        outputFiles:
+          - $(DERIVED_FILE_DIR)/check-generated-watch-app-icons.stamp
         script: |
           set -euo pipefail
 
@@ -126,6 +134,8 @@ targets:
             echo "error: Run from repo root: .venv/bin/inv generate-ios-app-icons"
             exit 1
           fi
+
+          touch "${SCRIPT_OUTPUT_FILE_0}"
   PlaniniWatchExtension:
     type: com.apple.product-type.watchkit2-extension
     platform: watchOS

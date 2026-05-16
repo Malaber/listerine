@@ -1856,6 +1856,7 @@ def check_ios_ui_e2e(
             base_url=f"http://localhost:{port}",
             user_email=user_email,
         )
+        generate_ios_app_icons.body(c)
         generate_ios_project.body(c)
         run_ios_ui_e2e(
             c,

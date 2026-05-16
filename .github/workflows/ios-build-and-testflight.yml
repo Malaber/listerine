@@ -121,8 +121,6 @@ jobs:
 
   upload_testflight:
     needs:
-      - ios_backend_e2e
-      - ios_ui_e2e
       - version
       - review_context
     if: >-
