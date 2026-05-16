@@ -41,8 +41,10 @@ final class PlaniniUITests: XCTestCase {
         app.tabBars.buttons["Lists"].tap()
         let initialListRow = app.buttons["list-row-\(initialListName)"]
         XCTAssertTrue(initialListRow.waitForExistence(timeout: 10))
+        let initialListNameText = app.staticTexts[initialListName]
+        XCTAssertTrue(initialListNameText.waitForExistence(timeout: 3))
         captureScreenshot(named: "promotion-list-of-lists")
-        initialListRow.tap()
+        initialListNameText.tap()
         XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
         XCTAssertEqual(listTitle.label, initialListName)
         captureScreenshot(named: "ios-ui-list-detail")
@@ -135,7 +137,7 @@ final class PlaniniUITests: XCTestCase {
         returnToListsRootIfNeeded(app)
         let hostingListRow = app.buttons["list-row-Hosting errands"]
         XCTAssertTrue(hostingListRow.waitForExistence(timeout: 10))
-        hostingListRow.tap()
+        hostingListRow.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)).tap()
         XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
         XCTAssertEqual(listTitle.label, "Hosting errands")
         captureScreenshot(named: "ios-ui-list-switcher")

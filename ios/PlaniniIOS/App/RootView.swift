@@ -355,11 +355,9 @@ private struct ListsTab: View {
 
                                 Spacer()
                             }
+                            .contentShape(Rectangle())
                         }
                         .accessibilityIdentifier("list-row-\(list.name)")
-                        .simultaneousGesture(TapGesture().onEnded {
-                            Task { await viewModel.selectList(id: list.id) }
-                        })
                         .swipeActions(edge: .leading, allowsFullSwipe: false) {
                             Button {
                                 viewModel.setFavoriteList(id: list.id)
