@@ -34,7 +34,10 @@ final class PlaniniUITests: XCTestCase {
         app.launch()
 
         let listTitle = app.staticTexts["list-detail-title"]
-        XCTAssertTrue(listTitle.waitForExistence(timeout: 10))
+        XCTAssertTrue(
+            openInitialListDetail(in: app, listTitle: listTitle),
+            "Expected bootstrapped initial list to open."
+        )
         app.tabBars.buttons["Lists"].tap()
         let initialListRow = app.buttons["list-row-\(initialListName)"]
         XCTAssertTrue(initialListRow.waitForExistence(timeout: 10))
@@ -133,15 +136,10 @@ final class PlaniniUITests: XCTestCase {
         app.launch()
 
         let listTitle = app.staticTexts["list-detail-title"]
-        XCTAssertTrue(listTitle.waitForExistence(timeout: 10))
-        if listTitle.label != initialListName {
-            app.tabBars.buttons["Lists"].tap()
-            returnToListsRootIfNeeded(app)
-            let initialListRow = app.buttons["list-row-\(initialListName)"]
-            XCTAssertTrue(initialListRow.waitForExistence(timeout: 10))
-            initialListRow.tap()
-            XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
-        }
+        XCTAssertTrue(
+            openInitialListDetail(in: app, listTitle: listTitle),
+            "Expected bootstrapped initial list to open before live-update checks."
+        )
         XCTAssertEqual(listTitle.label, initialListName)
         XCTAssertTrue(app.staticTexts["Loose item"].waitForExistence(timeout: 5))
         XCTAssertTrue(
@@ -327,6 +325,37 @@ final class PlaniniUITests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         }
         return false
+    }
+
+    private func openInitialListDetail(
+        in app: XCUIApplication,
+        listTitle: XCUIElement,
+        timeout: TimeInterval = 45
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        let listsTab = app.tabBars.buttons["Lists"]
+        let initialListRow = app.buttons["list-row-\(initialListName)"]
+
+        while Date() < deadline {
+            if listTitle.exists && listTitle.label == initialListName {
+                return true
+            }
+
+            if listsTab.exists {
+                listsTab.tap()
+                returnToListsRootIfNeeded(app)
+                if initialListRow.waitForExistence(timeout: 2) {
+                    initialListRow.tap()
+                    if listTitle.waitForExistence(timeout: 5), listTitle.label == initialListName {
+                        return true
+                    }
+                }
+            }
+
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        }
+
+        return listTitle.exists && listTitle.label == initialListName
     }
 
     private func waitForItemRow(
