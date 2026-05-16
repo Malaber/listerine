@@ -108,7 +108,10 @@ struct RootView: View {
                 FavoriteListTab()
             }
             .tabItem {
-                Label("Favorite", systemImage: viewModel.favoriteListID == nil ? "star" : "star.fill")
+                Label(
+                    viewModel.favoriteList?.name ?? "Favorite",
+                    systemImage: viewModel.favoriteListID == nil ? "star" : "star.fill"
+                )
             }
             .tag(AppTab.favorite)
             .accessibilityIdentifier("tab-favorite")
@@ -351,11 +354,6 @@ private struct ListsTab: View {
                                 }
 
                                 Spacer()
-
-                                if list.id == viewModel.selectedListID {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(.tint)
-                                }
                             }
                         }
                         .accessibilityIdentifier("list-row-\(list.name)")
@@ -480,12 +478,16 @@ private struct ListDetailScreen: View {
                 .accessibilityIdentifier("add-item-button")
             }
 
-            if showsFavoriteButton, let currentList, currentList.id != viewModel.favoriteListID {
+            if showsFavoriteButton, let currentList {
                 ToolbarItem(placement: .topBarTrailing) {
+                    let isFavorite = currentList.id == viewModel.favoriteListID
                     Button {
-                        viewModel.setFavoriteList(id: currentList.id)
+                        viewModel.toggleFavoriteList(id: currentList.id)
                     } label: {
-                        Label("Favorite", systemImage: "star")
+                        Label(
+                            isFavorite ? "Unfavorite" : "Favorite",
+                            systemImage: isFavorite ? "star.fill" : "star"
+                        )
                     }
                     .accessibilityIdentifier("favorite-list-button")
                 }
@@ -787,13 +789,54 @@ private struct EditItemSheet: View {
     @State private var quantity: String
     @State private var note: String
     @State private var categoryID: UUID?
+    @State private var history: GroceryItemEditHistory
+    @State private var lastSavedPayload: GroceryItemEditPayload
+    @State private var saveTask: Task<Void, Never>?
+    @State private var saveStatus: SaveStatus = .saved
+    @State private var suppressHistoryRecording = false
+
+    private enum SaveStatus: Equatable {
+        case saved
+        case saving
+        case offline
+        case invalid
+
+        var label: String {
+            switch self {
+            case .saved:
+                return "Saved"
+            case .saving:
+                return "Saving..."
+            case .offline:
+                return "Saved offline"
+            case .invalid:
+                return "Name required"
+            }
+        }
+
+        var systemImage: String {
+            switch self {
+            case .saved:
+                return "checkmark.circle"
+            case .saving:
+                return "arrow.triangle.2.circlepath"
+            case .offline:
+                return "icloud.slash"
+            case .invalid:
+                return "exclamationmark.triangle"
+            }
+        }
+    }
 
     init(item: GroceryItemRecord) {
         self.item = item
+        let payload = GroceryItemEditPayload(item: item)
         _name = State(initialValue: item.name)
         _quantity = State(initialValue: item.quantityText ?? "")
         _note = State(initialValue: item.note ?? "")
         _categoryID = State(initialValue: item.categoryID)
+        _history = State(initialValue: Self.loadHistory(itemID: item.id))
+        _lastSavedPayload = State(initialValue: payload)
     }
 
     var body: some View {
@@ -820,34 +863,143 @@ private struct EditItemSheet: View {
                     TextField("Note", text: $note, axis: .vertical)
                         .accessibilityIdentifier("edit-item-note-field")
                 }
+
+                Section {
+                    Label(saveStatus.label, systemImage: saveStatus.systemImage)
+                        .font(.footnote)
+                        .foregroundStyle(saveStatus == .invalid ? .red : .secondary)
+                        .accessibilityIdentifier("edit-item-save-status")
+                }
             }
             .navigationTitle("Edit item")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        Task {
-                            let saved = await viewModel.saveEdit(
-                                item: item,
-                                name: name,
-                                quantity: quantity,
-                                note: note,
-                                categoryID: categoryID
-                            )
-                            if saved {
-                                AppHaptics.confirmation()
-                                dismiss()
-                            }
-                        }
+                    Button("Done") {
+                        flushCurrentEdit()
+                        dismiss()
                     }
-                    .accessibilityIdentifier("edit-item-save-button")
+                }
+                ToolbarItemGroup(placement: .confirmationAction) {
+                    Button {
+                        applyUndo()
+                    } label: {
+                        Label("Undo", systemImage: "arrow.uturn.backward")
+                    }
+                    .disabled(history.canUndo == false)
+                    .accessibilityIdentifier("edit-item-undo-button")
+
+                    Button {
+                        applyRedo()
+                    } label: {
+                        Label("Redo", systemImage: "arrow.uturn.forward")
+                    }
+                    .disabled(history.canRedo == false)
+                    .accessibilityIdentifier("edit-item-redo-button")
                 }
             }
         }
+        .onChange(of: name) { _ in scheduleAutosave() }
+        .onChange(of: quantity) { _ in scheduleAutosave() }
+        .onChange(of: note) { _ in scheduleAutosave() }
+        .onChange(of: categoryID) { _ in scheduleAutosave() }
+        .onDisappear {
+            persistHistory()
+            flushCurrentEdit()
+        }
         .accessibilityIdentifier("edit-item-sheet")
+    }
+
+    private var currentPayload: GroceryItemEditPayload {
+        GroceryItemEditPayload(
+            name: name,
+            quantityText: quantity,
+            note: note,
+            categoryID: categoryID
+        )
+    }
+
+    private static func historyKey(itemID: UUID) -> String {
+        "planini.itemEditHistory.\(itemID.uuidString)"
+    }
+
+    private static func loadHistory(itemID: UUID) -> GroceryItemEditHistory {
+        guard
+            let data = UserDefaults.standard.data(forKey: historyKey(itemID: itemID)),
+            let decoded = try? JSONDecoder().decode(GroceryItemEditHistory.self, from: data)
+        else {
+            return GroceryItemEditHistory()
+        }
+        return decoded
+    }
+
+    private func persistHistory() {
+        guard let data = try? JSONEncoder().encode(history) else { return }
+        UserDefaults.standard.set(data, forKey: Self.historyKey(itemID: item.id))
+    }
+
+    private func scheduleAutosave() {
+        scheduleAutosave(recordHistory: suppressHistoryRecording == false)
+    }
+
+    private func scheduleAutosave(recordHistory: Bool) {
+        saveTask?.cancel()
+        let payload = currentPayload
+        guard payload.isValid else {
+            saveStatus = .invalid
+            return
+        }
+        if recordHistory {
+            history.record(previous: lastSavedPayload, current: payload)
+        }
+        persistHistory()
+        saveStatus = .saving
+        saveTask = Task {
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            guard Task.isCancelled == false else { return }
+            let saved = await viewModel.saveEdit(item: item, payload: payload)
+            guard Task.isCancelled == false else { return }
+            await MainActor.run {
+                if saved {
+                    lastSavedPayload = payload
+                    saveStatus = viewModel.hasPendingEdit(for: item.id) ? .offline : .saved
+                } else {
+                    saveStatus = .invalid
+                }
+            }
+        }
+    }
+
+    private func apply(_ payload: GroceryItemEditPayload) {
+        suppressHistoryRecording = true
+        name = payload.name
+        quantity = payload.quantityText ?? ""
+        note = payload.note ?? ""
+        categoryID = payload.categoryID
+        persistHistory()
+        scheduleAutosave(recordHistory: false)
+        DispatchQueue.main.async {
+            suppressHistoryRecording = false
+        }
+    }
+
+    private func applyUndo() {
+        guard let payload = history.undo(current: currentPayload) else { return }
+        apply(payload)
+    }
+
+    private func applyRedo() {
+        guard let payload = history.redo(current: currentPayload) else { return }
+        apply(payload)
+    }
+
+    private func flushCurrentEdit() {
+        saveTask?.cancel()
+        let payload = currentPayload
+        guard payload.isValid, payload != lastSavedPayload else { return }
+        Task {
+            _ = await viewModel.saveEdit(item: item, payload: payload)
+        }
     }
 }
 

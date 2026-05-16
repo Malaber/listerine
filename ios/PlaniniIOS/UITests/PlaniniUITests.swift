@@ -48,11 +48,18 @@ final class PlaniniUITests: XCTestCase {
         captureScreenshot(named: "ios-ui-list-detail")
 
         XCTAssertTrue(app.staticTexts["Uncategorized"].waitForExistence(timeout: 3))
-        if app.buttons["favorite-list-button"].exists {
-            app.buttons["favorite-list-button"].tap()
-        }
+        let favoriteButton = app.buttons["favorite-list-button"]
+        XCTAssertTrue(favoriteButton.waitForExistence(timeout: 3))
+        XCTAssertTrue(favoriteButton.label.contains("Unfavorite"))
+        favoriteButton.tap()
+        XCTAssertTrue(favoriteButton.waitForExistence(timeout: 3))
+        XCTAssertTrue(favoriteButton.label.contains("Favorite"))
+        favoriteButton.tap()
+        XCTAssertTrue(favoriteButton.waitForExistence(timeout: 3))
+        XCTAssertTrue(favoriteButton.label.contains("Unfavorite"))
 
-        app.tabBars.buttons["Favorite"].tap()
+        XCTAssertTrue(app.tabBars.buttons[initialListName].waitForExistence(timeout: 3))
+        app.tabBars.buttons[initialListName].tap()
         XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
         XCTAssertEqual(listTitle.label, initialListName)
         captureScreenshot(named: "ios-ui-favorite-list")
@@ -118,8 +125,27 @@ final class PlaniniUITests: XCTestCase {
         let editNameField = app.textFields["edit-item-name-field"]
         editNameField.tap()
         editNameField.typeText(" Updated")
-        app.buttons["edit-item-save-button"].tap()
+        XCTAssertTrue(waitForEditStatus("Saved", app: app))
+        XCTAssertTrue(editNameField.valueText.contains(updatedName))
+
+        app.buttons["edit-item-undo-button"].tap()
+        XCTAssertTrue(waitForEditStatus("Saved", app: app))
+        XCTAssertTrue(editNameField.valueText.contains(itemName))
+        XCTAssertFalse(editNameField.valueText.contains("Updated"))
+
+        app.buttons["edit-item-redo-button"].tap()
+        XCTAssertTrue(waitForEditStatus("Saved", app: app))
+        XCTAssertTrue(editNameField.valueText.contains(updatedName))
+        captureScreenshot(named: "ios-ui-live-edit-autosave")
+        app.buttons["Done"].tap()
         XCTAssertTrue(app.staticTexts[updatedName].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            waitForItem(
+                named: updatedName,
+                inListNamed: initialListName,
+                accessToken: session.accessToken
+            )
+        )
 
         app.buttons["Check \(updatedName)"].tap()
         XCTAssertTrue(
@@ -346,6 +372,39 @@ final class PlaniniUITests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.35))
         }
         return false
+    }
+
+    private func waitForItem(
+        named itemName: String,
+        inListNamed listName: String,
+        accessToken: String,
+        timeout: TimeInterval = 8
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let items = try? fetchItems(inListNamed: listName, accessToken: accessToken),
+                items.contains(where: { $0.name == itemName })
+            {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.35))
+        }
+        return false
+    }
+
+    private func waitForEditStatus(
+        _ status: String,
+        app: XCUIApplication,
+        timeout: TimeInterval = 8
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if app.staticTexts[status].exists {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        return app.staticTexts[status].exists
     }
 
     private func waitForElementToDisappear(_ element: XCUIElement, timeout: TimeInterval = 8) -> Bool {
@@ -737,4 +796,10 @@ private struct UITestItem: Decodable {
 
 private struct UITestIdentifiedItem: Decodable {
     let id: UUID
+}
+
+private extension XCUIElement {
+    var valueText: String {
+        value as? String ?? ""
+    }
 }

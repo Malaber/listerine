@@ -16,7 +16,7 @@ public struct GroceryListSummary: Identifiable, Equatable, Codable, Sendable {
     }
 }
 
-public struct GroceryCategorySummary: Identifiable, Equatable, Sendable {
+public struct GroceryCategorySummary: Identifiable, Equatable, Codable, Sendable {
     public let id: UUID
     public let name: String
     public let colorHex: String?
@@ -40,7 +40,7 @@ public struct GroceryCategorySummary: Identifiable, Equatable, Sendable {
     }
 }
 
-public struct ListCategoryOrderEntry: Equatable, Sendable {
+public struct ListCategoryOrderEntry: Equatable, Codable, Sendable {
     public let categoryID: UUID
     public let sortOrder: Int
 
