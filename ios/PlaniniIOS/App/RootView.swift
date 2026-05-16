@@ -453,7 +453,7 @@ private struct ListDetailScreen: View {
                             ItemRow(item: item) {
                                 editingItem = item
                             }
-                            .listRowBackground(rowBackground(for: item))
+                            .background(rowHighlight(for: item))
                         }
                     } header: {
                         SectionHeader(section: section) { categoryID in
@@ -509,7 +509,7 @@ private struct ListDetailScreen: View {
         .accessibilityIdentifier("list-detail-screen")
     }
 
-    private func rowBackground(for item: GroceryItemRecord) -> Color {
+    private func rowHighlight(for item: GroceryItemRecord) -> Color {
         item.id == highlightedItemID ? Color.accentColor.opacity(0.16) : Color.clear
     }
 }
