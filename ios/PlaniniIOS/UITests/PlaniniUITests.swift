@@ -80,7 +80,7 @@ final class PlaniniUITests: XCTestCase {
         app.buttons["Cancel"].tap()
         XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 3))
 
-        app.buttons["add-item-button"].tap()
+        tapElement(app.buttons["add-item-button"])
         XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
         captureScreenshot(named: "ios-ui-add-item-sheet")
 
@@ -103,7 +103,7 @@ final class PlaniniUITests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(1.0))
         captureScreenshot(named: "ios-ui-suggestion-reactivated")
 
-        app.buttons["add-item-button"].tap()
+        tapElement(app.buttons["add-item-button"])
         XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
 
         let uniqueSuffix = UUID().uuidString.prefix(8)
@@ -111,7 +111,7 @@ final class PlaniniUITests: XCTestCase {
         let itemQuantity = "1 bunch"
         let updatedName = "\(itemName) Updated"
 
-        app.buttons["add-item-button"].tap()
+        tapElement(app.buttons["add-item-button"])
         XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
         let nameField = app.textFields["add-item-name-field"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 3))
@@ -179,7 +179,7 @@ final class PlaniniUITests: XCTestCase {
         captureScreenshot(named: "ios-ui-checked-item")
         captureScreenshot(named: "promotion-filled-list")
 
-        app.buttons["add-item-button"].tap()
+        tapElement(app.buttons["add-item-button"])
         XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
         let checkedSuggestionField = app.textFields["add-item-name-field"]
         checkedSuggestionField.tap()
