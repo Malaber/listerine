@@ -66,16 +66,31 @@ final class PlaniniUITests: XCTestCase {
 
         app.buttons["add-item-button"].tap()
         XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         captureScreenshot(named: "ios-ui-add-item-sheet")
 
         let uniqueSuffix = UUID().uuidString.prefix(8)
+        let enterSavedItemName = "UI Test Enter \(uniqueSuffix)"
         let itemName = "UI Test Herbs \(uniqueSuffix)"
         let itemQuantity = "1 bunch"
         let updatedName = "\(itemName) Updated"
 
         let nameField = app.textFields["add-item-name-field"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 3))
-        nameField.tap()
+        nameField.typeText("\(enterSavedItemName)\n")
+        XCTAssertTrue(app.staticTexts[enterSavedItemName].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            waitForItem(
+                named: enterSavedItemName,
+                inListNamed: initialListName,
+                accessToken: session.accessToken
+            )
+        )
+
+        app.buttons["add-item-button"].tap()
+        XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        XCTAssertTrue(nameField.waitForExistence(timeout: 3))
         nameField.typeText(itemName)
 
         let quantityField = app.textFields["add-item-quantity-field"]
