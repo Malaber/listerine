@@ -36,9 +36,10 @@ final class PlaniniUITests: XCTestCase {
         let listTitle = app.staticTexts["list-detail-title"]
         XCTAssertTrue(listTitle.waitForExistence(timeout: 10))
         app.tabBars.buttons["Lists"].tap()
-        XCTAssertTrue(app.navigationBars["Lists"].waitForExistence(timeout: 5))
+        let initialListRow = app.buttons["list-row-\(initialListName)"]
+        XCTAssertTrue(initialListRow.waitForExistence(timeout: 10))
         captureScreenshot(named: "promotion-list-of-lists")
-        app.buttons["list-row-\(initialListName)"].tap()
+        initialListRow.tap()
         XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
         XCTAssertEqual(listTitle.label, initialListName)
         captureScreenshot(named: "ios-ui-list-detail")
@@ -103,8 +104,9 @@ final class PlaniniUITests: XCTestCase {
 
         app.tabBars.buttons["Lists"].tap()
         returnToListsRootIfNeeded(app)
-        XCTAssertTrue(app.navigationBars["Lists"].waitForExistence(timeout: 5))
-        app.buttons["list-row-Hosting errands"].tap()
+        let hostingListRow = app.buttons["list-row-Hosting errands"]
+        XCTAssertTrue(hostingListRow.waitForExistence(timeout: 10))
+        hostingListRow.tap()
         XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
         XCTAssertEqual(listTitle.label, "Hosting errands")
         captureScreenshot(named: "ios-ui-list-switcher")
@@ -532,7 +534,7 @@ final class PlaniniUITests: XCTestCase {
     }
 
     private func returnToListsRootIfNeeded(_ app: XCUIApplication) {
-        if app.navigationBars["Lists"].waitForExistence(timeout: 1) {
+        if app.buttons["list-row-\(initialListName)"].waitForExistence(timeout: 1) {
             return
         }
 
