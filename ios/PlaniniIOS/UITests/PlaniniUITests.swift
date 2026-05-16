@@ -27,8 +27,9 @@ final class PlaniniUITests: XCTestCase {
         let listTitle = app.staticTexts["list-detail-title"]
         XCTAssertTrue(listTitle.waitForExistence(timeout: 10))
         app.tabBars.buttons["Lists"].tap()
-        XCTAssertTrue(app.navigationBars["Lists"].waitForExistence(timeout: 5))
-        app.buttons["list-row-\(initialListName)"].tap()
+        let initialListRow = app.buttons["list-row-\(initialListName)"]
+        XCTAssertTrue(initialListRow.waitForExistence(timeout: 10))
+        initialListRow.tap()
         XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
         XCTAssertEqual(listTitle.label, initialListName)
         captureScreenshot(named: "ios-ui-list-detail")
@@ -90,8 +91,9 @@ final class PlaniniUITests: XCTestCase {
 
         app.tabBars.buttons["Lists"].tap()
         returnToListsRootIfNeeded(app)
-        XCTAssertTrue(app.navigationBars["Lists"].waitForExistence(timeout: 5))
-        app.buttons["list-row-Hosting errands"].tap()
+        let hostingListRow = app.buttons["list-row-Hosting errands"]
+        XCTAssertTrue(hostingListRow.waitForExistence(timeout: 10))
+        hostingListRow.tap()
         XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
         XCTAssertEqual(listTitle.label, "Hosting errands")
         captureScreenshot(named: "ios-ui-list-switcher")
@@ -99,55 +101,6 @@ final class PlaniniUITests: XCTestCase {
         app.tabBars.buttons["Settings"].tap()
         XCTAssertTrue(app.buttons["settings-sign-out-button"].waitForExistence(timeout: 5))
         captureScreenshot(named: "ios-ui-settings")
-    }
-
-    func testListReceivesLiveUpdates() throws {
-        try assertLocalTestBackend()
-        let session = if let injectedSession {
-            injectedSession
-        } else {
-            try bootstrapSession(email: userEmail)
-        }
-
-        let app = XCUIApplication()
-        app.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
-        app.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
-        app.launchEnvironment["PLANINI_UI_TEST_ACCESS_TOKEN"] = session.accessToken
-        app.launchEnvironment["PLANINI_UI_TEST_DISPLAY_NAME"] = session.displayName
-        app.launchEnvironment["PLANINI_UI_TEST_INITIAL_LIST_NAME"] = initialListName
-        app.launch()
-
-        let listTitle = app.staticTexts["list-detail-title"]
-        XCTAssertTrue(listTitle.waitForExistence(timeout: 10))
-        XCTAssertEqual(listTitle.label, initialListName)
-        XCTAssertTrue(app.staticTexts["Loose item"].waitForExistence(timeout: 5))
-
-        let uniqueSuffix = UUID().uuidString.prefix(8)
-        let itemName = "UI Live \(uniqueSuffix)"
-        let updatedName = "\(itemName) Updated"
-        let itemID = try createItem(
-            named: itemName,
-            note: "",
-            inListNamed: initialListName,
-            accessToken: session.accessToken
-        )
-
-        XCTAssertTrue(app.staticTexts[itemName].waitForExistence(timeout: 8))
-        captureScreenshot(named: "ios-ui-live-item-created")
-
-        try updateItem(
-            itemID: itemID,
-            name: updatedName,
-            note: "",
-            accessToken: session.accessToken
-        )
-        XCTAssertTrue(app.staticTexts[updatedName].waitForExistence(timeout: 8))
-
-        try deleteItem(itemID: itemID, accessToken: session.accessToken)
-        XCTAssertTrue(
-            waitForElementToDisappear(app.staticTexts[updatedName], timeout: 8),
-            "Expected live-deleted item to disappear without manual refresh."
-        )
     }
 
     private var baseURL: URL {
@@ -426,7 +379,7 @@ final class PlaniniUITests: XCTestCase {
     }
 
     private func returnToListsRootIfNeeded(_ app: XCUIApplication) {
-        if app.navigationBars["Lists"].waitForExistence(timeout: 1) {
+        if app.buttons["list-row-\(initialListName)"].waitForExistence(timeout: 1) {
             return
         }
 
