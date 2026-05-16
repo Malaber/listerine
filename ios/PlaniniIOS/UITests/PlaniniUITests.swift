@@ -167,7 +167,7 @@ final class PlaniniUITests: XCTestCase {
         let checkedSuggestion = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Add \(updatedName) back")).firstMatch
         XCTAssertTrue(checkedSuggestion.waitForExistence(timeout: 3))
         captureScreenshot(named: "ios-ui-checked-item-suggestion")
-        checkedSuggestion.tap()
+        tapElement(checkedSuggestion)
         XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 3))
         XCTAssertTrue(
             waitForItemCheckedState(
@@ -488,12 +488,16 @@ final class PlaniniUITests: XCTestCase {
         guard tabButton.waitForExistence(timeout: timeout) else {
             return false
         }
-        if tabButton.isHittable {
-            tabButton.tap()
-        } else {
-            tabButton.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-        }
+        tapElement(tabButton)
         return true
+    }
+
+    private func tapElement(_ element: XCUIElement) {
+        if element.isHittable {
+            element.tap()
+        } else {
+            element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        }
     }
 
     private func waitForItemRow(
