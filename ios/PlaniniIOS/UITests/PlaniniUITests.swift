@@ -84,7 +84,7 @@ final class PlaniniUITests: XCTestCase {
         let activeSuggestion = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Jump to Loose item")).firstMatch
         XCTAssertTrue(activeSuggestion.waitForExistence(timeout: 3))
         captureScreenshot(named: "ios-ui-add-item-suggestions")
-        activeSuggestion.tap()
+        app.buttons["Cancel"].tap()
         XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 3))
 
         let uniqueSuffix = UUID().uuidString.prefix(8)

@@ -674,6 +674,7 @@ private struct AddItemSheet: View {
                                 ItemSuggestionRow(suggestion: suggestion)
                             }
                             .buttonStyle(.plain)
+                            .contentShape(Rectangle())
                             .accessibilityIdentifier("add-item-suggestion-\(suggestion.item.id.uuidString)")
                             .accessibilityLabel(
                                 suggestion.item.checked
@@ -768,6 +769,7 @@ private struct ItemSuggestionRow: View {
                 .foregroundStyle(.secondary)
         }
         .padding(.vertical, 2)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var metaText: String {
