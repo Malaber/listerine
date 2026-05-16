@@ -1,6 +1,8 @@
 import importlib.util
 import shlex
 import sqlite3
+import sys
+import types
 from contextlib import closing
 from pathlib import Path
 
@@ -209,6 +211,100 @@ def test_compute_version_values_for_branch_skips_existing_rc_tags():
         "release_version": "1.2.4-rc.9",
         "git_tag": "v1.2.4-rc.9",
     }
+
+
+def test_ios_app_icon_svg_with_background_color_updates_cls_1_fill(
+    tmp_path: Path, monkeypatch
+) -> None:
+    source_path = tmp_path / "planini.svg"
+    source_path.write_text(
+        """
+        <svg>
+          <style>
+            .cls-1 {
+              fill: #ddddc1;
+            }
+          </style>
+        </svg>
+        """,
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(tasks, "IOS_APP_ICON_SOURCE_PATH", source_path)
+
+    svg = tasks._ios_app_icon_svg_with_background_color("#A7E79D")
+
+    assert "fill: #a7e79d;" in svg
+
+
+def test_ios_app_icon_svg_with_background_color_rejects_invalid_color() -> None:
+    try:
+        tasks._normalize_ios_app_icon_background_color("green")
+    except tasks.Exit as exc:
+        assert "#rrggbb" in str(exc)
+    else:
+        raise AssertionError("expected invalid icon color to fail")
+
+
+def test_generate_ios_app_icons_renders_variant_svg_color(tmp_path: Path, monkeypatch) -> None:
+    source_path = tmp_path / "planini.svg"
+    source_path.write_text(
+        """
+        <svg>
+          <style>
+            .cls-1 {
+              fill: #ddddc1;
+            }
+          </style>
+        </svg>
+        """,
+        encoding="utf-8",
+    )
+    app_iconset_path = tmp_path / "AppIcon.appiconset"
+    watch_iconset_path = tmp_path / "WatchAppIcon.appiconset"
+    rendered: list[dict] = []
+
+    fake_cairosvg = types.SimpleNamespace(
+        svg2png=lambda **kwargs: rendered.append(kwargs)
+        or Path(kwargs["write_to"]).write_bytes(b"png")
+    )
+
+    monkeypatch.setattr(tasks, "IOS_APP_ICON_SOURCE_PATH", source_path)
+    monkeypatch.setattr(tasks, "ROOT", tmp_path)
+    monkeypatch.setattr(tasks, "IOS_APP_ICONSET_PATH", app_iconset_path)
+    monkeypatch.setattr(tasks, "IOS_WATCH_APP_ICONSET_PATH", watch_iconset_path)
+    monkeypatch.setattr(tasks, "IOS_APP_ICON_FILES", {"Icon-20@2x.png": 40})
+    monkeypatch.setattr(tasks, "IOS_WATCH_APP_ICON_FILES", {"Icon-24@2x.png": 48})
+    monkeypatch.setitem(sys.modules, "cairosvg", fake_cairosvg)
+
+    tasks.generate_ios_app_icons.body(None, background_color="#e18585")
+
+    assert len(rendered) == 2
+    assert all(b"fill: #e18585;" in call["bytestring"] for call in rendered)
+    assert (app_iconset_path / "Icon-20@2x.png").exists()
+    assert (watch_iconset_path / "Icon-24@2x.png").exists()
+
+
+def test_ios_testflight_workflow_adds_pr_build_component_and_variant_icon_colors() -> None:
+    workflow = (
+        Path(__file__).resolve().parents[1]
+        / ".github"
+        / "workflows"
+        / "ios-build-and-testflight.yml"
+    ).read_text(encoding="utf-8")
+
+    assert "build_number_pr_component=.$pr_number" in workflow
+    assert (
+        "IOS_BUILD_NUMBER: ${{ github.run_number }}${{ "
+        "needs.review_context.outputs.build_number_pr_component }}."
+        "${{ matrix.build_variant_code }}.${{ github.run_attempt }}"
+    ) in workflow
+    assert '"icon_background_color":"#ddddc1"' in workflow
+    assert '"icon_background_color":"#a7e79d"' in workflow
+    assert '"icon_background_color":"#e18585"' in workflow
+    assert (
+        'generate-ios-app-icons --background-color="${{ matrix.icon_background_color }}"'
+        in workflow
+    )
 
 
 def test_run_quiet_hides_successful_output() -> None:

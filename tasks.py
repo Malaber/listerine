@@ -73,6 +73,11 @@ IOS_GENERATED_CONFIG_PATH = (
     ROOT / "ios" / "PlaniniIOS" / "App" / "BuildConfiguration.generated.swift"
 )
 STABLE_TAG_PATTERN = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
+IOS_APP_ICON_BACKGROUND_PATTERN = re.compile(
+    r"(\.cls-1\s*\{\s*fill:\s*)#[0-9a-fA-F]{6}(\s*;)",
+    re.MULTILINE,
+)
+IOS_DEFAULT_APP_ICON_BACKGROUND_COLOR = "#ddddc1"
 
 IOS_APP_ICON_SOURCE_PATH = ROOT / "app" / "web" / "static" / "img" / "planini.svg"
 IOS_APP_ICONSET_PATH = ROOT / "ios" / "PlaniniIOS" / "Assets.xcassets" / "AppIcon.appiconset"
@@ -877,8 +882,31 @@ def _write_github_output(values: dict[str, str]) -> None:
         print(f"{key}={value}")
 
 
-@task
-def generate_ios_app_icons(c) -> None:
+def _normalize_ios_app_icon_background_color(background_color: str) -> str:
+    color = background_color.strip().lower()
+    if not re.fullmatch(r"#[0-9a-f]{6}", color):
+        raise Exit("iOS app icon background color must be a #rrggbb hex color.")
+    return color
+
+
+def _ios_app_icon_svg_with_background_color(background_color: str) -> str:
+    color = _normalize_ios_app_icon_background_color(background_color)
+    svg = IOS_APP_ICON_SOURCE_PATH.read_text(encoding="utf-8")
+    svg, replacements = IOS_APP_ICON_BACKGROUND_PATTERN.subn(rf"\g<1>{color}\g<2>", svg, count=1)
+    if replacements != 1:
+        raise Exit("Could not find .cls-1 fill color in iOS app icon source SVG.")
+    return svg
+
+
+@task(
+    help={
+        "background_color": (
+            "Hex color for the SVG .cls-1 app icon background fill. Defaults to "
+            "the release-candidate icon color."
+        ),
+    }
+)
+def generate_ios_app_icons(c, background_color=IOS_DEFAULT_APP_ICON_BACKGROUND_COLOR) -> None:
     """Generate ignored iOS AppIcon PNGs from the tracked Planini SVG."""
 
     try:
@@ -889,6 +917,7 @@ def generate_ios_app_icons(c) -> None:
     if not IOS_APP_ICON_SOURCE_PATH.exists():
         raise Exit(f"Missing app icon source SVG: {IOS_APP_ICON_SOURCE_PATH}")
 
+    svg = _ios_app_icon_svg_with_background_color(background_color)
     iconsets = {
         IOS_APP_ICONSET_PATH: IOS_APP_ICON_FILES,
         IOS_WATCH_APP_ICONSET_PATH: IOS_WATCH_APP_ICON_FILES,
@@ -899,7 +928,7 @@ def generate_ios_app_icons(c) -> None:
         for filename, size in icon_files.items():
             output_path = iconset_path / filename
             cairosvg.svg2png(
-                url=str(IOS_APP_ICON_SOURCE_PATH),
+                bytestring=svg.encode("utf-8"),
                 write_to=str(output_path),
                 output_width=size,
                 output_height=size,
