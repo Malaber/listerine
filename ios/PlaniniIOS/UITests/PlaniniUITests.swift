@@ -114,8 +114,17 @@ final class PlaniniUITests: XCTestCase {
         noteField.tap()
         noteField.typeText("for pasta")
 
-        app.buttons["add-item-save-button"].tap()
-        XCTAssertTrue(app.staticTexts[itemName].waitForExistence(timeout: 5))
+        tapElement(app.buttons["add-item-save-button"])
+        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 10))
+        XCTAssertTrue(
+            waitForItem(
+                named: itemName,
+                inListNamed: initialListName,
+                accessToken: session.accessToken,
+                timeout: 20
+            )
+        )
+        XCTAssertTrue(app.staticTexts[itemName].waitForExistence(timeout: 15))
         captureScreenshot(named: "ios-ui-added-item")
 
         let createdItemLabel = app.staticTexts[itemName]
