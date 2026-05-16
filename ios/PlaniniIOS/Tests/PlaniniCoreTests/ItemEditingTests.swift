@@ -214,6 +214,66 @@ struct ItemEditingTests {
         )
 
         #expect(suggestions.map { $0.item.name } == ["Bread rolls", "Brot"])
+        #expect(suggestions[0].id == activeBread.id)
         #expect(suggestions[1].categoryName == "Bakery")
+    }
+
+    @Test func itemSuggestionsIgnoreShortQueriesAndRankExactPrefixAndContainsMatches() {
+        let listID = UUID()
+        let exact = GroceryItemRecord(
+            id: UUID(),
+            listID: listID,
+            name: "Milk",
+            quantityText: nil,
+            note: nil,
+            categoryID: nil,
+            checked: false,
+            checkedAt: nil,
+            sortOrder: 0
+        )
+        let prefix = GroceryItemRecord(
+            id: UUID(),
+            listID: listID,
+            name: "Milk chocolate",
+            quantityText: nil,
+            note: nil,
+            categoryID: nil,
+            checked: false,
+            checkedAt: nil,
+            sortOrder: 1
+        )
+        let contains = GroceryItemRecord(
+            id: UUID(),
+            listID: listID,
+            name: "Oat milk",
+            quantityText: nil,
+            note: nil,
+            categoryID: nil,
+            checked: false,
+            checkedAt: nil,
+            sortOrder: 2
+        )
+        let checkedPrefix = GroceryItemRecord(
+            id: UUID(),
+            listID: listID,
+            name: "Milk bread",
+            quantityText: nil,
+            note: nil,
+            categoryID: nil,
+            checked: true,
+            checkedAt: nil,
+            sortOrder: 3
+        )
+
+        #expect(GroceryItemSuggestionBuilder.build(query: "m", items: [exact], categories: []).isEmpty)
+
+        let suggestions = GroceryItemSuggestionBuilder.build(
+            query: "milk",
+            items: [contains, checkedPrefix, prefix, exact],
+            categories: [],
+            limit: 4
+        )
+
+        #expect(suggestions.map { $0.item.name } == ["Milk", "Milk chocolate", "Milk bread", "Oat milk"])
     }
 }

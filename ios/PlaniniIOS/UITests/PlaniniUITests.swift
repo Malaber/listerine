@@ -107,6 +107,14 @@ final class PlaniniUITests: XCTestCase {
         noteField.typeText("for pasta")
 
         app.buttons["add-item-save-button"].tap()
+        XCTAssertTrue(
+            waitForItem(
+                named: itemName,
+                inListNamed: initialListName,
+                accessToken: session.accessToken
+            )
+        )
+        RunLoop.current.run(until: Date().addingTimeInterval(1.0))
         XCTAssertTrue(app.staticTexts[itemName].waitForExistence(timeout: 5))
         captureScreenshot(named: "ios-ui-added-item")
 
