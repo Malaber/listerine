@@ -34,7 +34,10 @@ final class PlaniniUITests: XCTestCase {
         app.launch()
 
         let listTitle = app.staticTexts["list-detail-title"]
-        XCTAssertTrue(listTitle.waitForExistence(timeout: 10))
+        XCTAssertTrue(
+            openInitialListDetail(in: app, listTitle: listTitle),
+            "Expected bootstrapped initial list to open."
+        )
         app.tabBars.buttons["Lists"].tap()
         let initialListRow = app.buttons["list-row-\(initialListName)"]
         XCTAssertTrue(initialListRow.waitForExistence(timeout: 10))
@@ -152,15 +155,10 @@ final class PlaniniUITests: XCTestCase {
         app.launch()
 
         let listTitle = app.staticTexts["list-detail-title"]
-        XCTAssertTrue(listTitle.waitForExistence(timeout: 10))
-        if listTitle.label != initialListName {
-            app.tabBars.buttons["Lists"].tap()
-            returnToListsRootIfNeeded(app)
-            let initialListRow = app.buttons["list-row-\(initialListName)"]
-            XCTAssertTrue(initialListRow.waitForExistence(timeout: 10))
-            initialListRow.tap()
-            XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
-        }
+        XCTAssertTrue(
+            openInitialListDetail(in: app, listTitle: listTitle),
+            "Expected bootstrapped initial list to open before live-update checks."
+        )
         XCTAssertEqual(listTitle.label, initialListName)
         XCTAssertTrue(app.staticTexts["Loose item"].waitForExistence(timeout: 5))
         XCTAssertTrue(
@@ -173,7 +171,7 @@ final class PlaniniUITests: XCTestCase {
         )
 
         let uniqueSuffix = UUID().uuidString.prefix(8)
-        let itemName = "UI Live \(uniqueSuffix)"
+        let itemName = "A UI Live \(uniqueSuffix)"
         let updatedName = "\(itemName) Updated"
         let itemID = try createItem(
             named: itemName,
@@ -182,7 +180,10 @@ final class PlaniniUITests: XCTestCase {
             accessToken: session.accessToken
         )
 
-        XCTAssertTrue(app.staticTexts[itemName].waitForExistence(timeout: 20))
+        XCTAssertTrue(
+            waitForItemRow(itemID: itemID, named: itemName, in: app, timeout: 20),
+            "Expected live-created item to appear without manual refresh."
+        )
         captureScreenshot(named: "ios-ui-live-item-created")
 
         try updateItem(
@@ -191,7 +192,10 @@ final class PlaniniUITests: XCTestCase {
             note: "",
             accessToken: session.accessToken
         )
-        XCTAssertTrue(app.staticTexts[updatedName].waitForExistence(timeout: 20))
+        XCTAssertTrue(
+            waitForItemRow(itemID: itemID, named: updatedName, in: app, timeout: 20),
+            "Expected live-updated item to rename without manual refresh."
+        )
 
         try deleteItem(itemID: itemID, accessToken: session.accessToken)
         XCTAssertTrue(
@@ -353,23 +357,85 @@ final class PlaniniUITests: XCTestCase {
     ) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            let probeName = "UI Live Ready \(UUID().uuidString.prefix(8))"
+            let probeName = "A UI Live Ready \(UUID().uuidString.prefix(8))"
             if let probeID = try? createItem(
                 named: probeName,
                 note: "",
                 inListNamed: listName,
                 accessToken: accessToken
             ) {
-                let appeared = app.staticTexts[probeName].waitForExistence(timeout: 3)
+                let appeared = waitForItemRow(itemID: probeID, named: probeName, in: app, timeout: 3)
                 try? deleteItem(itemID: probeID, accessToken: accessToken)
-                if appeared {
-                    _ = waitForElementToDisappear(app.staticTexts[probeName], timeout: 5)
+                let disappeared = waitForElementToDisappear(
+                    itemRow(itemID: probeID, in: app),
+                    timeout: 5
+                )
+                if appeared && disappeared {
                     return true
                 }
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         }
         return false
+    }
+
+    private func openInitialListDetail(
+        in app: XCUIApplication,
+        listTitle: XCUIElement,
+        timeout: TimeInterval = 45
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        let listsTab = app.tabBars.buttons["Lists"]
+        let initialListRow = app.buttons["list-row-\(initialListName)"]
+
+        while Date() < deadline {
+            if listTitle.exists && listTitle.label == initialListName {
+                return true
+            }
+
+            if listsTab.exists {
+                listsTab.tap()
+                returnToListsRootIfNeeded(app)
+                if initialListRow.waitForExistence(timeout: 2) {
+                    initialListRow.tap()
+                    if listTitle.waitForExistence(timeout: 5), listTitle.label == initialListName {
+                        return true
+                    }
+                }
+            }
+
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        }
+
+        return listTitle.exists && listTitle.label == initialListName
+    }
+
+    private func waitForItemRow(
+        itemID: UUID,
+        named itemName: String,
+        in app: XCUIApplication,
+        timeout: TimeInterval
+    ) -> Bool {
+        let row = itemRow(itemID: itemID, in: app)
+        let label = app.staticTexts[itemName]
+        let deadline = Date().addingTimeInterval(timeout)
+
+        while Date() < deadline {
+            if row.exists && label.exists {
+                return true
+            }
+            app.swipeDown()
+            if row.exists && label.exists {
+                return true
+            }
+            app.swipeUp()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        return row.exists && label.exists
+    }
+
+    private func itemRow(itemID: UUID, in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any)["item-row-\(itemID.uuidString)"]
     }
 
     private func scrollToElement(_ element: XCUIElement, in app: XCUIApplication, maxSwipes: Int = 10) {
@@ -479,6 +545,7 @@ final class PlaniniUITests: XCTestCase {
                 "quantity_text": NSNull(),
                 "note": note,
                 "category_id": NSNull(),
+                "sort_order": -1_000,
             ]
         )
         let data = try performRequest(request)
