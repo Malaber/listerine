@@ -95,10 +95,12 @@ public struct GroceryItemEditHistory: Codable, Equatable, Sendable {
 public struct GroceryItemSuggestion: Identifiable, Equatable, Sendable {
     public let item: GroceryItemRecord
     public let categoryName: String?
+    public let categoryColorHex: String?
 
-    public init(item: GroceryItemRecord, categoryName: String?) {
+    public init(item: GroceryItemRecord, categoryName: String?, categoryColorHex: String?) {
         self.item = item
         self.categoryName = categoryName
+        self.categoryColorHex = categoryColorHex
     }
 
     public var id: UUID {
@@ -116,7 +118,7 @@ public enum GroceryItemSuggestionBuilder {
         let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard normalizedQuery.count >= 2 else { return [] }
 
-        let categoryLookup = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0.name) })
+        let categoryLookup = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
         return items
             .compactMap { item -> (GroceryItemRecord, Int)? in
                 let candidate = item.name.localizedLowercase
@@ -135,7 +137,8 @@ public enum GroceryItemSuggestionBuilder {
             .map { item, _ in
                 GroceryItemSuggestion(
                     item: item,
-                    categoryName: item.categoryID.flatMap { categoryLookup[$0] }
+                    categoryName: item.categoryID.flatMap { categoryLookup[$0]?.name },
+                    categoryColorHex: item.categoryID.flatMap { categoryLookup[$0]?.colorHex }
                 )
             }
     }

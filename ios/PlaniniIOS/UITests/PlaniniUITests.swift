@@ -74,7 +74,7 @@ final class PlaniniUITests: XCTestCase {
         suggestionProbeField.typeText("Bro")
         let checkedSuggestion = app.buttons.containing(.staticText, identifier: "Brot").firstMatch
         XCTAssertTrue(checkedSuggestion.waitForExistence(timeout: 3))
-        XCTAssertEqual(checkedSuggestion.images.count, 0, "Suggestion rows should not show a leading crosshair icon.")
+        XCTAssertFalse(checkedSuggestion.images["scope"].exists, "Suggestion rows should not show a crosshair icon.")
         checkedSuggestion.tap()
         XCTAssertTrue(suggestionProbeField.valueText.contains("Brot"))
         app.buttons["add-item-save-button"].tap()

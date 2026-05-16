@@ -216,6 +216,7 @@ struct ItemEditingTests {
         #expect(suggestions.map { $0.item.name } == ["Bread rolls", "Brot"])
         #expect(suggestions[0].id == activeBread.id)
         #expect(suggestions[1].categoryName == "Bakery")
+        #expect(suggestions[1].categoryColorHex == "#f2a65a")
     }
 
     @Test func itemSuggestionsIgnoreShortQueriesAndRankExactPrefixAndContainsMatches() {

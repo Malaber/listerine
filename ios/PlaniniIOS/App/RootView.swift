@@ -751,6 +751,10 @@ private struct AddItemSuggestionRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(Color(hex: suggestion.categoryColorHex) ?? Color.secondary.opacity(0.35))
+                .frame(width: 4, height: 48)
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(suggestion.item.name)
                     .font(.body.weight(.medium))
@@ -761,11 +765,13 @@ private struct AddItemSuggestionRow: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Text("Use")
-                .font(.caption.weight(.semibold))
+            Image(systemName: "plus")
+                .font(.system(size: 34, weight: .regular))
                 .foregroundStyle(Color.accentColor)
+                .frame(width: 44, height: 44)
+                .accessibilityHidden(true)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
         .contentShape(Rectangle())
     }
 
