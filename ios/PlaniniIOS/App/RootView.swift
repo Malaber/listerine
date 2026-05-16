@@ -15,6 +15,11 @@ private enum AppTab: Hashable {
     case settings
 }
 
+private struct AddItemPresentation: Identifiable {
+    let id = UUID()
+    let categoryID: UUID?
+}
+
 struct RootView: View {
     @EnvironmentObject private var viewModel: MobileAppViewModel
     @State private var selectedTab: AppTab = .favorite
@@ -411,7 +416,8 @@ private struct ListDetailScreen: View {
     let showsFavoriteButton: Bool
 
     @State private var editingItem: GroceryItemRecord?
-    @State private var showingAddSheet = false
+    @State private var addItemPresentation: AddItemPresentation?
+    @State private var highlightedItemID: UUID?
 
     private var currentList: GroceryListSummary? {
         viewModel.lists.first { $0.id == listID }
@@ -451,9 +457,12 @@ private struct ListDetailScreen: View {
                             ItemRow(item: item) {
                                 editingItem = item
                             }
+                            .background(rowHighlight(for: item))
                         }
                     } header: {
-                        SectionHeader(section: section)
+                        SectionHeader(section: section) { categoryID in
+                            addItemPresentation = AddItemPresentation(categoryID: categoryID)
+                        }
                     }
                 }
             }
@@ -464,7 +473,7 @@ private struct ListDetailScreen: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    showingAddSheet = true
+                    addItemPresentation = AddItemPresentation(categoryID: nil)
                 } label: {
                     Label("Add item", systemImage: "plus")
                 }
@@ -492,16 +501,42 @@ private struct ListDetailScreen: View {
         .sheet(item: $editingItem) { item in
             EditItemSheet(item: item)
         }
-        .sheet(isPresented: $showingAddSheet) {
-            AddItemSheet()
+        .sheet(item: $addItemPresentation) { presentation in
+            AddItemSheet(initialCategoryID: presentation.categoryID) { itemID in
+                highlightedItemID = itemID
+            }
         }
         .animation(.easeInOut(duration: 0.22), value: viewModel.sections.map(\.id))
+        .animation(.easeInOut(duration: 0.22), value: highlightedItemID)
         .accessibilityIdentifier("list-detail-screen")
+    }
+
+    private func rowHighlight(for item: GroceryItemRecord) -> Color {
+        item.id == highlightedItemID ? Color.accentColor.opacity(0.16) : Color.clear
     }
 }
 
 private struct SectionHeader: View {
     let section: GroceryItemSection
+    let onQuickAdd: (UUID?) -> Void
+
+    private var allowsQuickAdd: Bool {
+        switch section.kind {
+        case .checked:
+            return false
+        case .uncategorized, .category:
+            return true
+        }
+    }
+
+    private var quickAddCategoryID: UUID? {
+        switch section.kind {
+        case .uncategorized, .checked:
+            return nil
+        case let .category(categoryID):
+            return categoryID
+        }
+    }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -512,6 +547,18 @@ private struct SectionHeader: View {
             Spacer()
             Text("\(section.itemCount)")
                 .foregroundStyle(.secondary)
+            if allowsQuickAdd {
+                Button {
+                    onQuickAdd(quickAddCategoryID)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.mini)
+                .accessibilityIdentifier("quick-add-category-\(section.id)")
+                .accessibilityLabel(section.kind == .uncategorized ? "Quick add uncategorized item" : "Quick add to \(section.title)")
+            }
         }
         .textCase(nil)
         .accessibilityIdentifier("section-\(section.id)")
@@ -590,6 +637,8 @@ private struct ItemRow: View {
 private struct AddItemSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var viewModel: MobileAppViewModel
+    let initialCategoryID: UUID?
+    let onSuggestionFocused: (UUID) -> Void
 
     private enum FocusedField {
         case name
@@ -602,6 +651,20 @@ private struct AddItemSheet: View {
     @State private var isSaving = false
     @FocusState private var focusedField: FocusedField?
 
+    init(initialCategoryID: UUID? = nil, onSuggestionFocused: @escaping (UUID) -> Void = { _ in }) {
+        self.initialCategoryID = initialCategoryID
+        self.onSuggestionFocused = onSuggestionFocused
+        _categoryID = State(initialValue: initialCategoryID)
+    }
+
+    private var suggestions: [GroceryItemSuggestion] {
+        GroceryItemSuggestionMatcher.suggestions(
+            for: name,
+            items: viewModel.items,
+            categories: viewModel.categories
+        )
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -613,6 +676,27 @@ private struct AddItemSheet: View {
                         .accessibilityIdentifier("add-item-name-field")
                     TextField("Quantity", text: $quantity)
                         .accessibilityIdentifier("add-item-quantity-field")
+                }
+
+                if suggestions.isEmpty == false {
+                    Section("Suggestions") {
+                        ForEach(suggestions) { suggestion in
+                            Button {
+                                Task { await useSuggestion(suggestion) }
+                            } label: {
+                                ItemSuggestionRow(suggestion: suggestion)
+                            }
+                            .buttonStyle(.plain)
+                            .contentShape(Rectangle())
+                            .accessibilityIdentifier("add-item-suggestion-\(suggestion.item.id.uuidString)")
+                            .accessibilityLabel(
+                                suggestion.item.checked
+                                    ? "Add \(suggestion.item.name) back to the list"
+                                    : "Jump to \(suggestion.item.name) in the list"
+                            )
+                        }
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
                 Section("Category") {
@@ -632,6 +716,7 @@ private struct AddItemSheet: View {
             }
             .navigationTitle("Add item")
             .navigationBarTitleDisplayMode(.inline)
+            .animation(.easeInOut(duration: 0.18), value: suggestions.map(\.id))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -646,6 +731,7 @@ private struct AddItemSheet: View {
             }
         }
         .task {
+            categoryID = initialCategoryID
             try? await Task.sleep(nanoseconds: 250_000_000)
             focusedField = .name
         }
@@ -673,6 +759,49 @@ private struct AddItemSheet: View {
                 isSaving = false
             }
         }
+    }
+
+    @MainActor
+    private func useSuggestion(_ suggestion: GroceryItemSuggestion) async {
+        if suggestion.item.checked {
+            let toggled = await viewModel.toggle(suggestion.item)
+            guard toggled else { return }
+            AppHaptics.confirmation()
+        }
+        onSuggestionFocused(suggestion.item.id)
+        dismiss()
+    }
+}
+
+private struct ItemSuggestionRow: View {
+    let suggestion: GroceryItemSuggestion
+
+    var body: some View {
+        HStack(spacing: 12) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(Color(hex: suggestion.category?.colorHex) ?? Color.secondary.opacity(0.4))
+                .frame(width: 4, height: 36)
+            Image(systemName: suggestion.item.checked ? "arrow.uturn.backward.circle" : "scope")
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(suggestion.item.name)
+                    .foregroundStyle(.primary)
+                Text(metaText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Image(systemName: "plus")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var metaText: String {
+        let categoryName = suggestion.category?.name ?? "Uncategorized"
+        return suggestion.item.checked ? "\(categoryName) · checked off" : categoryName
     }
 }
 
