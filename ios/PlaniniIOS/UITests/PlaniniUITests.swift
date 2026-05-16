@@ -653,6 +653,23 @@ final class PlaniniUITests: XCTestCase {
     }
 
     private func performRequest(_ request: URLRequest) throws -> Data {
+        var lastError: Error?
+        for attempt in 1...3 {
+            do {
+                return try performSingleRequest(request)
+            } catch {
+                lastError = error
+                guard isTransientNetworkError(error), attempt < 3 else {
+                    throw error
+                }
+                RunLoop.current.run(until: Date().addingTimeInterval(0.4 * Double(attempt)))
+            }
+        }
+
+        throw lastError ?? NSError(domain: "PlaniniUITests", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing response"])
+    }
+
+    private func performSingleRequest(_ request: URLRequest) throws -> Data {
         let semaphore = DispatchSemaphore(value: 0)
         var capturedData: Data?
         var capturedError: Error?
@@ -680,6 +697,18 @@ final class PlaniniUITests: XCTestCase {
             throw NSError(domain: "PlaniniUITests", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing bootstrap response"])
         }
         return capturedData
+    }
+
+    private func isTransientNetworkError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        guard nsError.domain == NSURLErrorDomain else {
+            return false
+        }
+        return [
+            NSURLErrorNetworkConnectionLost,
+            NSURLErrorTimedOut,
+            NSURLErrorCannotConnectToHost,
+        ].contains(nsError.code)
     }
 
     private func returnToListsRootIfNeeded(_ app: XCUIApplication) {
