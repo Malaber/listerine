@@ -539,6 +539,7 @@
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = de.malaber.planini;
 				PRODUCT_NAME = Planini;
+				PROVISIONING_PROFILE_SPECIFIER = "$(PLANINI_APP_PROFILE_NAME)";
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_VERSION = 5.1;
@@ -563,6 +564,7 @@
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = de.malaber.planini.watchkitapp.watchkitextension;
 				PRODUCT_NAME = "Planini Watch Extension";
+				PROVISIONING_PROFILE_SPECIFIER = "$(PLANINI_WATCH_EXTENSION_PROFILE_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.1;
@@ -630,6 +632,7 @@
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = de.malaber.planini.watchkitapp.watchkitextension;
 				PRODUCT_NAME = "Planini Watch Extension";
+				PROVISIONING_PROFILE_SPECIFIER = "$(PLANINI_WATCH_EXTENSION_PROFILE_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.1;
@@ -654,6 +657,7 @@
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = de.malaber.planini.watchkitapp.widget;
 				PRODUCT_NAME = "Planini Watch Widgets";
+				PROVISIONING_PROFILE_SPECIFIER = "$(PLANINI_WATCH_WIDGET_PROFILE_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.1;
@@ -673,6 +677,7 @@
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = de.malaber.planini.watchkitapp;
 				PRODUCT_NAME = "Planini Watch";
+				PROVISIONING_PROFILE_SPECIFIER = "$(PLANINI_WATCH_APP_PROFILE_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.1;
@@ -758,6 +763,7 @@
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = de.malaber.planini;
 				PRODUCT_NAME = Planini;
+				PROVISIONING_PROFILE_SPECIFIER = "$(PLANINI_APP_PROFILE_NAME)";
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_VERSION = 5.1;
@@ -781,6 +787,7 @@
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = de.malaber.planini.watchkitapp.widget;
 				PRODUCT_NAME = "Planini Watch Widgets";
+				PROVISIONING_PROFILE_SPECIFIER = "$(PLANINI_WATCH_WIDGET_PROFILE_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.1;
@@ -800,6 +807,7 @@
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = de.malaber.planini.watchkitapp;
 				PRODUCT_NAME = "Planini Watch";
+				PROVISIONING_PROFILE_SPECIFIER = "$(PLANINI_WATCH_APP_PROFILE_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.1;

@@ -141,12 +141,36 @@ jobs:
       P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
       BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
       BUILD_PROVISION_PROFILE_NAME: planini
+      BUILD_WATCH_APP_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_WATCH_APP_PROVISION_PROFILE_BASE64 }}
+      BUILD_WATCH_APP_PROVISION_PROFILE_NAME: planini-watch-app
+      BUILD_WATCH_EXTENSION_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_WATCH_EXTENSION_PROVISION_PROFILE_BASE64 }}
+      BUILD_WATCH_EXTENSION_PROVISION_PROFILE_NAME: planini-watch-extension
+      BUILD_WATCH_WIDGET_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_WATCH_WIDGET_PROVISION_PROFILE_BASE64 }}
+      BUILD_WATCH_WIDGET_PROVISION_PROFILE_NAME: planini-watch-widget
       BUILD_REVIEW_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_REVIEW_PROVISION_PROFILE_BASE64 }}
       BUILD_REVIEW_PROVISION_PROFILE_NAME: ${{ secrets.BUILD_REVIEW_PROVISION_PROFILE_NAME }}
+      BUILD_REVIEW_WATCH_APP_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_REVIEW_WATCH_APP_PROVISION_PROFILE_BASE64 }}
+      BUILD_REVIEW_WATCH_APP_PROVISION_PROFILE_NAME: ${{ secrets.BUILD_REVIEW_WATCH_APP_PROVISION_PROFILE_NAME }}
+      BUILD_REVIEW_WATCH_EXTENSION_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_REVIEW_WATCH_EXTENSION_PROVISION_PROFILE_BASE64 }}
+      BUILD_REVIEW_WATCH_EXTENSION_PROVISION_PROFILE_NAME: ${{ secrets.BUILD_REVIEW_WATCH_EXTENSION_PROVISION_PROFILE_NAME }}
+      BUILD_REVIEW_WATCH_WIDGET_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_REVIEW_WATCH_WIDGET_PROVISION_PROFILE_BASE64 }}
+      BUILD_REVIEW_WATCH_WIDGET_PROVISION_PROFILE_NAME: ${{ secrets.BUILD_REVIEW_WATCH_WIDGET_PROVISION_PROFILE_NAME }}
       AD_HOC_PROVISION_PROFILE_BASE64: ${{ secrets.AD_HOC_PROVISION_PROFILE_BASE64 }}
       AD_HOC_PROVISION_PROFILE_NAME: ${{ secrets.AD_HOC_PROVISION_PROFILE_NAME }}
+      AD_HOC_WATCH_APP_PROVISION_PROFILE_BASE64: ${{ secrets.AD_HOC_WATCH_APP_PROVISION_PROFILE_BASE64 }}
+      AD_HOC_WATCH_APP_PROVISION_PROFILE_NAME: ${{ secrets.AD_HOC_WATCH_APP_PROVISION_PROFILE_NAME }}
+      AD_HOC_WATCH_EXTENSION_PROVISION_PROFILE_BASE64: ${{ secrets.AD_HOC_WATCH_EXTENSION_PROVISION_PROFILE_BASE64 }}
+      AD_HOC_WATCH_EXTENSION_PROVISION_PROFILE_NAME: ${{ secrets.AD_HOC_WATCH_EXTENSION_PROVISION_PROFILE_NAME }}
+      AD_HOC_WATCH_WIDGET_PROVISION_PROFILE_BASE64: ${{ secrets.AD_HOC_WATCH_WIDGET_PROVISION_PROFILE_BASE64 }}
+      AD_HOC_WATCH_WIDGET_PROVISION_PROFILE_NAME: ${{ secrets.AD_HOC_WATCH_WIDGET_PROVISION_PROFILE_NAME }}
       AD_HOC_REVIEW_PROVISION_PROFILE_BASE64: ${{ secrets.AD_HOC_REVIEW_PROVISION_PROFILE_BASE64 }}
       AD_HOC_REVIEW_PROVISION_PROFILE_NAME: ${{ secrets.AD_HOC_REVIEW_PROVISION_PROFILE_NAME }}
+      AD_HOC_REVIEW_WATCH_APP_PROVISION_PROFILE_BASE64: ${{ secrets.AD_HOC_REVIEW_WATCH_APP_PROVISION_PROFILE_BASE64 }}
+      AD_HOC_REVIEW_WATCH_APP_PROVISION_PROFILE_NAME: ${{ secrets.AD_HOC_REVIEW_WATCH_APP_PROVISION_PROFILE_NAME }}
+      AD_HOC_REVIEW_WATCH_EXTENSION_PROVISION_PROFILE_BASE64: ${{ secrets.AD_HOC_REVIEW_WATCH_EXTENSION_PROVISION_PROFILE_BASE64 }}
+      AD_HOC_REVIEW_WATCH_EXTENSION_PROVISION_PROFILE_NAME: ${{ secrets.AD_HOC_REVIEW_WATCH_EXTENSION_PROVISION_PROFILE_NAME }}
+      AD_HOC_REVIEW_WATCH_WIDGET_PROVISION_PROFILE_BASE64: ${{ secrets.AD_HOC_REVIEW_WATCH_WIDGET_PROVISION_PROFILE_BASE64 }}
+      AD_HOC_REVIEW_WATCH_WIDGET_PROVISION_PROFILE_NAME: ${{ secrets.AD_HOC_REVIEW_WATCH_WIDGET_PROVISION_PROFILE_NAME }}
       APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
       APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
       APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
@@ -172,6 +196,9 @@ jobs:
               passkey_domain="${IOS_PRODUCTION_PASSKEY_DOMAIN:-planini.top}"
               bundle_id="$IOS_BUNDLE_IDENTIFIER"
               profile_name="$BUILD_PROVISION_PROFILE_NAME"
+              watch_app_profile_name="$BUILD_WATCH_APP_PROVISION_PROFILE_NAME"
+              watch_extension_profile_name="$BUILD_WATCH_EXTENSION_PROVISION_PROFILE_NAME"
+              watch_widget_profile_name="$BUILD_WATCH_WIDGET_PROVISION_PROFILE_NAME"
               app_display_name="Planini"
               ;;
             review)
@@ -184,6 +211,9 @@ jobs:
               passkey_domain="${IOS_REVIEW_PASSKEY_DOMAIN:-pr.planini.malaber.de}"
               bundle_id="${IOS_REVIEW_BUNDLE_IDENTIFIER:-$IOS_BUNDLE_IDENTIFIER}"
               profile_name="${BUILD_REVIEW_PROVISION_PROFILE_NAME:-$BUILD_PROVISION_PROFILE_NAME}"
+              watch_app_profile_name="${BUILD_REVIEW_WATCH_APP_PROVISION_PROFILE_NAME:-$BUILD_WATCH_APP_PROVISION_PROFILE_NAME}"
+              watch_extension_profile_name="${BUILD_REVIEW_WATCH_EXTENSION_PROVISION_PROFILE_NAME:-$BUILD_WATCH_EXTENSION_PROVISION_PROFILE_NAME}"
+              watch_widget_profile_name="${BUILD_REVIEW_WATCH_WIDGET_PROVISION_PROFILE_NAME:-$BUILD_WATCH_WIDGET_PROVISION_PROFILE_NAME}"
               app_display_name="Planini Review"
               ;;
             *)
@@ -198,6 +228,9 @@ jobs:
             echo "passkey_domain=$passkey_domain"
             echo "bundle_id=$bundle_id"
             echo "profile_name=$profile_name"
+            echo "watch_app_profile_name=$watch_app_profile_name"
+            echo "watch_extension_profile_name=$watch_extension_profile_name"
+            echo "watch_widget_profile_name=$watch_widget_profile_name"
             echo "app_display_name=$app_display_name"
             echo "ipa_basename=Planini-$IOS_VARIANT-$IOS_MARKETING_VERSION-$IOS_BUILD_NUMBER"
           } >> "$GITHUB_OUTPUT"
@@ -222,13 +255,31 @@ jobs:
           case "$IOS_VARIANT" in
             production)
               profile_base64="$BUILD_PROVISION_PROFILE_BASE64"
+              watch_app_profile_base64="$BUILD_WATCH_APP_PROVISION_PROFILE_BASE64"
+              watch_extension_profile_base64="$BUILD_WATCH_EXTENSION_PROVISION_PROFILE_BASE64"
+              watch_widget_profile_base64="$BUILD_WATCH_WIDGET_PROVISION_PROFILE_BASE64"
               ;;
             review)
               profile_base64="${BUILD_REVIEW_PROVISION_PROFILE_BASE64:-$BUILD_PROVISION_PROFILE_BASE64}"
+              watch_app_profile_base64="${BUILD_REVIEW_WATCH_APP_PROVISION_PROFILE_BASE64:-$BUILD_WATCH_APP_PROVISION_PROFILE_BASE64}"
+              watch_extension_profile_base64="${BUILD_REVIEW_WATCH_EXTENSION_PROVISION_PROFILE_BASE64:-$BUILD_WATCH_EXTENSION_PROVISION_PROFILE_BASE64}"
+              watch_widget_profile_base64="${BUILD_REVIEW_WATCH_WIDGET_PROVISION_PROFILE_BASE64:-$BUILD_WATCH_WIDGET_PROVISION_PROFILE_BASE64}"
               ;;
           esac
           if [ -z "$profile_base64" ]; then
             echo "Missing App Store provisioning profile for $IOS_VARIANT" >&2
+            missing=1
+          fi
+          if [ -z "$watch_app_profile_base64" ] || [ -z "${{ steps.variant.outputs.watch_app_profile_name }}" ]; then
+            echo "Missing App Store watch app provisioning profile or profile name for $IOS_VARIANT" >&2
+            missing=1
+          fi
+          if [ -z "$watch_extension_profile_base64" ] || [ -z "${{ steps.variant.outputs.watch_extension_profile_name }}" ]; then
+            echo "Missing App Store watch extension provisioning profile or profile name for $IOS_VARIANT" >&2
+            missing=1
+          fi
+          if [ -z "$watch_widget_profile_base64" ] || [ -z "${{ steps.variant.outputs.watch_widget_profile_name }}" ]; then
+            echo "Missing App Store watch widget provisioning profile or profile name for $IOS_VARIANT" >&2
             missing=1
           fi
           if [ "$missing" -ne 0 ]; then
@@ -267,23 +318,42 @@ jobs:
         if: steps.variant.outputs.skip != 'true'
         run: |
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          PROFILE_PATH=~/Library/MobileDevice/Provisioning\ Profiles/planini-$IOS_VARIANT.mobileprovision
+          install_profile() {
+            profile_base64="$1"
+            label="$2"
+            raw_path="$RUNNER_TEMP/$label.mobileprovision"
+            plist_path="$RUNNER_TEMP/$label.plist"
+            echo "$profile_base64" | base64 --decode > "$raw_path"
+            security cms -D -i "$raw_path" > "$plist_path"
+            uuid="$(/usr/libexec/PlistBuddy -c 'Print UUID' "$plist_path")"
+            name="$(/usr/libexec/PlistBuddy -c 'Print Name' "$plist_path")"
+            cp "$raw_path" "$HOME/Library/MobileDevice/Provisioning Profiles/$uuid.mobileprovision"
+            echo "Installed provisioning profile '$name' for $label."
+          }
+
           case "$IOS_VARIANT" in
             production)
-              profile_base64="$BUILD_PROVISION_PROFILE_BASE64"
+              app_profile_base64="$BUILD_PROVISION_PROFILE_BASE64"
+              watch_app_profile_base64="$BUILD_WATCH_APP_PROVISION_PROFILE_BASE64"
+              watch_extension_profile_base64="$BUILD_WATCH_EXTENSION_PROVISION_PROFILE_BASE64"
+              watch_widget_profile_base64="$BUILD_WATCH_WIDGET_PROVISION_PROFILE_BASE64"
               ;;
             review)
-              profile_base64="${BUILD_REVIEW_PROVISION_PROFILE_BASE64:-$BUILD_PROVISION_PROFILE_BASE64}"
+              app_profile_base64="${BUILD_REVIEW_PROVISION_PROFILE_BASE64:-$BUILD_PROVISION_PROFILE_BASE64}"
+              watch_app_profile_base64="${BUILD_REVIEW_WATCH_APP_PROVISION_PROFILE_BASE64:-$BUILD_WATCH_APP_PROVISION_PROFILE_BASE64}"
+              watch_extension_profile_base64="${BUILD_REVIEW_WATCH_EXTENSION_PROVISION_PROFILE_BASE64:-$BUILD_WATCH_EXTENSION_PROVISION_PROFILE_BASE64}"
+              watch_widget_profile_base64="${BUILD_REVIEW_WATCH_WIDGET_PROVISION_PROFILE_BASE64:-$BUILD_WATCH_WIDGET_PROVISION_PROFILE_BASE64}"
               ;;
           esac
-          echo "$profile_base64" | base64 --decode > "$PROFILE_PATH"
+          install_profile "$app_profile_base64" "planini-$IOS_VARIANT-app"
+          install_profile "$watch_app_profile_base64" "planini-$IOS_VARIANT-watch-app"
+          install_profile "$watch_extension_profile_base64" "planini-$IOS_VARIANT-watch-extension"
+          install_profile "$watch_widget_profile_base64" "planini-$IOS_VARIANT-watch-widget"
       - name: Write App Store Connect API key
         if: steps.variant.outputs.skip != 'true'
         run: |
           mkdir -p ~/.appstoreconnect/private_keys
-          cat > ~/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8 <<'KEY'
-          ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
-          KEY
+          printf '%s' "$APP_STORE_CONNECT_PRIVATE_KEY" > ~/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8
       - name: Archive app
         if: steps.variant.outputs.skip != 'true'
         run: |
@@ -294,12 +364,14 @@ jobs:
             -configuration Release \
             -archivePath "$RUNNER_TEMP/${{ steps.variant.outputs.ipa_basename }}.xcarchive" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-            PRODUCT_BUNDLE_IDENTIFIER="${{ steps.variant.outputs.bundle_id }}" \
             MARKETING_VERSION="$IOS_MARKETING_VERSION" \
             CURRENT_PROJECT_VERSION="$IOS_BUILD_NUMBER" \
             INFOPLIST_KEY_CFBundleDisplayName="${{ steps.variant.outputs.app_display_name }}" \
             CODE_SIGN_STYLE=Manual \
-            PROVISIONING_PROFILE_SPECIFIER="${{ steps.variant.outputs.profile_name }}" \
+            PLANINI_APP_PROFILE_NAME="${{ steps.variant.outputs.profile_name }}" \
+            PLANINI_WATCH_APP_PROFILE_NAME="${{ steps.variant.outputs.watch_app_profile_name }}" \
+            PLANINI_WATCH_EXTENSION_PROFILE_NAME="${{ steps.variant.outputs.watch_extension_profile_name }}" \
+            PLANINI_WATCH_WIDGET_PROFILE_NAME="${{ steps.variant.outputs.watch_widget_profile_name }}" \
             archive
       - name: Export App Store IPA
         if: steps.variant.outputs.skip != 'true'
@@ -319,6 +391,12 @@ jobs:
             <dict>
               <key>${{ steps.variant.outputs.bundle_id }}</key>
               <string>${{ steps.variant.outputs.profile_name }}</string>
+              <key>de.malaber.planini.watchkitapp</key>
+              <string>${{ steps.variant.outputs.watch_app_profile_name }}</string>
+              <key>de.malaber.planini.watchkitapp.watchkitextension</key>
+              <string>${{ steps.variant.outputs.watch_extension_profile_name }}</string>
+              <key>de.malaber.planini.watchkitapp.widget</key>
+              <string>${{ steps.variant.outputs.watch_widget_profile_name }}</string>
             </dict>
           </dict>
           </plist>
@@ -340,19 +418,49 @@ jobs:
             production)
               ad_hoc_profile_base64="$AD_HOC_PROVISION_PROFILE_BASE64"
               ad_hoc_profile_name="$AD_HOC_PROVISION_PROFILE_NAME"
+              ad_hoc_watch_app_profile_base64="$AD_HOC_WATCH_APP_PROVISION_PROFILE_BASE64"
+              ad_hoc_watch_app_profile_name="$AD_HOC_WATCH_APP_PROVISION_PROFILE_NAME"
+              ad_hoc_watch_extension_profile_base64="$AD_HOC_WATCH_EXTENSION_PROVISION_PROFILE_BASE64"
+              ad_hoc_watch_extension_profile_name="$AD_HOC_WATCH_EXTENSION_PROVISION_PROFILE_NAME"
+              ad_hoc_watch_widget_profile_base64="$AD_HOC_WATCH_WIDGET_PROVISION_PROFILE_BASE64"
+              ad_hoc_watch_widget_profile_name="$AD_HOC_WATCH_WIDGET_PROVISION_PROFILE_NAME"
               ;;
             review)
               ad_hoc_profile_base64="${AD_HOC_REVIEW_PROVISION_PROFILE_BASE64:-$AD_HOC_PROVISION_PROFILE_BASE64}"
               ad_hoc_profile_name="${AD_HOC_REVIEW_PROVISION_PROFILE_NAME:-$AD_HOC_PROVISION_PROFILE_NAME}"
+              ad_hoc_watch_app_profile_base64="${AD_HOC_REVIEW_WATCH_APP_PROVISION_PROFILE_BASE64:-$AD_HOC_WATCH_APP_PROVISION_PROFILE_BASE64}"
+              ad_hoc_watch_app_profile_name="${AD_HOC_REVIEW_WATCH_APP_PROVISION_PROFILE_NAME:-$AD_HOC_WATCH_APP_PROVISION_PROFILE_NAME}"
+              ad_hoc_watch_extension_profile_base64="${AD_HOC_REVIEW_WATCH_EXTENSION_PROVISION_PROFILE_BASE64:-$AD_HOC_WATCH_EXTENSION_PROVISION_PROFILE_BASE64}"
+              ad_hoc_watch_extension_profile_name="${AD_HOC_REVIEW_WATCH_EXTENSION_PROVISION_PROFILE_NAME:-$AD_HOC_WATCH_EXTENSION_PROVISION_PROFILE_NAME}"
+              ad_hoc_watch_widget_profile_base64="${AD_HOC_REVIEW_WATCH_WIDGET_PROVISION_PROFILE_BASE64:-$AD_HOC_WATCH_WIDGET_PROVISION_PROFILE_BASE64}"
+              ad_hoc_watch_widget_profile_name="${AD_HOC_REVIEW_WATCH_WIDGET_PROVISION_PROFILE_NAME:-$AD_HOC_WATCH_WIDGET_PROVISION_PROFILE_NAME}"
               ;;
           esac
-          if [ -z "$ad_hoc_profile_base64" ] || [ -z "$ad_hoc_profile_name" ]; then
+          if [ -z "$ad_hoc_profile_base64" ] || [ -z "$ad_hoc_profile_name" ] || \
+             [ -z "$ad_hoc_watch_app_profile_base64" ] || [ -z "$ad_hoc_watch_app_profile_name" ] || \
+             [ -z "$ad_hoc_watch_extension_profile_base64" ] || [ -z "$ad_hoc_watch_extension_profile_name" ] || \
+             [ -z "$ad_hoc_watch_widget_profile_base64" ] || [ -z "$ad_hoc_watch_widget_profile_name" ]; then
             echo "Missing ad-hoc profile for $IOS_VARIANT" >&2
             exit 1
           fi
 
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          echo "$ad_hoc_profile_base64" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/planini-$IOS_VARIANT-adhoc.mobileprovision
+          install_profile() {
+            profile_base64="$1"
+            label="$2"
+            raw_path="$RUNNER_TEMP/$label.mobileprovision"
+            plist_path="$RUNNER_TEMP/$label.plist"
+            echo "$profile_base64" | base64 --decode > "$raw_path"
+            security cms -D -i "$raw_path" > "$plist_path"
+            uuid="$(/usr/libexec/PlistBuddy -c 'Print UUID' "$plist_path")"
+            name="$(/usr/libexec/PlistBuddy -c 'Print Name' "$plist_path")"
+            cp "$raw_path" "$HOME/Library/MobileDevice/Provisioning Profiles/$uuid.mobileprovision"
+            echo "Installed provisioning profile '$name' for $label."
+          }
+          install_profile "$ad_hoc_profile_base64" "planini-$IOS_VARIANT-adhoc-app"
+          install_profile "$ad_hoc_watch_app_profile_base64" "planini-$IOS_VARIANT-adhoc-watch-app"
+          install_profile "$ad_hoc_watch_extension_profile_base64" "planini-$IOS_VARIANT-adhoc-watch-extension"
+          install_profile "$ad_hoc_watch_widget_profile_base64" "planini-$IOS_VARIANT-adhoc-watch-widget"
 
           cat > $RUNNER_TEMP/ExportOptions-ad-hoc.plist <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
@@ -369,6 +477,12 @@ jobs:
             <dict>
               <key>${{ steps.variant.outputs.bundle_id }}</key>
               <string>${ad_hoc_profile_name}</string>
+              <key>de.malaber.planini.watchkitapp</key>
+              <string>${ad_hoc_watch_app_profile_name}</string>
+              <key>de.malaber.planini.watchkitapp.watchkitextension</key>
+              <string>${ad_hoc_watch_extension_profile_name}</string>
+              <key>de.malaber.planini.watchkitapp.widget</key>
+              <string>${ad_hoc_watch_widget_profile_name}</string>
             </dict>
           </dict>
           </plist>
