@@ -57,6 +57,7 @@ struct RootView: View {
             showingReviewerOnboarding = true
         }
         .onChange(of: viewModel.errorMessage) { newValue in
+            guard showingReviewerOnboarding == false else { return }
             if let newValue, newValue.isEmpty == false {
                 presentedError = AppErrorAlert(message: newValue)
             }
@@ -138,12 +139,18 @@ private struct ReviewerOnboardingSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var viewModel: MobileAppViewModel
 
+    private enum Action {
+        case addPasskey
+        case registerAccount
+    }
+
     let initialPasskeyAddInput: String
 
     @State private var passkeyAddInput: String
     @State private var registrationDisplayName = ""
     @State private var registrationEmail = ""
-    @State private var isWorking = false
+    @State private var busyAction: Action?
+    @State private var actionErrorMessage: String?
 
     init(initialPasskeyAddInput: String) {
         self.initialPasskeyAddInput = initialPasskeyAddInput
@@ -161,18 +168,29 @@ private struct ReviewerOnboardingSheet: View {
 
                     Button {
                         Task {
-                            isWorking = true
+                            busyAction = .addPasskey
+                            actionErrorMessage = nil
+                            viewModel.errorMessage = nil
                             let added = await viewModel.addPasskeyFromLinkInput(passkeyAddInput)
-                            isWorking = false
+                            busyAction = nil
                             if added {
                                 AppHaptics.confirmation()
                                 dismiss()
+                            } else {
+                                actionErrorMessage = viewModel.errorMessage ?? "Could not add that passkey."
                             }
                         }
                     } label: {
-                        Label("Add passkey", systemImage: "person.badge.key")
+                        if busyAction == .addPasskey {
+                            HStack {
+                                ProgressView()
+                                Text("Adding passkey…")
+                            }
+                        } else {
+                            Label("Add passkey", systemImage: "person.badge.key")
+                        }
                     }
-                    .disabled(isWorking || viewModel.isAuthenticating || trimmedPasskeyAddInput.isEmpty)
+                    .disabled(busyAction != nil || trimmedPasskeyAddInput.isEmpty)
                     .accessibilityIdentifier("passkey-add-submit-button")
                 }
 
@@ -190,22 +208,41 @@ private struct ReviewerOnboardingSheet: View {
 
                     Button {
                         Task {
-                            isWorking = true
+                            busyAction = .registerAccount
+                            actionErrorMessage = nil
+                            viewModel.errorMessage = nil
                             let created = await viewModel.registerAccount(
                                 displayName: registrationDisplayName,
                                 email: registrationEmail
                             )
-                            isWorking = false
+                            busyAction = nil
                             if created {
                                 AppHaptics.confirmation()
                                 dismiss()
+                            } else {
+                                actionErrorMessage = viewModel.errorMessage ?? "Could not create that account."
                             }
                         }
                     } label: {
-                        Label("Create account", systemImage: "person.crop.circle.badge.plus")
+                        if busyAction == .registerAccount {
+                            HStack {
+                                ProgressView()
+                                Text("Creating account…")
+                            }
+                        } else {
+                            Label("Create account", systemImage: "person.crop.circle.badge.plus")
+                        }
                     }
-                    .disabled(isWorking || viewModel.isAuthenticating || trimmedName.isEmpty || trimmedEmail.isEmpty)
+                    .disabled(busyAction != nil || trimmedName.isEmpty || trimmedEmail.isEmpty)
                     .accessibilityIdentifier("registration-submit-button")
+                }
+
+                if let actionErrorMessage, actionErrorMessage.isEmpty == false {
+                    Section {
+                        Label(actionErrorMessage, systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.red)
+                            .accessibilityIdentifier("reviewer-onboarding-error")
+                    }
                 }
 
                 if let message = viewModel.reviewerOnboardingMessage, message.isEmpty == false {
