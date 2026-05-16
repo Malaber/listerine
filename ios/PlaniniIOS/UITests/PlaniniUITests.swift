@@ -76,14 +76,11 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(checkedSuggestion.waitForExistence(timeout: 3))
         XCTAssertFalse(checkedSuggestion.images["scope"].exists, "Suggestion rows should not show a crosshair icon.")
         checkedSuggestion.tap()
-        XCTAssertTrue(suggestionProbeField.valueText.contains("Brot"))
-        app.buttons["add-item-save-button"].tap()
-        RunLoop.current.run(until: Date().addingTimeInterval(0.25))
-        captureScreenshot(named: "ios-ui-suggestion-add-animation")
         XCTAssertTrue(
-            waitForItemCount(named: "Brot", atLeast: 2, inListNamed: initialListName, accessToken: session.accessToken)
+            waitForUncheckedItem(named: "Brot", inListNamed: initialListName, accessToken: session.accessToken)
         )
         RunLoop.current.run(until: Date().addingTimeInterval(1.0))
+        captureScreenshot(named: "ios-ui-suggestion-reactivated")
 
         app.buttons["add-item-button"].tap()
         XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
@@ -340,6 +337,24 @@ final class PlaniniUITests: XCTestCase {
         return false
     }
 
+    private func waitForUncheckedItem(
+        named itemName: String,
+        inListNamed listName: String,
+        accessToken: String,
+        timeout: TimeInterval = 8
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let items = try? fetchItems(inListNamed: listName, accessToken: accessToken),
+                items.contains(where: { $0.name == itemName && $0.checked == false })
+            {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.35))
+        }
+        return false
+    }
+
     private func waitForItem(
         named itemName: String,
         inListNamed listName: String,
@@ -350,25 +365,6 @@ final class PlaniniUITests: XCTestCase {
         while Date() < deadline {
             if let items = try? fetchItems(inListNamed: listName, accessToken: accessToken),
                 items.contains(where: { $0.name == itemName })
-            {
-                return true
-            }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.35))
-        }
-        return false
-    }
-
-    private func waitForItemCount(
-        named itemName: String,
-        atLeast expectedCount: Int,
-        inListNamed listName: String,
-        accessToken: String,
-        timeout: TimeInterval = 8
-    ) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if let items = try? fetchItems(inListNamed: listName, accessToken: accessToken),
-                items.filter({ $0.name == itemName }).count >= expectedCount
             {
                 return true
             }
