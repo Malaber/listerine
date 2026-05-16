@@ -150,7 +150,8 @@ private struct ReviewerOnboardingSheet: View {
     @State private var registrationDisplayName = ""
     @State private var registrationEmail = ""
     @State private var busyAction: Action?
-    @State private var actionErrorMessage: String?
+    @State private var addPasskeyErrorMessage: String?
+    @State private var registrationErrorMessage: String?
 
     init(initialPasskeyAddInput: String) {
         self.initialPasskeyAddInput = initialPasskeyAddInput
@@ -167,9 +168,11 @@ private struct ReviewerOnboardingSheet: View {
                         .accessibilityIdentifier("passkey-add-link-field")
 
                     Button {
+                        closeKeyboard()
                         Task {
                             busyAction = .addPasskey
-                            actionErrorMessage = nil
+                            addPasskeyErrorMessage = nil
+                            registrationErrorMessage = nil
                             viewModel.errorMessage = nil
                             let added = await viewModel.addPasskeyFromLinkInput(passkeyAddInput)
                             busyAction = nil
@@ -177,7 +180,7 @@ private struct ReviewerOnboardingSheet: View {
                                 AppHaptics.confirmation()
                                 dismiss()
                             } else {
-                                actionErrorMessage = viewModel.errorMessage ?? "Could not add that passkey."
+                                addPasskeyErrorMessage = viewModel.errorMessage ?? "Could not add that passkey."
                             }
                         }
                     } label: {
@@ -192,6 +195,13 @@ private struct ReviewerOnboardingSheet: View {
                     }
                     .disabled(busyAction != nil || trimmedPasskeyAddInput.isEmpty)
                     .accessibilityIdentifier("passkey-add-submit-button")
+
+                    if let addPasskeyErrorMessage, addPasskeyErrorMessage.isEmpty == false {
+                        Label(addPasskeyErrorMessage, systemImage: "exclamationmark.triangle")
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .accessibilityIdentifier("passkey-add-error")
+                    }
                 }
 
                 Section("Create account") {
@@ -207,9 +217,11 @@ private struct ReviewerOnboardingSheet: View {
                         .accessibilityIdentifier("registration-email-field")
 
                     Button {
+                        closeKeyboard()
                         Task {
                             busyAction = .registerAccount
-                            actionErrorMessage = nil
+                            addPasskeyErrorMessage = nil
+                            registrationErrorMessage = nil
                             viewModel.errorMessage = nil
                             let created = await viewModel.registerAccount(
                                 displayName: registrationDisplayName,
@@ -220,7 +232,7 @@ private struct ReviewerOnboardingSheet: View {
                                 AppHaptics.confirmation()
                                 dismiss()
                             } else {
-                                actionErrorMessage = viewModel.errorMessage ?? "Could not create that account."
+                                registrationErrorMessage = viewModel.errorMessage ?? "Could not create that account."
                             }
                         }
                     } label: {
@@ -235,13 +247,12 @@ private struct ReviewerOnboardingSheet: View {
                     }
                     .disabled(busyAction != nil || trimmedName.isEmpty || trimmedEmail.isEmpty)
                     .accessibilityIdentifier("registration-submit-button")
-                }
 
-                if let actionErrorMessage, actionErrorMessage.isEmpty == false {
-                    Section {
-                        Label(actionErrorMessage, systemImage: "exclamationmark.triangle")
+                    if let registrationErrorMessage, registrationErrorMessage.isEmpty == false {
+                        Label(registrationErrorMessage, systemImage: "exclamationmark.triangle")
+                            .font(.footnote)
                             .foregroundStyle(.red)
-                            .accessibilityIdentifier("reviewer-onboarding-error")
+                            .accessibilityIdentifier("registration-error")
                     }
                 }
 
@@ -276,6 +287,17 @@ private struct ReviewerOnboardingSheet: View {
 
     private var trimmedEmail: String {
         registrationEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func closeKeyboard() {
+        #if canImport(UIKit)
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
+        #endif
     }
 }
 
