@@ -90,7 +90,9 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts[itemName].waitForExistence(timeout: 5))
         captureScreenshot(named: "ios-ui-added-item")
 
-        app.staticTexts[itemName].tap()
+        let createdItemLabel = app.staticTexts[itemName]
+        scrollToElement(createdItemLabel, in: app)
+        tapElement(createdItemLabel)
         XCTAssertTrue(app.otherElements["edit-item-sheet"].waitForExistence(timeout: 3))
         captureScreenshot(named: "promotion-edit-item-dialogue")
 
@@ -119,7 +121,9 @@ final class PlaniniUITests: XCTestCase {
             )
         )
 
-        app.buttons["Check \(updatedName)"].tap()
+        let updatedItemLabel = app.staticTexts[updatedName]
+        scrollToElement(updatedItemLabel, in: app)
+        tapElement(app.buttons["Check \(updatedName)"])
         XCTAssertTrue(
             waitForCheckedItem(
                 named: updatedName,
@@ -127,7 +131,7 @@ final class PlaniniUITests: XCTestCase {
                 accessToken: session.accessToken
             )
         )
-        scrollToElement(app.staticTexts[updatedName], in: app)
+        scrollToElement(updatedItemLabel, in: app)
         captureScreenshot(named: "ios-ui-checked-item")
         captureScreenshot(named: "promotion-filled-list")
 
@@ -491,6 +495,14 @@ final class PlaniniUITests: XCTestCase {
             }
             app.swipeUp()
         }
+    }
+
+    private func tapElement(_ element: XCUIElement) {
+        if element.isHittable {
+            element.tap()
+            return
+        }
+        element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
     }
 
     private func assertReviewerOnboardingAvailable(in app: XCUIApplication) {
