@@ -462,7 +462,7 @@ final class PlaniniUITests: XCTestCase {
 
     private func scrollToElement(_ element: XCUIElement, in app: XCUIApplication, maxSwipes: Int = 10) {
         for _ in 0..<maxSwipes {
-            if element.exists && element.isHittable {
+            if element.exists {
                 return
             }
             app.swipeUp()
