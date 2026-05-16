@@ -75,6 +75,10 @@ function toBase64(value) {
   return normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
 }
 
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function loadSeed() {
   const seed = JSON.parse(await fs.readFile(seedPath, "utf8"));
   assert(seed?.e2e, "Expected e2e metadata in seed fixture");
@@ -107,11 +111,32 @@ function fixturePrimaryList(seed) {
 }
 
 async function apiJson(requestContext, url, options = {}) {
-  const response = await requestContext.fetch(new URL(url, baseUrl).toString(), options);
-  if (!response.ok()) {
-    throw new Error(`Request failed for ${url}: ${response.status()} ${response.statusText()}`);
+  const target = new URL(url, baseUrl).toString();
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const response = await requestContext.fetch(target, options);
+      if (!response.ok()) {
+        throw new Error(`Request failed for ${url}: ${response.status()} ${response.statusText()}`);
+      }
+      return response.json();
+    } catch (error) {
+      lastError = error;
+      if (attempt === 3 || !isTransientApiError(error)) {
+        throw error;
+      }
+      logStep(`Retrying API request after transient failure (${attempt}/3): ${url}`);
+      await delay(250 * attempt);
+    }
   }
-  return response.json();
+  throw lastError;
+}
+
+function isTransientApiError(error) {
+  const message = String(error?.message ?? error);
+  return /socket hang up|ECONNRESET|ECONNREFUSED|ETIMEDOUT|Target page, context or browser has been closed/u.test(
+    message,
+  );
 }
 
 async function expectVisible(locator, message) {

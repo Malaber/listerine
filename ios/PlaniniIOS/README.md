@@ -247,6 +247,7 @@ The workflow builds two signed variants when upload is enabled:
 
 For branch pushes, the review PR number is auto-detected from the open pull request for that branch.
 For manual workflow runs, pass `review_pr_number` if the branch cannot be auto-detected.
+TestFlight uploads only run for trusted `Malaber` repository pushes or manual dispatches with an open PR/review PR number. Pushes without a PR still run native iOS checks, but do not upload to TestFlight.
 
 Both variants may use the same bundle identifier, in which case TestFlight shows them as builds of the same app and only one can be installed on a device at a time. To install production and review side by side, create a second App Store Connect app and Apple App ID for the review variant, then set `IOS_REVIEW_BUNDLE_IDENTIFIER` and the review provisioning profile secrets below.
 
@@ -254,19 +255,24 @@ Both variants may use the same bundle identifier, in which case TestFlight shows
 
 Set these GitHub Actions secrets before dispatching the TestFlight upload workflow:
 
-- `APPLE_TEAM_ID`
-- `IOS_BUNDLE_IDENTIFIER`
 - `KEYCHAIN_PASSWORD`
 - `BUILD_CERTIFICATE_BASE64`
 - `P12_PASSWORD`
 - `BUILD_PROVISION_PROFILE_BASE64`
-- `BUILD_PROVISION_PROFILE_NAME`
 - `IOS_REVIEW_BUNDLE_IDENTIFIER` (optional; defaults to `IOS_BUNDLE_IDENTIFIER`)
 - `BUILD_REVIEW_PROVISION_PROFILE_BASE64` (optional; defaults to `BUILD_PROVISION_PROFILE_BASE64`)
 - `BUILD_REVIEW_PROVISION_PROFILE_NAME` (optional; defaults to `BUILD_PROVISION_PROFILE_NAME`)
 - `APP_STORE_CONNECT_KEY_ID`
 - `APP_STORE_CONNECT_ISSUER_ID`
 - `APP_STORE_CONNECT_PRIVATE_KEY`
+
+The workflow commits these non-secret signing constants directly:
+
+- Apple team ID: `VWKG94374J`
+- production bundle ID: `de.malaber.planini`
+- production App Store provisioning profile name: `planini`
+
+The upload job uses the GitHub Actions environment named `testflight`, so the secrets above should be configured as environment secrets on that environment.
 
 Set these optional GitHub Actions variables to override default domains:
 
