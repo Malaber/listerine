@@ -121,7 +121,11 @@ final class PlaniniUITests: XCTestCase {
             )
         )
 
-        app.buttons["Check \(updatedName)"].tap()
+        let updatedCheckButton = app.buttons["Check \(updatedName)"]
+        scrollToElement(updatedCheckButton, in: app)
+        XCTAssertTrue(updatedCheckButton.waitForExistence(timeout: 3))
+        XCTAssertTrue(updatedCheckButton.isHittable)
+        updatedCheckButton.tap()
         XCTAssertTrue(
             waitForCheckedItem(
                 named: updatedName,
