@@ -15,6 +15,11 @@ private enum AppTab: Hashable {
     case settings
 }
 
+private struct AddItemPresentation: Identifiable {
+    let id = UUID()
+    let categoryID: UUID?
+}
+
 struct RootView: View {
     @EnvironmentObject private var viewModel: MobileAppViewModel
     @State private var selectedTab: AppTab = .favorite
@@ -411,8 +416,7 @@ private struct ListDetailScreen: View {
     let showsFavoriteButton: Bool
 
     @State private var editingItem: GroceryItemRecord?
-    @State private var showingAddSheet = false
-    @State private var addSheetCategoryID: UUID?
+    @State private var addItemPresentation: AddItemPresentation?
     @State private var highlightedItemID: UUID?
 
     private var currentList: GroceryListSummary? {
@@ -457,8 +461,7 @@ private struct ListDetailScreen: View {
                         }
                     } header: {
                         SectionHeader(section: section) { categoryID in
-                            addSheetCategoryID = categoryID
-                            showingAddSheet = true
+                            addItemPresentation = AddItemPresentation(categoryID: categoryID)
                         }
                     }
                 }
@@ -470,8 +473,7 @@ private struct ListDetailScreen: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    addSheetCategoryID = nil
-                    showingAddSheet = true
+                    addItemPresentation = AddItemPresentation(categoryID: nil)
                 } label: {
                     Label("Add item", systemImage: "plus")
                 }
@@ -499,8 +501,8 @@ private struct ListDetailScreen: View {
         .sheet(item: $editingItem) { item in
             EditItemSheet(item: item)
         }
-        .sheet(isPresented: $showingAddSheet) {
-            AddItemSheet(initialCategoryID: addSheetCategoryID) { itemID in
+        .sheet(item: $addItemPresentation) { presentation in
+            AddItemSheet(initialCategoryID: presentation.categoryID) { itemID in
                 highlightedItemID = itemID
             }
         }
