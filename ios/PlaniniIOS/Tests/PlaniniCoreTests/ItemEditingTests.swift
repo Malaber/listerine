@@ -179,4 +179,41 @@ struct ItemEditingTests {
         #expect(redoHistory.redo(current: third) == second)
         #expect(redoHistory.undoStack == [third])
     }
+
+    @Test func itemSuggestionsMatchExistingItemsWithoutLeadingDecorationData() {
+        let categoryID = UUID()
+        let listID = UUID()
+        let category = GroceryCategorySummary(id: categoryID, name: "Bakery", colorHex: "#f2a65a")
+        let checkedBrot = GroceryItemRecord(
+            id: UUID(),
+            listID: listID,
+            name: "Brot",
+            quantityText: nil,
+            note: "Seeded checked duplicate",
+            categoryID: categoryID,
+            checked: true,
+            checkedAt: Date(timeIntervalSince1970: 200),
+            sortOrder: 1
+        )
+        let activeBread = GroceryItemRecord(
+            id: UUID(),
+            listID: listID,
+            name: "Bread rolls",
+            quantityText: "6",
+            note: nil,
+            categoryID: nil,
+            checked: false,
+            checkedAt: nil,
+            sortOrder: 2
+        )
+
+        let suggestions = GroceryItemSuggestionBuilder.build(
+            query: "br",
+            items: [checkedBrot, activeBread],
+            categories: [category]
+        )
+
+        #expect(suggestions.map { $0.item.name } == ["Bread rolls", "Brot"])
+        #expect(suggestions[1].categoryName == "Bakery")
+    }
 }

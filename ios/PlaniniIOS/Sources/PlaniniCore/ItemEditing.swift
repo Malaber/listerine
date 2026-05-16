@@ -92,6 +92,55 @@ public struct GroceryItemEditHistory: Codable, Equatable, Sendable {
     }
 }
 
+public struct GroceryItemSuggestion: Identifiable, Equatable, Sendable {
+    public let item: GroceryItemRecord
+    public let categoryName: String?
+
+    public init(item: GroceryItemRecord, categoryName: String?) {
+        self.item = item
+        self.categoryName = categoryName
+    }
+
+    public var id: UUID {
+        item.id
+    }
+}
+
+public enum GroceryItemSuggestionBuilder {
+    public static func build(
+        query: String,
+        items: [GroceryItemRecord],
+        categories: [GroceryCategorySummary],
+        limit: Int = 3
+    ) -> [GroceryItemSuggestion] {
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedQuery.count >= 2 else { return [] }
+
+        let categoryLookup = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0.name) })
+        return items
+            .compactMap { item -> (GroceryItemRecord, Int)? in
+                let candidate = item.name.localizedLowercase
+                let needle = normalizedQuery.localizedLowercase
+                if candidate == needle { return (item, 0) }
+                if candidate.hasPrefix(needle) { return (item, 1) }
+                if candidate.contains(needle) { return (item, 2) }
+                return nil
+            }
+            .sorted { left, right in
+                if left.1 != right.1 { return left.1 < right.1 }
+                if left.0.checked != right.0.checked { return left.0.checked == false }
+                return left.0.name.localizedCaseInsensitiveCompare(right.0.name) == .orderedAscending
+            }
+            .prefix(limit)
+            .map { item, _ in
+                GroceryItemSuggestion(
+                    item: item,
+                    categoryName: item.categoryID.flatMap { categoryLookup[$0] }
+                )
+            }
+    }
+}
+
 public extension GroceryItemRecord {
     func applyingEditPayload(_ payload: GroceryItemEditPayload) -> GroceryItemRecord {
         GroceryItemRecord(

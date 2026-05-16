@@ -417,6 +417,12 @@ private struct ListDetailScreen: View {
         viewModel.lists.first { $0.id == listID }
     }
 
+    private var visibleItemIDs: [UUID] {
+        viewModel.sections.flatMap { section in
+            section.items.map(\.id)
+        }
+    }
+
     var body: some View {
         List {
             if let list = currentList {
@@ -495,7 +501,7 @@ private struct ListDetailScreen: View {
         .sheet(isPresented: $showingAddSheet) {
             AddItemSheet()
         }
-        .animation(.easeInOut(duration: 0.22), value: viewModel.sections.map(\.id))
+        .animation(.spring(response: 0.34, dampingFraction: 0.86), value: visibleItemIDs)
         .accessibilityIdentifier("list-detail-screen")
     }
 }
@@ -591,34 +597,97 @@ private struct AddItemSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var viewModel: MobileAppViewModel
 
+    @Namespace private var addAnimation
     @State private var name = ""
     @State private var quantity = ""
     @State private var note = ""
     @State private var categoryID: UUID?
+    @State private var savePhase: AddItemSavePhase = .editing
+
+    private enum AddItemSavePhase: Equatable {
+        case editing
+        case compacting(AddItemPreview)
+    }
+
+    fileprivate struct AddItemPreview: Equatable {
+        let name: String
+        let quantity: String
+        let note: String
+        let categoryName: String
+    }
+
+    private var suggestions: [GroceryItemSuggestion] {
+        GroceryItemSuggestionBuilder.build(
+            query: name,
+            items: viewModel.items,
+            categories: viewModel.availableCategories
+        )
+    }
+
+    private var trimmedName: String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var selectedCategoryName: String {
+        guard let categoryID else { return "Uncategorized" }
+        return viewModel.availableCategories.first { $0.id == categoryID }?.name ?? "Uncategorized"
+    }
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Item") {
-                    TextField("Name", text: $name)
-                        .accessibilityIdentifier("add-item-name-field")
-                    TextField("Quantity", text: $quantity)
-                        .accessibilityIdentifier("add-item-quantity-field")
-                }
+            Group {
+                switch savePhase {
+                case .editing:
+                    Form {
+                        Section("Item") {
+                            TextField("Name", text: $name)
+                                .accessibilityIdentifier("add-item-name-field")
+                            TextField("Quantity", text: $quantity)
+                                .accessibilityIdentifier("add-item-quantity-field")
+                        }
 
-                Section("Category") {
-                    Picker("Category", selection: $categoryID) {
-                        Text("Uncategorized").tag(Optional<UUID>.none)
-                        ForEach(viewModel.availableCategories) { category in
-                            Text(category.name).tag(Optional(category.id))
+                        if suggestions.isEmpty == false {
+                            Section("Suggestions") {
+                                ForEach(suggestions) { suggestion in
+                                    Button {
+                                        applySuggestion(suggestion)
+                                    } label: {
+                                        AddItemSuggestionRow(suggestion: suggestion)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityIdentifier("add-item-suggestion-\(suggestion.id.uuidString)")
+                                }
+                            }
+                        }
+
+                        Section("Category") {
+                            Picker("Category", selection: $categoryID) {
+                                Text("Uncategorized").tag(Optional<UUID>.none)
+                                ForEach(viewModel.availableCategories) { category in
+                                    Text(category.name).tag(Optional(category.id))
+                                }
+                            }
+                            .accessibilityIdentifier("add-item-category-picker")
+                        }
+
+                        Section("Notes") {
+                            TextField("Note", text: $note, axis: .vertical)
+                                .accessibilityIdentifier("add-item-note-field")
                         }
                     }
-                    .accessibilityIdentifier("add-item-category-picker")
-                }
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
 
-                Section("Notes") {
-                    TextField("Note", text: $note, axis: .vertical)
-                        .accessibilityIdentifier("add-item-note-field")
+                case let .compacting(preview):
+                    VStack {
+                        Spacer()
+                        CompactAddItemRow(preview: preview)
+                            .matchedGeometryEffect(id: "add-item-row", in: addAnimation)
+                            .padding(.horizontal)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                        Spacer()
+                    }
+                    .background(Color(.systemGroupedBackground))
+                    .accessibilityIdentifier("add-item-compacting-preview")
                 }
             }
             .navigationTitle("Add item")
@@ -629,25 +698,125 @@ private struct AddItemSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        Task {
-                            let saved = await viewModel.addItem(
-                                name: name,
-                                quantity: quantity,
-                                note: note,
-                                categoryID: categoryID
-                            )
-                            if saved {
-                                AppHaptics.confirmation()
-                                dismiss()
-                            }
-                        }
+                        Task { await saveItem() }
                     }
-                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(trimmedName.isEmpty || savePhase != .editing)
                     .accessibilityIdentifier("add-item-save-button")
                 }
             }
         }
         .accessibilityIdentifier("add-item-sheet")
+    }
+
+    private func applySuggestion(_ suggestion: GroceryItemSuggestion) {
+        withAnimation(.snappy(duration: 0.22)) {
+            name = suggestion.item.name
+            quantity = suggestion.item.quantityText ?? ""
+            note = suggestion.item.note ?? ""
+            categoryID = suggestion.item.categoryID
+        }
+    }
+
+    private func saveItem() async {
+        let preview = AddItemPreview(
+            name: trimmedName,
+            quantity: quantity.trimmingCharacters(in: .whitespacesAndNewlines),
+            note: note.trimmingCharacters(in: .whitespacesAndNewlines),
+            categoryName: selectedCategoryName
+        )
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.84)) {
+            savePhase = .compacting(preview)
+        }
+
+        let saved = await viewModel.addItem(
+            name: name,
+            quantity: quantity,
+            note: note,
+            categoryID: categoryID
+        )
+        if saved {
+            AppHaptics.confirmation()
+            try? await Task.sleep(nanoseconds: 850_000_000)
+            dismiss()
+        } else {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                savePhase = .editing
+            }
+        }
+    }
+}
+
+private struct AddItemSuggestionRow: View {
+    let suggestion: GroceryItemSuggestion
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(suggestion.item.name)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(suggestion.item.checked ? .secondary : .primary)
+                    .strikethrough(suggestion.item.checked)
+                Text(metaText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text("Use")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.accentColor)
+        }
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+    }
+
+    private var metaText: String {
+        var parts: [String] = []
+        if let quantity = suggestion.item.quantityText, quantity.isEmpty == false {
+            parts.append("Qty: \(quantity)")
+        }
+        if let categoryName = suggestion.categoryName {
+            parts.append(categoryName)
+        }
+        if suggestion.item.checked {
+            parts.append("checked off")
+        }
+        return parts.isEmpty ? "Existing item" : parts.joined(separator: " · ")
+    }
+}
+
+private struct CompactAddItemRow: View {
+    let preview: AddItemSheet.AddItemPreview
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.title2)
+                .foregroundStyle(.green)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(preview.name)
+                    .font(.headline)
+                Text(metaText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding()
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: .black.opacity(0.12), radius: 18, y: 8)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("add-item-compacting-preview")
+    }
+
+    private var metaText: String {
+        var parts = [preview.categoryName]
+        if preview.quantity.isEmpty == false {
+            parts.append("Qty: \(preview.quantity)")
+        }
+        if preview.note.isEmpty == false {
+            parts.append(preview.note)
+        }
+        return parts.joined(separator: " · ")
     }
 }
 

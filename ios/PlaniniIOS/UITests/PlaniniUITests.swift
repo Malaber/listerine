@@ -68,6 +68,26 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
         captureScreenshot(named: "ios-ui-add-item-sheet")
 
+        let suggestionProbeField = app.textFields["add-item-name-field"]
+        XCTAssertTrue(suggestionProbeField.waitForExistence(timeout: 3))
+        suggestionProbeField.tap()
+        suggestionProbeField.typeText("Bro")
+        let checkedSuggestion = app.buttons.containing(.staticText, identifier: "Brot").firstMatch
+        XCTAssertTrue(checkedSuggestion.waitForExistence(timeout: 3))
+        XCTAssertEqual(checkedSuggestion.images.count, 0, "Suggestion rows should not show a leading crosshair icon.")
+        checkedSuggestion.tap()
+        XCTAssertTrue(suggestionProbeField.valueText.contains("Brot"))
+        app.buttons["add-item-save-button"].tap()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        captureScreenshot(named: "ios-ui-suggestion-add-animation")
+        XCTAssertTrue(
+            waitForItemCount(named: "Brot", atLeast: 2, inListNamed: initialListName, accessToken: session.accessToken)
+        )
+        RunLoop.current.run(until: Date().addingTimeInterval(1.0))
+
+        app.buttons["add-item-button"].tap()
+        XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
+
         let uniqueSuffix = UUID().uuidString.prefix(8)
         let itemName = "UI Test Herbs \(uniqueSuffix)"
         let itemQuantity = "1 bunch"
@@ -322,6 +342,25 @@ final class PlaniniUITests: XCTestCase {
         while Date() < deadline {
             if let items = try? fetchItems(inListNamed: listName, accessToken: accessToken),
                 items.contains(where: { $0.name == itemName })
+            {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.35))
+        }
+        return false
+    }
+
+    private func waitForItemCount(
+        named itemName: String,
+        atLeast expectedCount: Int,
+        inListNamed listName: String,
+        accessToken: String,
+        timeout: TimeInterval = 8
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let items = try? fetchItems(inListNamed: listName, accessToken: accessToken),
+                items.filter({ $0.name == itemName }).count >= expectedCount
             {
                 return true
             }
