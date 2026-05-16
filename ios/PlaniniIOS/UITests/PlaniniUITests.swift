@@ -536,11 +536,7 @@ final class PlaniniUITests: XCTestCase {
     }
 
     private func tapElement(_ element: XCUIElement) {
-        if element.isHittable {
-            element.tap()
-        } else {
-            element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-        }
+        element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
     }
 
     private func waitForItemRow(
@@ -573,19 +569,18 @@ final class PlaniniUITests: XCTestCase {
 
     private func scrollToElement(_ element: XCUIElement, in app: XCUIApplication, maxSwipes: Int = 10) {
         for _ in 0..<maxSwipes {
-            if element.exists && element.isHittable {
+            if elementIsVisible(element, in: app) {
                 return
             }
             app.swipeUp()
         }
     }
 
-    private func tapElement(_ element: XCUIElement) {
-        if element.isHittable {
-            element.tap()
-            return
-        }
-        element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    private func elementIsVisible(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
+        guard element.exists else { return false }
+        let frame = element.frame
+        guard frame.width > 1, frame.height > 1 else { return false }
+        return app.frame.intersects(frame)
     }
 
     private func assertReviewerOnboardingAvailable(in app: XCUIApplication) {
