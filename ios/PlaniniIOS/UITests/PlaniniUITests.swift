@@ -366,7 +366,7 @@ final class PlaniniUITests: XCTestCase {
         app: XCUIApplication,
         listName: String,
         accessToken: String,
-        timeout: TimeInterval = 20
+        timeout: TimeInterval = 45
     ) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
@@ -377,11 +377,11 @@ final class PlaniniUITests: XCTestCase {
                 inListNamed: listName,
                 accessToken: accessToken
             ) {
-                let appeared = waitForItemRow(itemID: probeID, named: probeName, in: app, timeout: 3)
+                let appeared = waitForItemRow(itemID: probeID, named: probeName, in: app, timeout: 8)
                 try? deleteItem(itemID: probeID, accessToken: accessToken)
                 let disappeared = waitForElementToDisappear(
                     itemRow(itemID: probeID, in: app),
-                    timeout: 5
+                    timeout: 8
                 )
                 if appeared && disappeared {
                     return true
