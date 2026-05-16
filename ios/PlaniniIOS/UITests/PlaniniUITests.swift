@@ -38,7 +38,7 @@ final class PlaniniUITests: XCTestCase {
             openInitialListDetail(in: app, listTitle: listTitle),
             "Expected bootstrapped initial list to open."
         )
-        app.tabBars.buttons["Lists"].tap()
+        XCTAssertTrue(tapTab("Lists", in: app))
         let initialListRow = app.buttons["list-row-\(initialListName)"]
         XCTAssertTrue(initialListRow.waitForExistence(timeout: 10))
         captureScreenshot(named: "promotion-list-of-lists")
@@ -59,7 +59,7 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(favoriteButton.label.contains("Unfavorite"))
 
         XCTAssertTrue(app.tabBars.buttons[initialListName].waitForExistence(timeout: 3))
-        app.tabBars.buttons[initialListName].tap()
+        XCTAssertTrue(tapTab(initialListName, in: app))
         XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
         XCTAssertEqual(listTitle.label, initialListName)
         captureScreenshot(named: "ios-ui-favorite-list")
@@ -168,6 +168,7 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(checkedSuggestion.waitForExistence(timeout: 3))
         captureScreenshot(named: "ios-ui-checked-item-suggestion")
         checkedSuggestion.tap()
+        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 3))
         XCTAssertTrue(
             waitForItemCheckedState(
                 named: updatedName,
@@ -177,7 +178,7 @@ final class PlaniniUITests: XCTestCase {
             )
         )
 
-        app.tabBars.buttons["Lists"].tap()
+        XCTAssertTrue(tapTab("Lists", in: app))
         returnToListsRootIfNeeded(app)
         let hostingListRow = app.buttons["list-row-Hosting errands"]
         XCTAssertTrue(hostingListRow.waitForExistence(timeout: 10))
@@ -186,7 +187,7 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertEqual(listTitle.label, "Hosting errands")
         captureScreenshot(named: "ios-ui-list-switcher")
 
-        app.tabBars.buttons["Settings"].tap()
+        XCTAssertTrue(tapTab("Settings", in: app))
         XCTAssertTrue(app.buttons["settings-sign-out-button"].waitForExistence(timeout: 5))
         captureScreenshot(named: "ios-ui-settings")
     }
@@ -463,7 +464,10 @@ final class PlaniniUITests: XCTestCase {
             }
 
             if listsTab.exists {
-                listsTab.tap()
+                guard tapTab("Lists", in: app) else {
+                    RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+                    continue
+                }
                 returnToListsRootIfNeeded(app)
                 if initialListRow.waitForExistence(timeout: 2) {
                     initialListRow.tap()
@@ -477,6 +481,19 @@ final class PlaniniUITests: XCTestCase {
         }
 
         return listTitle.exists && listTitle.label == initialListName
+    }
+
+    private func tapTab(_ label: String, in app: XCUIApplication, timeout: TimeInterval = 5) -> Bool {
+        let tabButton = app.tabBars.buttons[label]
+        guard tabButton.waitForExistence(timeout: timeout) else {
+            return false
+        }
+        if tabButton.isHittable {
+            tabButton.tap()
+        } else {
+            tabButton.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        }
+        return true
     }
 
     private func waitForItemRow(
