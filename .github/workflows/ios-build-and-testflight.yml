@@ -137,13 +137,13 @@ jobs:
       matrix:
         include:
           - variant: production
-            build_offset: 1
+            build_variant_code: 10
           - variant: review
-            build_offset: 2
+            build_variant_code: 20
     env:
       PYTHON_VERSION: '3.14'
       IOS_MARKETING_VERSION: ${{ needs.version.outputs.base_version }}
-      IOS_BUILD_NUMBER: ${{ github.run_number }}.${{ github.run_attempt }}.${{ matrix.build_offset }}
+      IOS_BUILD_NUMBER: ${{ github.run_number }}.${{ matrix.build_variant_code }}.${{ github.run_attempt }}
       IOS_VARIANT: ${{ matrix.variant }}
       REVIEW_BACKEND_URL: ${{ needs.review_context.outputs.review_backend_url }}
       EXPORT_AD_HOC: ${{ github.event_name == 'workflow_dispatch' && inputs.export_ad_hoc }}

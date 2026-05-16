@@ -233,7 +233,7 @@ task performs the required Xcode project generation and simulator app build as p
 The iOS workflow computes the app version from the same git tags as the web release workflow:
 
 - `MARKETING_VERSION` uses the computed base version, for example `0.2.21`.
-- `CURRENT_PROJECT_VERSION` uses the GitHub run number, run attempt, and variant offset, for example `418.1.1` for production and `418.1.2` for review.
+- `CURRENT_PROJECT_VERSION` uses the GitHub run number, a variant code, and run attempt, for example `418.10.1` for production and `418.20.1` for review.
 
 No version bump commit is needed for normal TestFlight uploads.
 
