@@ -98,6 +98,7 @@ final class PlaniniUITests: XCTestCase {
         app.buttons["edit-item-redo-button"].tap()
         XCTAssertTrue(waitForEditStatus("Saved", app: app))
         XCTAssertTrue(editNameField.valueText.contains(updatedName))
+        captureScreenshot(named: "ios-ui-live-edit-autosave")
         app.buttons["Done"].tap()
         XCTAssertTrue(app.staticTexts[updatedName].waitForExistence(timeout: 5))
         XCTAssertTrue(
