@@ -265,8 +265,11 @@ Set these GitHub Actions secrets before dispatching the TestFlight upload workfl
 - `P12_PASSWORD`
 - `BUILD_PROVISION_PROFILE_BASE64`
 - `BUILD_WATCH_APP_PROVISION_PROFILE_BASE64`
+- `BUILD_WATCH_APP_PROVISION_PROFILE_NAME`
 - `BUILD_WATCH_EXTENSION_PROVISION_PROFILE_BASE64`
+- `BUILD_WATCH_EXTENSION_PROVISION_PROFILE_NAME`
 - `BUILD_WATCH_WIDGET_PROVISION_PROFILE_BASE64`
+- `BUILD_WATCH_WIDGET_PROVISION_PROFILE_NAME`
 - `IOS_REVIEW_BUNDLE_IDENTIFIER` (optional; defaults to `IOS_BUNDLE_IDENTIFIER`)
 - `BUILD_REVIEW_PROVISION_PROFILE_BASE64` (optional; defaults to `BUILD_PROVISION_PROFILE_BASE64`)
 - `BUILD_REVIEW_PROVISION_PROFILE_NAME` (optional; defaults to `BUILD_PROVISION_PROFILE_NAME`)
@@ -285,9 +288,6 @@ The workflow commits these non-secret signing constants directly:
 - Apple team ID: `VWKG94374J`
 - production bundle ID: `de.malaber.planini`
 - production App Store provisioning profile name: `planini`
-- production watch app provisioning profile name: `planini-watch-app`
-- production watch extension provisioning profile name: `planini-watch-extension`
-- production watch widget provisioning profile name: `planini-watch-widget`
 
 Each watch target needs its own profile because Apple provisioning profiles are bound to one App ID. Create App Store distribution profiles for:
 
