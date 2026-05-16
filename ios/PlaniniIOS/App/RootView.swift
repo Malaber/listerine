@@ -108,7 +108,10 @@ struct RootView: View {
                 FavoriteListTab()
             }
             .tabItem {
-                Label("Favorite", systemImage: viewModel.favoriteListID == nil ? "star" : "star.fill")
+                Label(
+                    viewModel.favoriteList?.name ?? "Favorite",
+                    systemImage: viewModel.favoriteListID == nil ? "star" : "star.fill"
+                )
             }
             .tag(AppTab.favorite)
             .accessibilityIdentifier("tab-favorite")
@@ -351,11 +354,6 @@ private struct ListsTab: View {
                                 }
 
                                 Spacer()
-
-                                if list.id == viewModel.selectedListID {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(.tint)
-                                }
                             }
                         }
                         .accessibilityIdentifier("list-row-\(list.name)")
@@ -473,12 +471,16 @@ private struct ListDetailScreen: View {
                 .accessibilityIdentifier("add-item-button")
             }
 
-            if showsFavoriteButton, let currentList, currentList.id != viewModel.favoriteListID {
+            if showsFavoriteButton, let currentList {
                 ToolbarItem(placement: .topBarTrailing) {
+                    let isFavorite = currentList.id == viewModel.favoriteListID
                     Button {
-                        viewModel.setFavoriteList(id: currentList.id)
+                        viewModel.toggleFavoriteList(id: currentList.id)
                     } label: {
-                        Label("Favorite", systemImage: "star")
+                        Label(
+                            isFavorite ? "Unfavorite" : "Favorite",
+                            systemImage: isFavorite ? "star.fill" : "star"
+                        )
                     }
                     .accessibilityIdentifier("favorite-list-button")
                 }

@@ -541,9 +541,20 @@ final class MobileAppViewModel: ObservableObject {
     }
 
     func showFavoriteList() async {
-        let targetID = favoriteListID ?? lists.first?.id
-        guard let targetID else { return }
+        guard let targetID = favoriteListID else { return }
+        guard lists.contains(where: { $0.id == targetID }) else { return }
         await selectList(id: targetID)
+    }
+
+    func toggleFavoriteList(id: UUID) {
+        if favoriteListID == id {
+            favoriteListID = nil
+            userDefaults.removeObject(forKey: Self.favoriteListKey)
+        } else {
+            favoriteListID = id
+            userDefaults.set(id.uuidString, forKey: Self.favoriteListKey)
+        }
+        watchSyncCoordinator.publishCurrentState()
     }
 
     func setFavoriteList(id: UUID) {
@@ -624,10 +635,6 @@ final class MobileAppViewModel: ObservableObject {
         if let favoriteListID, lists.contains(where: { $0.id == favoriteListID }) == false {
             self.favoriteListID = nil
             userDefaults.removeObject(forKey: Self.favoriteListKey)
-        }
-
-        if favoriteListID == nil, let firstListID = lists.first?.id {
-            setFavoriteList(id: firstListID)
         }
 
         if let selectedListID, lists.contains(where: { $0.id == selectedListID }) == false {

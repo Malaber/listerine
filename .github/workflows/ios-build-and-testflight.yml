@@ -2,6 +2,11 @@ name: iOS Build and TestFlight
 
 on:
   push:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - ready_for_review
   workflow_dispatch:
     inputs:
       upload_to_testflight:
@@ -59,10 +64,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           INPUT_REVIEW_PR_NUMBER: ${{ inputs.review_pr_number }}
+          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           pr_number="$INPUT_REVIEW_PR_NUMBER"
           if [ "$GITHUB_REF_NAME" = "main" ]; then
             pr_number=""
+          elif [ -n "$PULL_REQUEST_NUMBER" ]; then
+            pr_number="$PULL_REQUEST_NUMBER"
           elif [ -z "$pr_number" ] && [ "$GITHUB_REF_TYPE" = "branch" ]; then
             pr_number="$(
               gh api \
@@ -139,6 +147,10 @@ jobs:
       ) &&
       (
         github.event_name == 'push' ||
+        (
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        ) ||
         (github.event_name == 'workflow_dispatch' && inputs.upload_to_testflight)
       )
     runs-on: macos-26
