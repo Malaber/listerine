@@ -662,7 +662,10 @@ final class MobileAppViewModel: ObservableObject {
     }
 
     func selectList(id: UUID) async {
-        guard selectedListID != id else { return }
+        guard selectedListID != id else {
+            updateLiveUpdatesConnection()
+            return
+        }
         selectedListID = id
         try? await reloadItems()
         updateLiveUpdatesConnection()
