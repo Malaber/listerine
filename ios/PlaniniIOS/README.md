@@ -265,29 +265,23 @@ Set these GitHub Actions secrets before dispatching the TestFlight upload workfl
 - `P12_PASSWORD`
 - `BUILD_PROVISION_PROFILE_BASE64`
 - `BUILD_WATCH_APP_PROVISION_PROFILE_BASE64`
-- `BUILD_WATCH_APP_PROVISION_PROFILE_NAME`
 - `BUILD_WATCH_EXTENSION_PROVISION_PROFILE_BASE64`
-- `BUILD_WATCH_EXTENSION_PROVISION_PROFILE_NAME`
 - `BUILD_WATCH_WIDGET_PROVISION_PROFILE_BASE64`
-- `BUILD_WATCH_WIDGET_PROVISION_PROFILE_NAME`
 - `IOS_REVIEW_BUNDLE_IDENTIFIER` (optional; defaults to `IOS_BUNDLE_IDENTIFIER`)
 - `BUILD_REVIEW_PROVISION_PROFILE_BASE64` (optional; defaults to `BUILD_PROVISION_PROFILE_BASE64`)
-- `BUILD_REVIEW_PROVISION_PROFILE_NAME` (optional; defaults to `BUILD_PROVISION_PROFILE_NAME`)
 - `BUILD_REVIEW_WATCH_APP_PROVISION_PROFILE_BASE64` (optional; defaults to `BUILD_WATCH_APP_PROVISION_PROFILE_BASE64`)
-- `BUILD_REVIEW_WATCH_APP_PROVISION_PROFILE_NAME` (optional; defaults to `BUILD_WATCH_APP_PROVISION_PROFILE_NAME`)
 - `BUILD_REVIEW_WATCH_EXTENSION_PROVISION_PROFILE_BASE64` (optional; defaults to `BUILD_WATCH_EXTENSION_PROVISION_PROFILE_BASE64`)
-- `BUILD_REVIEW_WATCH_EXTENSION_PROVISION_PROFILE_NAME` (optional; defaults to `BUILD_WATCH_EXTENSION_PROVISION_PROFILE_NAME`)
 - `BUILD_REVIEW_WATCH_WIDGET_PROVISION_PROFILE_BASE64` (optional; defaults to `BUILD_WATCH_WIDGET_PROVISION_PROFILE_BASE64`)
-- `BUILD_REVIEW_WATCH_WIDGET_PROVISION_PROFILE_NAME` (optional; defaults to `BUILD_WATCH_WIDGET_PROVISION_PROFILE_NAME`)
 - `APP_STORE_CONNECT_KEY_ID`
 - `APP_STORE_CONNECT_ISSUER_ID`
 - `APP_STORE_CONNECT_PRIVATE_KEY`
+
+The workflow extracts provisioning profile names from the uploaded `.mobileprovision` files on the runner, so profile name secrets are not needed.
 
 The workflow commits these non-secret signing constants directly:
 
 - Apple team ID: `VWKG94374J`
 - production bundle ID: `de.malaber.planini`
-- production App Store provisioning profile name: `planini`
 
 Each watch target needs its own profile because Apple provisioning profiles are bound to one App ID. Create App Store distribution profiles for:
 
@@ -309,21 +303,13 @@ Set these optional GitHub Actions variables to override default domains:
 App Store signed IPAs should be installed through TestFlight. To test a CI-built IPA directly on a registered iPhone without TestFlight, create an Ad Hoc provisioning profile that includes the device UDID and the same bundle identifier/capabilities, then set:
 
 - `AD_HOC_PROVISION_PROFILE_BASE64`
-- `AD_HOC_PROVISION_PROFILE_NAME`
 - `AD_HOC_WATCH_APP_PROVISION_PROFILE_BASE64`
-- `AD_HOC_WATCH_APP_PROVISION_PROFILE_NAME`
 - `AD_HOC_WATCH_EXTENSION_PROVISION_PROFILE_BASE64`
-- `AD_HOC_WATCH_EXTENSION_PROVISION_PROFILE_NAME`
 - `AD_HOC_WATCH_WIDGET_PROVISION_PROFILE_BASE64`
-- `AD_HOC_WATCH_WIDGET_PROVISION_PROFILE_NAME`
 - `AD_HOC_REVIEW_PROVISION_PROFILE_BASE64` (optional; defaults to `AD_HOC_PROVISION_PROFILE_BASE64`)
-- `AD_HOC_REVIEW_PROVISION_PROFILE_NAME` (optional; defaults to `AD_HOC_PROVISION_PROFILE_NAME`)
 - `AD_HOC_REVIEW_WATCH_APP_PROVISION_PROFILE_BASE64` (optional; defaults to `AD_HOC_WATCH_APP_PROVISION_PROFILE_BASE64`)
-- `AD_HOC_REVIEW_WATCH_APP_PROVISION_PROFILE_NAME` (optional; defaults to `AD_HOC_WATCH_APP_PROVISION_PROFILE_NAME`)
 - `AD_HOC_REVIEW_WATCH_EXTENSION_PROVISION_PROFILE_BASE64` (optional; defaults to `AD_HOC_WATCH_EXTENSION_PROVISION_PROFILE_BASE64`)
-- `AD_HOC_REVIEW_WATCH_EXTENSION_PROVISION_PROFILE_NAME` (optional; defaults to `AD_HOC_WATCH_EXTENSION_PROVISION_PROFILE_NAME`)
 - `AD_HOC_REVIEW_WATCH_WIDGET_PROVISION_PROFILE_BASE64` (optional; defaults to `AD_HOC_WATCH_WIDGET_PROVISION_PROFILE_BASE64`)
-- `AD_HOC_REVIEW_WATCH_WIDGET_PROVISION_PROFILE_NAME` (optional; defaults to `AD_HOC_WATCH_WIDGET_PROVISION_PROFILE_NAME`)
 
 Run the workflow manually with `export_ad_hoc = true`. It uploads `*-ad-hoc.ipa` artifacts that can be installed with Apple Configurator or Xcode's Devices and Simulators window.
 
