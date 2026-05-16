@@ -121,11 +121,15 @@ final class PlaniniUITests: XCTestCase {
             )
         )
 
-        let updatedCheckButton = app.buttons["Check \(updatedName)"]
+        let updatedItemID = try itemID(
+            named: updatedName,
+            inListNamed: initialListName,
+            accessToken: session.accessToken
+        )
+        let updatedCheckButton = app.buttons["toggle-item-\(updatedItemID.uuidString)"]
         scrollToElement(updatedCheckButton, in: app)
         XCTAssertTrue(updatedCheckButton.waitForExistence(timeout: 3))
-        XCTAssertTrue(updatedCheckButton.isHittable)
-        updatedCheckButton.tap()
+        updatedCheckButton.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         XCTAssertTrue(
             waitForCheckedItem(
                 named: updatedName,
@@ -542,6 +546,19 @@ final class PlaniniUITests: XCTestCase {
         return []
     }
 
+    private func itemID(named itemName: String, inListNamed listName: String, accessToken: String) throws -> UUID {
+        if let item = try fetchItems(inListNamed: listName, accessToken: accessToken)
+            .first(where: { $0.name == itemName })
+        {
+            return item.id
+        }
+        throw NSError(
+            domain: "PlaniniUITests",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "Could not find item named \(itemName)."]
+        )
+    }
+
     private func createItem(
         named name: String,
         note: String,
@@ -734,6 +751,7 @@ private struct UITestList: Decodable {
 }
 
 private struct UITestItem: Decodable {
+    let id: UUID
     let name: String
     let checked: Bool
 }
