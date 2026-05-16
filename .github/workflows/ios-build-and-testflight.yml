@@ -356,6 +356,7 @@ jobs:
             CURRENT_PROJECT_VERSION="$IOS_BUILD_NUMBER" \
             INFOPLIST_KEY_CFBundleDisplayName="${{ steps.variant.outputs.app_display_name }}" \
             CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
             PLANINI_APP_PROFILE_NAME="${{ steps.profiles.outputs.app_profile_name }}" \
             PLANINI_WATCH_APP_PROFILE_NAME="${{ steps.profiles.outputs.watch_app_profile_name }}" \
             PLANINI_WATCH_EXTENSION_PROFILE_NAME="${{ steps.profiles.outputs.watch_extension_profile_name }}" \
