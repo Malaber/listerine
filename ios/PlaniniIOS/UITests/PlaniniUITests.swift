@@ -54,15 +54,36 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertEqual(listTitle.label, initialListName)
         captureScreenshot(named: "ios-ui-favorite-list")
 
+        let quickAddUncategorized = app.buttons["quick-add-category-uncategorized"]
+        XCTAssertTrue(quickAddUncategorized.waitForExistence(timeout: 3))
+        quickAddUncategorized.tap()
+        XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["add-item-save-button"].waitForExistence(timeout: 3))
+        captureScreenshot(named: "ios-ui-category-quick-add")
+        app.buttons["Cancel"].tap()
+        XCTAssertFalse(app.otherElements["add-item-sheet"].waitForExistence(timeout: 2))
+
         app.buttons["add-item-button"].tap()
         XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
         captureScreenshot(named: "ios-ui-add-item-sheet")
+
+        let suggestionProbeField = app.textFields["add-item-name-field"]
+        XCTAssertTrue(suggestionProbeField.waitForExistence(timeout: 3))
+        suggestionProbeField.tap()
+        suggestionProbeField.typeText("Loose")
+        let activeSuggestion = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Jump to Loose item")).firstMatch
+        XCTAssertTrue(activeSuggestion.waitForExistence(timeout: 3))
+        captureScreenshot(named: "ios-ui-add-item-suggestions")
+        activeSuggestion.tap()
+        XCTAssertFalse(app.otherElements["add-item-sheet"].waitForExistence(timeout: 2))
 
         let uniqueSuffix = UUID().uuidString.prefix(8)
         let itemName = "UI Test Herbs \(uniqueSuffix)"
         let itemQuantity = "1 bunch"
         let updatedName = "\(itemName) Updated"
 
+        app.buttons["add-item-button"].tap()
+        XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
         let nameField = app.textFields["add-item-name-field"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 3))
         nameField.tap()
@@ -101,6 +122,24 @@ final class PlaniniUITests: XCTestCase {
         scrollToElement(app.staticTexts[updatedName], in: app)
         captureScreenshot(named: "ios-ui-checked-item")
         captureScreenshot(named: "promotion-filled-list")
+
+        app.buttons["add-item-button"].tap()
+        XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
+        let checkedSuggestionField = app.textFields["add-item-name-field"]
+        checkedSuggestionField.tap()
+        checkedSuggestionField.typeText(updatedName)
+        let checkedSuggestion = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Add \(updatedName) back")).firstMatch
+        XCTAssertTrue(checkedSuggestion.waitForExistence(timeout: 3))
+        captureScreenshot(named: "ios-ui-checked-item-suggestion")
+        checkedSuggestion.tap()
+        XCTAssertTrue(
+            waitForItemCheckedState(
+                named: updatedName,
+                checked: false,
+                inListNamed: initialListName,
+                accessToken: session.accessToken
+            )
+        )
 
         app.tabBars.buttons["Lists"].tap()
         returnToListsRootIfNeeded(app)
@@ -270,10 +309,26 @@ final class PlaniniUITests: XCTestCase {
         accessToken: String,
         timeout: TimeInterval = 8
     ) -> Bool {
+        waitForItemCheckedState(
+            named: itemName,
+            checked: true,
+            inListNamed: listName,
+            accessToken: accessToken,
+            timeout: timeout
+        )
+    }
+
+    private func waitForItemCheckedState(
+        named itemName: String,
+        checked: Bool,
+        inListNamed listName: String,
+        accessToken: String,
+        timeout: TimeInterval = 8
+    ) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if let items = try? fetchItems(inListNamed: listName, accessToken: accessToken),
-                items.contains(where: { $0.name == itemName && $0.checked })
+                items.contains(where: { $0.name == itemName && $0.checked == checked })
             {
                 return true
             }
