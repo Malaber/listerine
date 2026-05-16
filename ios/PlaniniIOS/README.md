@@ -223,7 +223,32 @@ for only the individual `pr-<PR>` app host to serve the AASA response.
 Two workflows now automate most of the iOS delivery path:
 
 - `.github/workflows/ci.yml` runs the Linux Swift package tests in parallel with the Python checks.
-- `.github/workflows/ios-build-and-testflight.yml` bootstraps the backend dependencies on GitHub-hosted macOS runners, runs `inv check-ios-ci`, and optionally archives/exports/uploads a signed build to TestFlight.
+- `.github/workflows/ios-build-and-testflight.yml` bootstraps the backend dependencies on GitHub-hosted macOS runners, runs `inv check-ios-ci`, then can archive/export/upload iOS app variants.
+
+The iOS workflow computes the app version from the same git tags as the web release workflow:
+
+- `MARKETING_VERSION` uses the computed base version, for example `0.2.21`.
+- `CURRENT_PROJECT_VERSION` uses the GitHub run number, run attempt, and variant offset, for example `418.1.1` for production and `418.1.2` for review.
+
+No version bump commit is needed for normal TestFlight uploads.
+
+### iOS build variants
+
+The workflow builds two signed variants when upload is enabled:
+
+- `production`
+  - backend URL: `IOS_PRODUCTION_BACKEND_URL`, default `https://planini.top`
+  - passkey domain: `IOS_PRODUCTION_PASSKEY_DOMAIN`, default `planini.top`
+  - display name: `Planini`
+- `review`
+  - backend URL: `https://pr-<PR>.pr.planini.malaber.de`
+  - passkey domain: `IOS_REVIEW_PASSKEY_DOMAIN`, default `pr.planini.malaber.de`
+  - display name: `Planini Review`
+
+For branch pushes, the review PR number is auto-detected from the open pull request for that branch.
+For manual workflow runs, pass `review_pr_number` if the branch cannot be auto-detected.
+
+Both variants may use the same bundle identifier, in which case TestFlight shows them as builds of the same app and only one can be installed on a device at a time. To install production and review side by side, create a second App Store Connect app and Apple App ID for the review variant, then set `IOS_REVIEW_BUNDLE_IDENTIFIER` and the review provisioning profile secrets below.
 
 ### Secrets needed for TestFlight uploads
 
@@ -236,13 +261,33 @@ Set these GitHub Actions secrets before dispatching the TestFlight upload workfl
 - `P12_PASSWORD`
 - `BUILD_PROVISION_PROFILE_BASE64`
 - `BUILD_PROVISION_PROFILE_NAME`
+- `IOS_REVIEW_BUNDLE_IDENTIFIER` (optional; defaults to `IOS_BUNDLE_IDENTIFIER`)
+- `BUILD_REVIEW_PROVISION_PROFILE_BASE64` (optional; defaults to `BUILD_PROVISION_PROFILE_BASE64`)
+- `BUILD_REVIEW_PROVISION_PROFILE_NAME` (optional; defaults to `BUILD_PROVISION_PROFILE_NAME`)
 - `APP_STORE_CONNECT_KEY_ID`
 - `APP_STORE_CONNECT_ISSUER_ID`
 - `APP_STORE_CONNECT_PRIVATE_KEY`
 
+Set these optional GitHub Actions variables to override default domains:
+
+- `IOS_PRODUCTION_BACKEND_URL`
+- `IOS_PRODUCTION_PASSKEY_DOMAIN`
+- `IOS_REVIEW_PASSKEY_DOMAIN`
+
+### Ad-hoc device artifacts
+
+App Store signed IPAs should be installed through TestFlight. To test a CI-built IPA directly on a registered iPhone without TestFlight, create an Ad Hoc provisioning profile that includes the device UDID and the same bundle identifier/capabilities, then set:
+
+- `AD_HOC_PROVISION_PROFILE_BASE64`
+- `AD_HOC_PROVISION_PROFILE_NAME`
+- `AD_HOC_REVIEW_PROVISION_PROFILE_BASE64` (optional; defaults to `AD_HOC_PROVISION_PROFILE_BASE64`)
+- `AD_HOC_REVIEW_PROVISION_PROFILE_NAME` (optional; defaults to `AD_HOC_PROVISION_PROFILE_NAME`)
+
+Run the workflow manually with `export_ad_hoc = true`. It uploads `*-ad-hoc.ipa` artifacts that can be installed with Apple Configurator or Xcode's Devices and Simulators window.
+
 ### How to use the workflow
 
-1. Push the branch to GitHub so the `iOS Build and TestFlight` workflow appears.
-2. Run the workflow once with `upload_to_testflight = false` to verify project generation and simulator builds.
-3. Add the required signing and App Store Connect secrets.
-4. Re-run it with `upload_to_testflight = true` to archive, export, and upload the IPA to TestFlight.
+1. Push the branch to GitHub. Pushes run the native iOS checks and upload signed TestFlight variants when signing secrets are present.
+2. For a manual dry run, run the workflow with `upload_to_testflight = false`.
+3. For a manual upload, run it with `upload_to_testflight = true`.
+4. For local device sanity checks without TestFlight, also set `export_ad_hoc = true`, download the ad-hoc artifact, and install it on a device included in the ad-hoc profile.
