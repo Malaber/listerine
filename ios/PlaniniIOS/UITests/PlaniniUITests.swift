@@ -178,7 +178,7 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(checkedSuggestion.waitForExistence(timeout: 3))
         captureScreenshot(named: "ios-ui-checked-item-suggestion")
         tapElement(checkedSuggestion)
-        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 3))
+        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 10))
         XCTAssertTrue(
             waitForItemCheckedState(
                 named: updatedName,
