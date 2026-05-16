@@ -139,6 +139,147 @@ public struct GroceryItemRecord: Identifiable, Equatable, Codable, Sendable {
     }
 }
 
+public struct GroceryItemSuggestion: Identifiable, Equatable, Sendable {
+    public let item: GroceryItemRecord
+    public let category: GroceryCategorySummary?
+    public let matchDistance: Int
+    public let matchRank: Int
+
+    public var id: UUID { item.id }
+
+    public init(item: GroceryItemRecord, category: GroceryCategorySummary?, matchDistance: Int, matchRank: Int) {
+        self.item = item
+        self.category = category
+        self.matchDistance = matchDistance
+        self.matchRank = matchRank
+    }
+}
+
+public enum GroceryItemSuggestionMatcher {
+    public static func suggestions(
+        for query: String,
+        items: [GroceryItemRecord],
+        categories: [GroceryCategorySummary],
+        limit: Int = 4
+    ) -> [GroceryItemSuggestion] {
+        let normalizedQuery = normalizeSearchText(query)
+        guard normalizedQuery.isEmpty == false else { return [] }
+
+        let categoryLookup = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
+        return items
+            .compactMap { item -> GroceryItemSuggestion? in
+                guard let match = itemSuggestionMatch(itemName: item.name, query: normalizedQuery) else { return nil }
+                return GroceryItemSuggestion(
+                    item: item,
+                    category: item.categoryID.flatMap { categoryLookup[$0] },
+                    matchDistance: match.distance,
+                    matchRank: match.rank
+                )
+            }
+            .sorted { left, right in
+                if left.matchRank != right.matchRank {
+                    return left.matchRank < right.matchRank
+                }
+                if left.matchDistance != right.matchDistance {
+                    return left.matchDistance < right.matchDistance
+                }
+                if left.item.checked != right.item.checked {
+                    return (left.item.checked ? 1 : 0) < (right.item.checked ? 1 : 0)
+                }
+                return left.item.name.localizedCaseInsensitiveCompare(right.item.name) == .orderedAscending
+            }
+            .prefix(limit)
+            .map { $0 }
+    }
+
+    public static func fuzzyItemNameDistance(itemName: String, query: String) -> Int? {
+        if query.count < 3 {
+            return nil
+        }
+
+        let maxDistance = query.count <= 4 ? 1 : 2
+        var bestDistance = boundedEditDistance(itemName, query, maxDistance: maxDistance)
+        let minWindowLength = max(1, query.count - maxDistance)
+        let maxWindowLength = min(itemName.count, query.count + maxDistance)
+        let itemCharacters = Array(itemName)
+
+        if minWindowLength <= maxWindowLength {
+            for startIndex in itemCharacters.indices {
+                for windowLength in minWindowLength...maxWindowLength {
+                    let endIndex = startIndex + windowLength
+                    guard endIndex <= itemCharacters.count else { continue }
+                    let candidate = String(itemCharacters[startIndex..<endIndex])
+                    bestDistance = min(bestDistance, boundedEditDistance(candidate, query, maxDistance: maxDistance))
+                    if bestDistance == 0 {
+                        return bestDistance
+                    }
+                }
+            }
+        }
+
+        return bestDistance <= maxDistance ? bestDistance : nil
+    }
+
+    public static func itemSuggestionMatch(itemName: String, query: String) -> (distance: Int, rank: Int)? {
+        let normalizedName = normalizeSearchText(itemName)
+        let normalizedQuery = normalizeSearchText(query)
+        if normalizedName == normalizedQuery {
+            return (0, 0)
+        }
+        if normalizedName.hasPrefix(normalizedQuery) {
+            return (0, 1)
+        }
+        if normalizedName.contains(normalizedQuery) {
+            return (0, 2)
+        }
+
+        guard let distance = fuzzyItemNameDistance(itemName: normalizedName, query: normalizedQuery) else {
+            return nil
+        }
+        return (distance, 3)
+    }
+
+    private static func normalizeSearchText(_ value: String) -> String {
+        value
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func boundedEditDistance(_ left: String, _ right: String, maxDistance: Int) -> Int {
+        if left == right {
+            return 0
+        }
+        if abs(left.count - right.count) > maxDistance {
+            return maxDistance + 1
+        }
+
+        let leftCharacters = Array(left)
+        let rightCharacters = Array(right)
+        var previous = Array(0...rightCharacters.count)
+
+        for leftIndex in 1...leftCharacters.count {
+            var current = [leftIndex] + Array(repeating: 0, count: rightCharacters.count)
+            var rowBest = current[0]
+            for rightIndex in 1...rightCharacters.count {
+                let substitutionCost = leftCharacters[leftIndex - 1] == rightCharacters[rightIndex - 1] ? 0 : 1
+                let value = min(
+                    previous[rightIndex] + 1,
+                    current[rightIndex - 1] + 1,
+                    previous[rightIndex - 1] + substitutionCost
+                )
+                current[rightIndex] = value
+                rowBest = min(rowBest, value)
+            }
+            if rowBest > maxDistance {
+                return maxDistance + 1
+            }
+            previous = current
+        }
+
+        return previous[rightCharacters.count]
+    }
+}
+
 public enum GroceryItemSectionKind: Hashable, Sendable {
     case uncategorized
     case category(UUID)

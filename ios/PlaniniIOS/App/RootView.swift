@@ -15,6 +15,11 @@ private enum AppTab: Hashable {
     case settings
 }
 
+private struct AddItemPresentation: Identifiable {
+    let id = UUID()
+    let categoryID: UUID?
+}
+
 struct RootView: View {
     @EnvironmentObject private var viewModel: MobileAppViewModel
     @State private var selectedTab: AppTab = .favorite
@@ -411,7 +416,7 @@ private struct ListDetailScreen: View {
     let showsFavoriteButton: Bool
 
     @State private var editingItem: GroceryItemRecord?
-    @State private var showingAddSheet = false
+    @State private var addItemPresentation: AddItemPresentation?
 
     private var currentList: GroceryListSummary? {
         viewModel.lists.first { $0.id == listID }
@@ -459,7 +464,9 @@ private struct ListDetailScreen: View {
                             }
                         }
                     } header: {
-                        SectionHeader(section: section)
+                        SectionHeader(section: section) { categoryID in
+                            addItemPresentation = AddItemPresentation(categoryID: categoryID)
+                        }
                     }
                 }
             }
@@ -470,7 +477,7 @@ private struct ListDetailScreen: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    showingAddSheet = true
+                    addItemPresentation = AddItemPresentation(categoryID: nil)
                 } label: {
                     Label("Add item", systemImage: "plus")
                 }
@@ -498,8 +505,8 @@ private struct ListDetailScreen: View {
         .sheet(item: $editingItem) { item in
             EditItemSheet(item: item)
         }
-        .sheet(isPresented: $showingAddSheet) {
-            AddItemSheet()
+        .sheet(item: $addItemPresentation) { presentation in
+            AddItemSheet(initialCategoryID: presentation.categoryID)
         }
         .animation(.spring(response: 0.34, dampingFraction: 0.86), value: visibleItemIDs)
         .accessibilityIdentifier("list-detail-screen")
@@ -508,6 +515,25 @@ private struct ListDetailScreen: View {
 
 private struct SectionHeader: View {
     let section: GroceryItemSection
+    let onQuickAdd: (UUID?) -> Void
+
+    private var allowsQuickAdd: Bool {
+        switch section.kind {
+        case .checked:
+            return false
+        case .uncategorized, .category:
+            return true
+        }
+    }
+
+    private var quickAddCategoryID: UUID? {
+        switch section.kind {
+        case .uncategorized, .checked:
+            return nil
+        case let .category(categoryID):
+            return categoryID
+        }
+    }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -518,6 +544,18 @@ private struct SectionHeader: View {
             Spacer()
             Text("\(section.itemCount)")
                 .foregroundStyle(.secondary)
+            if allowsQuickAdd {
+                Button {
+                    onQuickAdd(quickAddCategoryID)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.mini)
+                .accessibilityIdentifier("quick-add-category-\(section.id)")
+                .accessibilityLabel(section.kind == .uncategorized ? "Quick add uncategorized item" : "Quick add to \(section.title)")
+            }
         }
         .textCase(nil)
         .accessibilityIdentifier("section-\(section.id)")
@@ -596,6 +634,7 @@ private struct ItemRow: View {
 private struct AddItemSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var viewModel: MobileAppViewModel
+    let initialCategoryID: UUID?
 
     @State private var name = ""
     @State private var quantity = ""
@@ -603,16 +642,21 @@ private struct AddItemSheet: View {
     @State private var categoryID: UUID?
     @State private var isSaving = false
 
-    private var suggestions: [GroceryItemSuggestion] {
-        GroceryItemSuggestionBuilder.build(
-            query: name,
-            items: viewModel.items,
-            categories: viewModel.availableCategories
-        )
-    }
-
     private var trimmedName: String {
         name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    init(initialCategoryID: UUID? = nil) {
+        self.initialCategoryID = initialCategoryID
+        _categoryID = State(initialValue: initialCategoryID)
+    }
+
+    private var suggestions: [GroceryItemSuggestion] {
+        GroceryItemSuggestionMatcher.suggestions(
+            for: name,
+            items: viewModel.items,
+            categories: viewModel.categories
+        )
     }
 
     var body: some View {
@@ -629,15 +673,22 @@ private struct AddItemSheet: View {
                     Section("Suggestions") {
                         ForEach(suggestions) { suggestion in
                             Button {
-                                Task { await addSuggestion(suggestion) }
+                                Task { await useSuggestion(suggestion) }
                             } label: {
-                                AddItemSuggestionRow(suggestion: suggestion)
+                                ItemSuggestionRow(suggestion: suggestion)
                             }
                             .buttonStyle(.plain)
+                            .contentShape(Rectangle())
                             .disabled(isSaving)
-                            .accessibilityIdentifier("add-item-suggestion-\(suggestion.id.uuidString)")
+                            .accessibilityIdentifier("add-item-suggestion-\(suggestion.item.id.uuidString)")
+                            .accessibilityLabel(
+                                suggestion.item.checked
+                                    ? "Add \(suggestion.item.name) back to the list"
+                                    : "Add \(suggestion.item.name) to the list"
+                            )
                         }
                     }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
                 Section("Category") {
@@ -657,6 +708,7 @@ private struct AddItemSheet: View {
             }
             .navigationTitle("Add item")
             .navigationBarTitleDisplayMode(.inline)
+            .animation(.easeInOut(duration: 0.18), value: suggestions.map(\.id))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -670,10 +722,14 @@ private struct AddItemSheet: View {
                 }
             }
         }
+        .onAppear {
+            categoryID = initialCategoryID
+        }
         .accessibilityIdentifier("add-item-sheet")
     }
 
-    private func addSuggestion(_ suggestion: GroceryItemSuggestion) async {
+    @MainActor
+    private func useSuggestion(_ suggestion: GroceryItemSuggestion) async {
         guard isSaving == false else { return }
         isSaving = true
 
@@ -716,13 +772,13 @@ private struct AddItemSheet: View {
     }
 }
 
-private struct AddItemSuggestionRow: View {
+private struct ItemSuggestionRow: View {
     let suggestion: GroceryItemSuggestion
 
     var body: some View {
         HStack(spacing: 12) {
             RoundedRectangle(cornerRadius: 3, style: .continuous)
-                .fill(Color(hex: suggestion.categoryColorHex) ?? Color.secondary.opacity(0.35))
+                .fill(Color(hex: suggestion.category?.colorHex) ?? Color.secondary.opacity(0.35))
                 .frame(width: 4, height: 48)
 
             VStack(alignment: .leading, spacing: 4) {
@@ -750,13 +806,11 @@ private struct AddItemSuggestionRow: View {
         if let quantity = suggestion.item.quantityText, quantity.isEmpty == false {
             parts.append("Qty: \(quantity)")
         }
-        if let categoryName = suggestion.categoryName {
-            parts.append(categoryName)
-        }
+        parts.append(suggestion.category?.name ?? "Uncategorized")
         if suggestion.item.checked {
             parts.append("checked off")
         }
-        return parts.isEmpty ? "Existing item" : parts.joined(separator: " · ")
+        return parts.joined(separator: " · ")
     }
 }
 
