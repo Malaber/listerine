@@ -856,7 +856,17 @@ final class MobileAppViewModel: ObservableObject {
 
     private func rpID(from optionsPayload: [String: Any]) -> String? {
         let publicKey = (optionsPayload["publicKey"] as? [String: Any]) ?? optionsPayload
-        return publicKey["rpId"] as? String
+        if let rpID = publicKey["rpId"] as? String, rpID.isEmpty == false {
+            return rpID
+        }
+        if
+            let relyingParty = publicKey["rp"] as? [String: Any],
+            let rpID = relyingParty["id"] as? String,
+            rpID.isEmpty == false
+        {
+            return rpID
+        }
+        return nil
     }
 
     #if DEBUG
@@ -867,7 +877,7 @@ final class MobileAppViewModel: ObservableObject {
         relyingPartyIdentifier: String
     ) {
         let publicKey = (optionsPayload["publicKey"] as? [String: Any]) ?? optionsPayload
-        let optionRPID = publicKey["rpId"] as? String ?? "<missing>"
+        let optionRPID = rpID(from: optionsPayload) ?? "<missing>"
         let challengeText = publicKey["challenge"] as? String ?? "<missing>"
         let allowCredentialCount = (publicKey["allowCredentials"] as? [[String: Any]])?.count ?? 0
         let userVerification = publicKey["userVerification"] as? String ?? "<missing>"
