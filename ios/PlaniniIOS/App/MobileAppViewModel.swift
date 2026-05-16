@@ -46,6 +46,8 @@ final class MobileAppViewModel: ObservableObject {
     private static let authTokenKey = "planini.authToken"
     private static let displayNameKey = "planini.displayName"
     private static let quickAddItemKey = "planini.quickAddItemName"
+    private static let passkeyTokenAllowedCharacters = CharacterSet.alphanumerics
+        .union(CharacterSet(charactersIn: "-._~"))
 
     @Published private(set) var backendURL: URL?
     @Published private(set) var isAuthenticating = false
@@ -59,6 +61,7 @@ final class MobileAppViewModel: ObservableObject {
     @Published private(set) var favoriteListID: UUID?
     @Published var quickAddItemName: String
     @Published var errorMessage: String?
+    @Published var reviewerOnboardingMessage: String?
 
     private let passkeyClient: ApplePasskeyClient
     private let userDefaults: UserDefaults
@@ -144,6 +147,66 @@ final class MobileAppViewModel: ObservableObject {
         processInfo.environment["PLANINI_UI_TEST_MODE"] == "1"
     }
 
+    nonisolated static func passkeyAddToken(from rawValue: String) -> String? {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else { return nil }
+
+        if let token = passkeyAddTokenFromURL(trimmed) {
+            return token
+        }
+
+        for marker in ["/passkey-add/", "passkey-add/"] {
+            guard let range = trimmed.range(of: marker) else { continue }
+            let suffix = String(trimmed[range.upperBound...])
+            if let token = normalizedPasskeyAddToken(suffix) {
+                return token
+            }
+        }
+
+        return normalizedPasskeyAddToken(trimmed)
+    }
+
+    nonisolated private static func passkeyAddTokenFromURL(_ rawValue: String) -> String? {
+        guard let url = URL(string: rawValue), url.scheme != nil else { return nil }
+        let segments = url.path.split(separator: "/").map(String.init)
+        if
+            let markerIndex = segments.firstIndex(of: "passkey-add"),
+            markerIndex + 1 < segments.count
+        {
+            return normalizedPasskeyAddToken(segments[markerIndex + 1])
+        }
+        if url.host == "passkey-add", let token = segments.first {
+            return normalizedPasskeyAddToken(token)
+        }
+        return nil
+    }
+
+    nonisolated private static func normalizedPasskeyAddToken(_ rawValue: String) -> String? {
+        var value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        for separator in ["?", "#"] {
+            if let range = value.range(of: separator) {
+                value = String(value[..<range.lowerBound])
+            }
+        }
+        while value.hasPrefix("/") {
+            value.removeFirst()
+        }
+        while value.hasSuffix("/") {
+            value.removeLast()
+        }
+        if let slashIndex = value.firstIndex(of: "/") {
+            value = String(value[..<slashIndex])
+        }
+        value = value.removingPercentEncoding ?? value
+        guard
+            value.isEmpty == false,
+            value.rangeOfCharacter(from: .whitespacesAndNewlines) == nil
+        else {
+            return nil
+        }
+        return value
+    }
+
     func loginWithPasskey() async {
         guard let backendURL else {
             errorMessage = "This build is missing a backend URL configuration."
@@ -155,51 +218,198 @@ final class MobileAppViewModel: ObservableObject {
         defer { isAuthenticating = false }
 
         do {
+            try await performPasskeyLogin(backendURL: backendURL)
+            errorMessage = nil
+            reviewerOnboardingMessage = nil
+            watchSyncCoordinator.publishCurrentState()
+        } catch {
+            let nsErr = error as NSError
+            netLog.error("Passkey login failed. Type=\(String(describing: type(of: error)), privacy: .public) Domain=\(nsErr.domain, privacy: .public) Code=\(nsErr.code) Desc=\(nsErr.localizedDescription, privacy: .public)")
+            reviewerOnboardingMessage = nil
+            errorMessage = nsErr.localizedDescription
+        }
+    }
+
+    @discardableResult
+    func addPasskeyFromLinkInput(_ rawValue: String) async -> Bool {
+        guard let backendURL else {
+            errorMessage = "This build is missing a backend URL configuration."
+            return false
+        }
+        guard let token = Self.passkeyAddToken(from: rawValue) else {
+            errorMessage = "Enter a passkey add link or key."
+            return false
+        }
+
+        isAuthenticating = true
+        defer { isAuthenticating = false }
+
+        do {
             try await ensureBackendReady(backendURL: backendURL)
+            let encodedToken = token.addingPercentEncoding(withAllowedCharacters: Self.passkeyTokenAllowedCharacters) ?? token
             let options = try await requestJSON(
                 backendURL: backendURL,
-                path: "/api/v1/auth/login/options",
+                path: "/api/v1/auth/passkey-add/\(encodedToken)/options",
                 method: "POST",
                 body: [:],
                 token: nil
             )
             let relyingPartyIdentifier = rpID(from: options) ?? backendURL.host ?? ""
-            let credential = try await passkeyClient.authenticate(
+            #if DEBUG
+            logPasskeyOptions(
+                context: "add-passkey",
+                backendURL: backendURL,
                 optionsPayload: options,
                 relyingPartyIdentifier: relyingPartyIdentifier
             )
-            let tokenJson = try await requestJSON(
+            #endif
+            let credential = try await passkeyClient.register(
+                optionsPayload: options,
+                relyingPartyIdentifier: relyingPartyIdentifier
+            )
+            _ = try await requestJSON(
                 backendURL: backendURL,
-                path: "/api/v1/auth/login/verify",
+                path: "/api/v1/auth/passkey-add/\(encodedToken)/verify",
                 method: "POST",
                 body: ["credential": credential],
                 token: nil
             )
 
-            guard let accessToken = tokenJson["access_token"] as? String else {
-                throw AppError.invalidResponse
-            }
-
-            authToken = accessToken
-            userDefaults.set(accessToken, forKey: Self.authTokenKey)
-
-            let me = try await requestJSON(
-                backendURL: backendURL,
-                path: "/api/v1/auth/me",
-                method: "GET",
-                body: nil,
-                token: accessToken
-            )
-            displayName = me["display_name"] as? String
-            userDefaults.set(displayName, forKey: Self.displayNameKey)
-            try await reloadAllData()
+            reviewerOnboardingMessage = "Passkey added. Signing in…"
+            try await performPasskeyLogin(backendURL: backendURL)
             errorMessage = nil
-            watchSyncCoordinator.publishCurrentState()
+            reviewerOnboardingMessage = nil
+            return true
         } catch {
+            #if DEBUG
             let nsErr = error as NSError
-            netLog.error("Passkey login failed. Type=\(String(describing: type(of: error)), privacy: .public) Domain=\(nsErr.domain, privacy: .public) Code=\(nsErr.code) Desc=\(nsErr.localizedDescription, privacy: .public)")
-            errorMessage = nsErr.localizedDescription
+            netLog.error(
+                "Add passkey failed. type=\(String(describing: type(of: error)), privacy: .public) domain=\(nsErr.domain, privacy: .public) code=\(nsErr.code) description=\(nsErr.localizedDescription, privacy: .public) userInfo=\(String(describing: nsErr.userInfo), privacy: .public)"
+            )
+            #endif
+            reviewerOnboardingMessage = nil
+            errorMessage = (error as NSError).localizedDescription
+            return false
         }
+    }
+
+    @discardableResult
+    func registerAccount(displayName rawDisplayName: String, email rawEmail: String) async -> Bool {
+        guard let backendURL else {
+            errorMessage = "This build is missing a backend URL configuration."
+            return false
+        }
+
+        let displayName = rawDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let email = rawEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard displayName.isEmpty == false, email.isEmpty == false else {
+            errorMessage = "Enter a name and email address."
+            return false
+        }
+
+        isAuthenticating = true
+        defer { isAuthenticating = false }
+
+        do {
+            try await ensureBackendReady(backendURL: backendURL)
+            let options = try await requestJSON(
+                backendURL: backendURL,
+                path: "/api/v1/auth/register/options",
+                method: "POST",
+                body: [
+                    "email": email,
+                    "display_name": displayName,
+                ],
+                token: nil
+            )
+            let relyingPartyIdentifier = rpID(from: options) ?? backendURL.host ?? ""
+            #if DEBUG
+            logPasskeyOptions(
+                context: "register",
+                backendURL: backendURL,
+                optionsPayload: options,
+                relyingPartyIdentifier: relyingPartyIdentifier
+            )
+            #endif
+            let credential = try await passkeyClient.register(
+                optionsPayload: options,
+                relyingPartyIdentifier: relyingPartyIdentifier
+            )
+            _ = try await requestJSON(
+                backendURL: backendURL,
+                path: "/api/v1/auth/register/verify",
+                method: "POST",
+                body: ["credential": credential],
+                token: nil
+            )
+
+            reviewerOnboardingMessage = "Account created. Signing in…"
+            try await performPasskeyLogin(backendURL: backendURL)
+            errorMessage = nil
+            reviewerOnboardingMessage = nil
+            return true
+        } catch {
+            #if DEBUG
+            let nsErr = error as NSError
+            netLog.error(
+                "Register account failed. type=\(String(describing: type(of: error)), privacy: .public) domain=\(nsErr.domain, privacy: .public) code=\(nsErr.code) description=\(nsErr.localizedDescription, privacy: .public) userInfo=\(String(describing: nsErr.userInfo), privacy: .public)"
+            )
+            #endif
+            reviewerOnboardingMessage = nil
+            errorMessage = (error as NSError).localizedDescription
+            return false
+        }
+    }
+
+    private func performPasskeyLogin(backendURL: URL) async throws {
+        try await ensureBackendReady(backendURL: backendURL)
+        let options = try await requestJSON(
+            backendURL: backendURL,
+            path: "/api/v1/auth/login/options",
+            method: "POST",
+            body: [:],
+            token: nil
+        )
+        let relyingPartyIdentifier = rpID(from: options) ?? backendURL.host ?? ""
+        #if DEBUG
+        logPasskeyOptions(
+            context: "login",
+            backendURL: backendURL,
+            optionsPayload: options,
+            relyingPartyIdentifier: relyingPartyIdentifier
+        )
+        await logAssociatedDomainProbe(domain: relyingPartyIdentifier)
+        #endif
+        let credential = try await passkeyClient.authenticate(
+            optionsPayload: options,
+            relyingPartyIdentifier: relyingPartyIdentifier
+        )
+        let tokenJson = try await requestJSON(
+            backendURL: backendURL,
+            path: "/api/v1/auth/login/verify",
+            method: "POST",
+            body: ["credential": credential],
+            token: nil
+        )
+
+        guard let accessToken = tokenJson["access_token"] as? String else {
+            throw AppError.invalidResponse
+        }
+
+        authToken = accessToken
+        userDefaults.set(accessToken, forKey: Self.authTokenKey)
+
+        let me = try await requestJSON(
+            backendURL: backendURL,
+            path: "/api/v1/auth/me",
+            method: "GET",
+            body: nil,
+            token: accessToken
+        )
+        displayName = me["display_name"] as? String
+        userDefaults.set(displayName, forKey: Self.displayNameKey)
+        try await reloadAllData()
+        watchSyncCoordinator.publishCurrentState()
     }
 
     func bootstrapLaunchSessionIfNeeded() async {
@@ -311,6 +521,7 @@ final class MobileAppViewModel: ObservableObject {
         categoryOrder = []
         selectedListID = nil
         errorMessage = nil
+        reviewerOnboardingMessage = nil
         userDefaults.removeObject(forKey: Self.authTokenKey)
         userDefaults.removeObject(forKey: Self.displayNameKey)
         watchSyncCoordinator.publishCurrentState()
@@ -645,8 +856,66 @@ final class MobileAppViewModel: ObservableObject {
 
     private func rpID(from optionsPayload: [String: Any]) -> String? {
         let publicKey = (optionsPayload["publicKey"] as? [String: Any]) ?? optionsPayload
-        return publicKey["rpId"] as? String
+        if let rpID = publicKey["rpId"] as? String, rpID.isEmpty == false {
+            return rpID
+        }
+        if
+            let relyingParty = publicKey["rp"] as? [String: Any],
+            let rpID = relyingParty["id"] as? String,
+            rpID.isEmpty == false
+        {
+            return rpID
+        }
+        return nil
     }
+
+    #if DEBUG
+    private func logPasskeyOptions(
+        context: String,
+        backendURL: URL,
+        optionsPayload: [String: Any],
+        relyingPartyIdentifier: String
+    ) {
+        let publicKey = (optionsPayload["publicKey"] as? [String: Any]) ?? optionsPayload
+        let optionRPID = rpID(from: optionsPayload) ?? "<missing>"
+        let challengeText = publicKey["challenge"] as? String ?? "<missing>"
+        let allowCredentialCount = (publicKey["allowCredentials"] as? [[String: Any]])?.count ?? 0
+        let userVerification = publicKey["userVerification"] as? String ?? "<missing>"
+        netLog.notice(
+            "Passkey options \(context, privacy: .public). backend=\(backendURL.absoluteString, privacy: .public) backendHost=\(backendURL.host ?? "<missing>", privacy: .public) optionRPID=\(optionRPID, privacy: .public) chosenRPID=\(relyingPartyIdentifier, privacy: .public) challengeLength=\(challengeText.count) allowCredentials=\(allowCredentialCount) userVerification=\(userVerification, privacy: .public)"
+        )
+    }
+
+    private func logAssociatedDomainProbe(domain: String) async {
+        let urls = [
+            "https://\(domain)/.well-known/apple-app-site-association",
+            "https://\(domain)/apple-app-site-association",
+            "https://app-site-association.cdn-apple.com/a/v1/\(domain)",
+        ]
+        for urlText in urls {
+            guard let url = URL(string: urlText) else { continue }
+            do {
+                var request = URLRequest(url: url)
+                request.setValue("application/json", forHTTPHeaderField: "Accept")
+                let (data, response) = try await URLSession.shared.data(for: request)
+                let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+                let contentType = (response as? HTTPURLResponse)?.value(
+                    forHTTPHeaderField: "Content-Type"
+                ) ?? "<missing>"
+                let body = String(data: data, encoding: .utf8) ?? "<non-utf8>"
+                let containsAppID = body.contains("VWKG94374J.de.malaber.planini")
+                netLog.notice(
+                    "AASA probe url=\(urlText, privacy: .public) status=\(status) contentType=\(contentType, privacy: .public) containsAppID=\(containsAppID) bodyPrefix=\(String(body.prefix(300)), privacy: .public)"
+                )
+            } catch {
+                let nsErr = error as NSError
+                netLog.error(
+                    "AASA probe failed url=\(urlText, privacy: .public) domain=\(nsErr.domain, privacy: .public) code=\(nsErr.code) description=\(nsErr.localizedDescription, privacy: .public)"
+                )
+            }
+        }
+    }
+    #endif
 
     private func ensureBackendReady(backendURL: URL) async throws {
         let data = try await requestData(

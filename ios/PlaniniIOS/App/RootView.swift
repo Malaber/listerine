@@ -19,6 +19,8 @@ struct RootView: View {
     @EnvironmentObject private var viewModel: MobileAppViewModel
     @State private var selectedTab: AppTab = .favorite
     @State private var presentedError: AppErrorAlert?
+    @State private var showingReviewerOnboarding = false
+    @State private var passkeyAddLinkInput = ""
 
     var body: some View {
         Group {
@@ -26,12 +28,36 @@ struct RootView: View {
                 NavigationStack {
                     loginPane
                         .navigationTitle("Planini")
+                        .toolbar {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Menu {
+                                    Button {
+                                        showingReviewerOnboarding = true
+                                    } label: {
+                                        Label("Having trouble signing in?", systemImage: "questionmark.circle")
+                                    }
+                                    .accessibilityIdentifier("login-help-trouble-button")
+                                } label: {
+                                    Image(systemName: "ellipsis.circle")
+                                }
+                                .accessibilityIdentifier("login-help-menu")
+                            }
+                        }
                 }
             } else {
                 appTabs
             }
         }
+        .sheet(isPresented: $showingReviewerOnboarding) {
+            ReviewerOnboardingSheet(initialPasskeyAddInput: passkeyAddLinkInput)
+        }
+        .onOpenURL { url in
+            guard MobileAppViewModel.passkeyAddToken(from: url.absoluteString) != nil else { return }
+            passkeyAddLinkInput = url.absoluteString
+            showingReviewerOnboarding = true
+        }
         .onChange(of: viewModel.errorMessage) { newValue in
+            guard showingReviewerOnboarding == false else { return }
             if let newValue, newValue.isEmpty == false {
                 presentedError = AppErrorAlert(message: newValue)
             }
@@ -106,6 +132,172 @@ struct RootView: View {
             .accessibilityIdentifier("tab-settings")
         }
         .accessibilityIdentifier("main-tab-view")
+    }
+}
+
+private struct ReviewerOnboardingSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var viewModel: MobileAppViewModel
+
+    private enum Action {
+        case addPasskey
+        case registerAccount
+    }
+
+    let initialPasskeyAddInput: String
+
+    @State private var passkeyAddInput: String
+    @State private var registrationDisplayName = ""
+    @State private var registrationEmail = ""
+    @State private var busyAction: Action?
+    @State private var addPasskeyErrorMessage: String?
+    @State private var registrationErrorMessage: String?
+
+    init(initialPasskeyAddInput: String) {
+        self.initialPasskeyAddInput = initialPasskeyAddInput
+        _passkeyAddInput = State(initialValue: initialPasskeyAddInput)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Add passkey") {
+                    TextField("Passkey add link or key", text: $passkeyAddInput, axis: .vertical)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .accessibilityIdentifier("passkey-add-link-field")
+
+                    Button {
+                        closeKeyboard()
+                        Task {
+                            busyAction = .addPasskey
+                            addPasskeyErrorMessage = nil
+                            registrationErrorMessage = nil
+                            viewModel.errorMessage = nil
+                            let added = await viewModel.addPasskeyFromLinkInput(passkeyAddInput)
+                            busyAction = nil
+                            if added {
+                                AppHaptics.confirmation()
+                                dismiss()
+                            } else {
+                                addPasskeyErrorMessage = viewModel.errorMessage ?? "Could not add that passkey."
+                            }
+                        }
+                    } label: {
+                        if busyAction == .addPasskey {
+                            HStack {
+                                ProgressView()
+                                Text("Adding passkey…")
+                            }
+                        } else {
+                            Label("Add passkey", systemImage: "person.badge.key")
+                        }
+                    }
+                    .disabled(busyAction != nil || trimmedPasskeyAddInput.isEmpty)
+                    .accessibilityIdentifier("passkey-add-submit-button")
+
+                    if let addPasskeyErrorMessage, addPasskeyErrorMessage.isEmpty == false {
+                        Label(addPasskeyErrorMessage, systemImage: "exclamationmark.triangle")
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .accessibilityIdentifier("passkey-add-error")
+                    }
+                }
+
+                Section("Create account") {
+                    TextField("Name", text: $registrationDisplayName)
+                        .textContentType(.name)
+                        .accessibilityIdentifier("registration-display-name-field")
+
+                    TextField("Email", text: $registrationEmail)
+                        .keyboardType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .textContentType(.emailAddress)
+                        .accessibilityIdentifier("registration-email-field")
+
+                    Button {
+                        closeKeyboard()
+                        Task {
+                            busyAction = .registerAccount
+                            addPasskeyErrorMessage = nil
+                            registrationErrorMessage = nil
+                            viewModel.errorMessage = nil
+                            let created = await viewModel.registerAccount(
+                                displayName: registrationDisplayName,
+                                email: registrationEmail
+                            )
+                            busyAction = nil
+                            if created {
+                                AppHaptics.confirmation()
+                                dismiss()
+                            } else {
+                                registrationErrorMessage = viewModel.errorMessage ?? "Could not create that account."
+                            }
+                        }
+                    } label: {
+                        if busyAction == .registerAccount {
+                            HStack {
+                                ProgressView()
+                                Text("Creating account…")
+                            }
+                        } else {
+                            Label("Create account", systemImage: "person.crop.circle.badge.plus")
+                        }
+                    }
+                    .disabled(busyAction != nil || trimmedName.isEmpty || trimmedEmail.isEmpty)
+                    .accessibilityIdentifier("registration-submit-button")
+
+                    if let registrationErrorMessage, registrationErrorMessage.isEmpty == false {
+                        Label(registrationErrorMessage, systemImage: "exclamationmark.triangle")
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .accessibilityIdentifier("registration-error")
+                    }
+                }
+
+                if let message = viewModel.reviewerOnboardingMessage, message.isEmpty == false {
+                    Section {
+                        Text(message)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .navigationTitle("Sign-in help")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+        .onChange(of: initialPasskeyAddInput) { newValue in
+            passkeyAddInput = newValue
+        }
+        .accessibilityIdentifier("reviewer-onboarding-sheet")
+    }
+
+    private var trimmedPasskeyAddInput: String {
+        passkeyAddInput.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var trimmedName: String {
+        registrationDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var trimmedEmail: String {
+        registrationEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func closeKeyboard() {
+        #if canImport(UIKit)
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
+        #endif
     }
 }
 

@@ -75,6 +75,10 @@ function toBase64(value) {
   return normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
 }
 
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function loadSeed() {
   const seed = JSON.parse(await fs.readFile(seedPath, "utf8"));
   assert(seed?.e2e, "Expected e2e metadata in seed fixture");
@@ -107,11 +111,32 @@ function fixturePrimaryList(seed) {
 }
 
 async function apiJson(requestContext, url, options = {}) {
-  const response = await requestContext.fetch(new URL(url, baseUrl).toString(), options);
-  if (!response.ok()) {
-    throw new Error(`Request failed for ${url}: ${response.status()} ${response.statusText()}`);
+  const target = new URL(url, baseUrl).toString();
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const response = await requestContext.fetch(target, options);
+      if (!response.ok()) {
+        throw new Error(`Request failed for ${url}: ${response.status()} ${response.statusText()}`);
+      }
+      return response.json();
+    } catch (error) {
+      lastError = error;
+      if (attempt === 3 || !isTransientApiError(error)) {
+        throw error;
+      }
+      logStep(`Retrying API request after transient failure (${attempt}/3): ${url}`);
+      await delay(250 * attempt);
+    }
   }
-  return response.json();
+  throw lastError;
+}
+
+function isTransientApiError(error) {
+  const message = String(error?.message ?? error);
+  return /socket hang up|ECONNRESET|ECONNREFUSED|ETIMEDOUT|Target page, context or browser has been closed/u.test(
+    message,
+  );
 }
 
 async function expectVisible(locator, message) {
@@ -624,6 +649,7 @@ async function loginFromRoot(page, user, expectedHeading) {
   await page.goto(new URL("/", baseUrl).toString(), { waitUntil: "networkidle" });
   await page.waitForURL(/\/login(\?|$)/);
   await screenshot(page, "redirect-login");
+  await screenshot(page, "promotion-login-dialogue");
   await loginFromLoginPage(page, new URL("/", baseUrl).toString());
   await expectVisible(
     page.getByRole("heading", { name: expectedHeading }),
@@ -1318,6 +1344,7 @@ async function main() {
     await installSeededPasskey(authenticator, owner, rpId);
     logStep("Signing in with the seeded owner passkey");
     await loginFromRoot(page, owner, "Households and Lists");
+    await screenshot(page, "promotion-list-of-lists");
     await assertFaviconAsset(page, context.request);
     await assertHeaderActionsFitTranslatedLabels(page);
     await runAdminPasskeyAddLinkFlow(page, seed, rpId);
@@ -1488,6 +1515,12 @@ async function main() {
     );
     assert.equal(checkedNames[0], "Eier", "Most recently checked item should be first in checked section");
     assert(checkedNames.includes("Tofu"), "Expected previously checked item in checked section");
+    await page.goto(listUrl, { waitUntil: "networkidle" });
+    await expectVisible(
+      page.locator(".item-category-header h3", { hasText: "Checked off" }),
+      "Expected checked-off section before promotion screenshot",
+    );
+    await screenshot(page, "promotion-filled-list");
 
     const hackfleischCard = await revealCheckedItemCard(page, "Hackfleisch");
     await hackfleischCard.click();
@@ -1503,12 +1536,15 @@ async function main() {
       page.locator(".item-card", { hasText: "Hackfleisch" }),
       "Undo should restore deleted item",
     );
+    await page.goto(listUrl, { waitUntil: "networkidle" });
+    await expectVisible(itemCard(page, "Tomaten"), "Expected Tomaten before promotion edit screenshot");
 
     await itemCard(page, "Tomaten").click();
     await expectVisible(
       page.locator("[data-item-edit-panel]").getByRole("heading", { name: "Tomaten" }),
       "Clicking item should open edit modal",
     );
+    await screenshot(page, "promotion-edit-item-dialogue");
     const editSearch = editForm.locator("[data-item-edit-category-search]");
     await editSearch.fill("brot");
     await expectVisible(

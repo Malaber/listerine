@@ -223,32 +223,100 @@ for only the individual `pr-<PR>` app host to serve the AASA response.
 Two workflows now automate most of the iOS delivery path:
 
 - `.github/workflows/ci.yml` runs Swift package tests on Linux, and runs native iOS backend e2e plus native iOS UI e2e as separate GitHub-hosted macOS jobs.
-- `.github/workflows/ios-build-and-testflight.yml` runs the same native iOS backend/UI e2e jobs in parallel before optionally archiving/exporting/uploading a signed build to TestFlight.
+- `.github/workflows/ios-build-and-testflight.yml` runs the same native iOS backend/UI e2e jobs in parallel before optionally archiving/exporting/uploading signed app variants to TestFlight.
 
-`inv check-ios-ci` is intentionally limited to the native iOS e2e checks that need macOS.
-GitHub runs those checks as separate jobs so the backend e2e flow is not queued behind the
+GitHub runs the native iOS checks as separate jobs so the backend e2e flow is not queued behind the
 simulator UI e2e flow. Swift package coverage stays in the Linux Swift job, and the UI e2e
 task performs the required Xcode project generation and simulator app build as part of
 `xcodebuild test`.
+
+The iOS workflow computes the app version from the same git tags as the web release workflow:
+
+- `MARKETING_VERSION` uses the computed base version, for example `0.2.21`.
+- `CURRENT_PROJECT_VERSION` uses the GitHub run number, a variant code, and run attempt, for example `418.10.1` for production and `418.20.1` for review.
+
+No version bump commit is needed for normal TestFlight uploads.
+
+### iOS build variants
+
+The workflow builds signed variants when upload is enabled. Pushes to `main` build only the
+production variant. Branches with an open PR build production plus review variants.
+
+- `production`
+  - backend URL: `IOS_PRODUCTION_BACKEND_URL`, default `https://planini.top`
+  - passkey domain: `IOS_PRODUCTION_PASSKEY_DOMAIN`, default `planini.top`
+  - display name: `Planini`
+- `review`
+  - backend URL: `https://pr-<PR>.pr.planini.malaber.de`
+  - passkey domain: `IOS_REVIEW_PASSKEY_DOMAIN`, default `pr.planini.malaber.de`
+  - display name: `Planini Review`
+
+For branch pushes, the review PR number is auto-detected from the open pull request for that branch.
+For manual workflow runs on PR branches, pass `review_pr_number` if the branch cannot be auto-detected.
+TestFlight uploads only run for trusted `Malaber` repository pushes or manual dispatches on `main` or with an open PR/review PR number. Pushes without `main` or a PR still run native iOS checks, but do not upload to TestFlight.
+
+Both variants may use the same bundle identifier, in which case TestFlight shows them as builds of the same app and only one can be installed on a device at a time. To install production and review side by side, create a second App Store Connect app and Apple App ID for the review variant, then set `IOS_REVIEW_BUNDLE_IDENTIFIER` and the review provisioning profile secrets below.
 
 ### Secrets needed for TestFlight uploads
 
 Set these GitHub Actions secrets before dispatching the TestFlight upload workflow:
 
-- `APPLE_TEAM_ID`
-- `IOS_BUNDLE_IDENTIFIER`
 - `KEYCHAIN_PASSWORD`
 - `BUILD_CERTIFICATE_BASE64`
 - `P12_PASSWORD`
 - `BUILD_PROVISION_PROFILE_BASE64`
-- `BUILD_PROVISION_PROFILE_NAME`
+- `BUILD_WATCH_APP_PROVISION_PROFILE_BASE64`
+- `BUILD_WATCH_EXTENSION_PROVISION_PROFILE_BASE64`
+- `BUILD_WATCH_WIDGET_PROVISION_PROFILE_BASE64`
+- `IOS_REVIEW_BUNDLE_IDENTIFIER` (optional; defaults to `IOS_BUNDLE_IDENTIFIER`)
+- `BUILD_REVIEW_PROVISION_PROFILE_BASE64` (optional; defaults to `BUILD_PROVISION_PROFILE_BASE64`)
+- `BUILD_REVIEW_WATCH_APP_PROVISION_PROFILE_BASE64` (optional; defaults to `BUILD_WATCH_APP_PROVISION_PROFILE_BASE64`)
+- `BUILD_REVIEW_WATCH_EXTENSION_PROVISION_PROFILE_BASE64` (optional; defaults to `BUILD_WATCH_EXTENSION_PROVISION_PROFILE_BASE64`)
+- `BUILD_REVIEW_WATCH_WIDGET_PROVISION_PROFILE_BASE64` (optional; defaults to `BUILD_WATCH_WIDGET_PROVISION_PROFILE_BASE64`)
 - `APP_STORE_CONNECT_KEY_ID`
 - `APP_STORE_CONNECT_ISSUER_ID`
 - `APP_STORE_CONNECT_PRIVATE_KEY`
 
+The workflow extracts provisioning profile names from the uploaded `.mobileprovision` files on the runner, so profile name secrets are not needed.
+
+The workflow commits these non-secret signing constants directly:
+
+- Apple team ID: `VWKG94374J`
+- production bundle ID: `de.malaber.planini`
+
+Each watch target needs its own profile because Apple provisioning profiles are bound to one App ID. Create App Store distribution profiles for:
+
+- `de.malaber.planini`
+- `de.malaber.planini.watchkitapp`
+- `de.malaber.planini.watchkitapp.watchkitextension`
+- `de.malaber.planini.watchkitapp.widget`
+
+The upload job uses the GitHub Actions environment named `testflight`, so the secrets above should be configured as environment secrets on that environment.
+
+Set these optional GitHub Actions variables to override default domains:
+
+- `IOS_PRODUCTION_BACKEND_URL`
+- `IOS_PRODUCTION_PASSKEY_DOMAIN`
+- `IOS_REVIEW_PASSKEY_DOMAIN`
+
+### Ad-hoc device artifacts
+
+App Store signed IPAs should be installed through TestFlight. To test a CI-built IPA directly on a registered iPhone without TestFlight, create an Ad Hoc provisioning profile that includes the device UDID and the same bundle identifier/capabilities, then set:
+
+- `AD_HOC_PROVISION_PROFILE_BASE64`
+- `AD_HOC_WATCH_APP_PROVISION_PROFILE_BASE64`
+- `AD_HOC_WATCH_EXTENSION_PROVISION_PROFILE_BASE64`
+- `AD_HOC_WATCH_WIDGET_PROVISION_PROFILE_BASE64`
+- `AD_HOC_REVIEW_PROVISION_PROFILE_BASE64` (optional; defaults to `AD_HOC_PROVISION_PROFILE_BASE64`)
+- `AD_HOC_REVIEW_WATCH_APP_PROVISION_PROFILE_BASE64` (optional; defaults to `AD_HOC_WATCH_APP_PROVISION_PROFILE_BASE64`)
+- `AD_HOC_REVIEW_WATCH_EXTENSION_PROVISION_PROFILE_BASE64` (optional; defaults to `AD_HOC_WATCH_EXTENSION_PROVISION_PROFILE_BASE64`)
+- `AD_HOC_REVIEW_WATCH_WIDGET_PROVISION_PROFILE_BASE64` (optional; defaults to `AD_HOC_WATCH_WIDGET_PROVISION_PROFILE_BASE64`)
+
+Run the workflow manually with `export_ad_hoc = true`. It uploads `*-ad-hoc.ipa` artifacts that can be installed with Apple Configurator or Xcode's Devices and Simulators window.
+
 ### How to use the workflow
 
-1. Push the branch to GitHub so the `iOS Build and TestFlight` workflow appears.
-2. Run the workflow once with `upload_to_testflight = false` to verify project generation and simulator builds.
-3. Add the required signing and App Store Connect secrets.
-4. Re-run it with `upload_to_testflight = true` to archive, export, and upload the IPA to TestFlight.
+1. Push the branch to GitHub. Pushes run the native iOS checks and upload signed TestFlight variants when signing secrets are present. `main` uploads production only; PR branches upload production plus review.
+2. For a manual dry run, run the workflow with `upload_to_testflight = false`.
+3. For a manual upload, run it with `upload_to_testflight = true`.
+4. For local device sanity checks without TestFlight, also set `export_ad_hoc = true`, download the ad-hoc artifact, and install it on a device included in the ad-hoc profile.

@@ -477,7 +477,9 @@ def test_write_ios_entitlements_uses_configured_host(tmp_path: Path, monkeypatch
 
     tasks._write_ios_entitlements("example.com")
 
-    assert "webcredentials:example.com" in entitlements_path.read_text(encoding="utf-8")
+    contents = entitlements_path.read_text(encoding="utf-8")
+    assert "applinks:example.com" in contents
+    assert "webcredentials:example.com" in contents
 
 
 def test_configure_ios_app_updates_project_and_entitlements(monkeypatch, tmp_path: Path) -> None:
@@ -518,7 +520,9 @@ def test_configure_ios_app_updates_project_and_entitlements(monkeypatch, tmp_pat
     assert "PRODUCT_BUNDLE_IDENTIFIER: com.example.selfhost" in project_contents
     assert "DEVELOPMENT_TEAM: NEWTEAM456" in project_contents
     assert "INFOPLIST_KEY_PlaniniBackendBaseURL: https://selfhost.example.com" in project_contents
-    assert "webcredentials:passkeys.example.com" in entitlements_path.read_text(encoding="utf-8")
+    entitlements_contents = entitlements_path.read_text(encoding="utf-8")
+    assert "applinks:passkeys.example.com" in entitlements_contents
+    assert "webcredentials:passkeys.example.com" in entitlements_contents
     assert (
         'static let backendURL = "https://selfhost.example.com"'
         in generated_config_path.read_text(encoding="utf-8")

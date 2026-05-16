@@ -10,6 +10,15 @@ final class PlaniniUITests: XCTestCase {
 
     func testListViewFlow() throws {
         try assertLocalTestBackend()
+        let loginApp = XCUIApplication()
+        loginApp.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
+        loginApp.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
+        loginApp.launch()
+        XCTAssertTrue(loginApp.buttons["login-passkey-button"].waitForExistence(timeout: 10))
+        captureScreenshot(named: "promotion-login-dialogue")
+        assertReviewerOnboardingAvailable(in: loginApp)
+        loginApp.terminate()
+
         let session = if let injectedSession {
             injectedSession
         } else {
@@ -29,6 +38,7 @@ final class PlaniniUITests: XCTestCase {
         app.tabBars.buttons["Lists"].tap()
         let initialListRow = app.buttons["list-row-\(initialListName)"]
         XCTAssertTrue(initialListRow.waitForExistence(timeout: 10))
+        captureScreenshot(named: "promotion-list-of-lists")
         initialListRow.tap()
         XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
         XCTAssertEqual(listTitle.label, initialListName)
@@ -72,6 +82,7 @@ final class PlaniniUITests: XCTestCase {
 
         app.staticTexts[itemName].tap()
         XCTAssertTrue(app.otherElements["edit-item-sheet"].waitForExistence(timeout: 3))
+        captureScreenshot(named: "promotion-edit-item-dialogue")
 
         let editNameField = app.textFields["edit-item-name-field"]
         editNameField.tap()
@@ -87,7 +98,9 @@ final class PlaniniUITests: XCTestCase {
                 accessToken: session.accessToken
             )
         )
+        scrollToElement(app.staticTexts[updatedName], in: app)
         captureScreenshot(named: "ios-ui-checked-item")
+        captureScreenshot(named: "promotion-filled-list")
 
         app.tabBars.buttons["Lists"].tap()
         returnToListsRootIfNeeded(app)
@@ -101,6 +114,71 @@ final class PlaniniUITests: XCTestCase {
         app.tabBars.buttons["Settings"].tap()
         XCTAssertTrue(app.buttons["settings-sign-out-button"].waitForExistence(timeout: 5))
         captureScreenshot(named: "ios-ui-settings")
+    }
+
+    func testListReceivesLiveUpdates() throws {
+        try assertLocalTestBackend()
+        let session = if let injectedSession {
+            injectedSession
+        } else {
+            try bootstrapSession(email: userEmail)
+        }
+
+        let app = XCUIApplication()
+        app.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
+        app.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
+        app.launchEnvironment["PLANINI_UI_TEST_ACCESS_TOKEN"] = session.accessToken
+        app.launchEnvironment["PLANINI_UI_TEST_DISPLAY_NAME"] = session.displayName
+        app.launchEnvironment["PLANINI_UI_TEST_INITIAL_LIST_NAME"] = initialListName
+        app.launch()
+
+        let listTitle = app.staticTexts["list-detail-title"]
+        XCTAssertTrue(listTitle.waitForExistence(timeout: 10))
+        if listTitle.label != initialListName {
+            app.tabBars.buttons["Lists"].tap()
+            returnToListsRootIfNeeded(app)
+            let initialListRow = app.buttons["list-row-\(initialListName)"]
+            XCTAssertTrue(initialListRow.waitForExistence(timeout: 10))
+            initialListRow.tap()
+            XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
+        }
+        XCTAssertEqual(listTitle.label, initialListName)
+        XCTAssertTrue(app.staticTexts["Loose item"].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            waitForLiveUpdatesConnection(
+                app: app,
+                listName: initialListName,
+                accessToken: session.accessToken
+            ),
+            "Expected live updates to connect before checking external mutations."
+        )
+
+        let uniqueSuffix = UUID().uuidString.prefix(8)
+        let itemName = "UI Live \(uniqueSuffix)"
+        let updatedName = "\(itemName) Updated"
+        let itemID = try createItem(
+            named: itemName,
+            note: "",
+            inListNamed: initialListName,
+            accessToken: session.accessToken
+        )
+
+        XCTAssertTrue(app.staticTexts[itemName].waitForExistence(timeout: 20))
+        captureScreenshot(named: "ios-ui-live-item-created")
+
+        try updateItem(
+            itemID: itemID,
+            name: updatedName,
+            note: "",
+            accessToken: session.accessToken
+        )
+        XCTAssertTrue(app.staticTexts[updatedName].waitForExistence(timeout: 20))
+
+        try deleteItem(itemID: itemID, accessToken: session.accessToken)
+        XCTAssertTrue(
+            waitForElementToDisappear(app.staticTexts[updatedName], timeout: 20),
+            "Expected live-deleted item to disappear without manual refresh."
+        )
     }
 
     private var baseURL: URL {
@@ -213,6 +291,91 @@ final class PlaniniUITests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
         return element.exists == false
+    }
+
+    private func waitForLiveUpdatesConnection(
+        app: XCUIApplication,
+        listName: String,
+        accessToken: String,
+        timeout: TimeInterval = 20
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let probeName = "UI Live Ready \(UUID().uuidString.prefix(8))"
+            if let probeID = try? createItem(
+                named: probeName,
+                note: "",
+                inListNamed: listName,
+                accessToken: accessToken
+            ) {
+                let appeared = app.staticTexts[probeName].waitForExistence(timeout: 3)
+                try? deleteItem(itemID: probeID, accessToken: accessToken)
+                if appeared {
+                    _ = waitForElementToDisappear(app.staticTexts[probeName], timeout: 5)
+                    return true
+                }
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        }
+        return false
+    }
+
+    private func scrollToElement(_ element: XCUIElement, in app: XCUIApplication, maxSwipes: Int = 10) {
+        for _ in 0..<maxSwipes {
+            if element.exists && element.isHittable {
+                return
+            }
+            app.swipeUp()
+        }
+    }
+
+    private func assertReviewerOnboardingAvailable(in app: XCUIApplication) {
+        let helpMenu = app.buttons["login-help-menu"]
+        XCTAssertTrue(helpMenu.waitForExistence(timeout: 3))
+        helpMenu.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+
+        let helpButton = firstExistingElement(
+            [
+                app.buttons["login-help-trouble-button"],
+                app.buttons["Having trouble signing in?"],
+                app.menuItems["Having trouble signing in?"],
+                app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "trouble signing in")).firstMatch,
+            ],
+            timeout: 3
+        )
+        XCTAssertTrue(helpButton.waitForExistence(timeout: 3))
+        helpButton.tap()
+
+        XCTAssertTrue(app.otherElements["reviewer-onboarding-sheet"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.textFields["passkey-add-link-field"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.textFields["registration-display-name-field"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.textFields["registration-email-field"].waitForExistence(timeout: 3))
+        captureScreenshot(named: "ios-ui-reviewer-onboarding")
+
+        let passkeyField = app.textFields["passkey-add-link-field"]
+        passkeyField.tap()
+        passkeyField.typeText("\(baseURL.absoluteString)/passkey-add/missing-reviewer-token")
+        XCTAssertTrue(app.buttons["passkey-add-submit-button"].isEnabled)
+
+        let nameField = app.textFields["registration-display-name-field"]
+        nameField.tap()
+        nameField.typeText("App Reviewer")
+        let emailField = app.textFields["registration-email-field"]
+        emailField.tap()
+        emailField.typeText("reviewer@example.com")
+        XCTAssertTrue(app.buttons["registration-submit-button"].isEnabled)
+
+        app.buttons["Cancel"].tap()
+        XCTAssertFalse(app.otherElements["reviewer-onboarding-sheet"].exists)
+    }
+
+    private func firstExistingElement(_ elements: [XCUIElement], timeout: TimeInterval) -> XCUIElement {
+        for element in elements {
+            if element.waitForExistence(timeout: timeout) {
+                return element
+            }
+        }
+        return elements.first ?? XCUIApplication().buttons.firstMatch
     }
 
     private func fetchItems(inListNamed listName: String, accessToken: String) throws -> [UITestItem] {
@@ -396,13 +559,25 @@ final class PlaniniUITests: XCTestCase {
         attachment.lifetime = .keepAlways
         add(attachment)
 
-        guard let artifactDirectory = ProcessInfo.processInfo.environment["PLANINI_UI_TEST_ARTIFACT_DIR"] else {
-            return
-        }
-        let directoryURL = URL(fileURLWithPath: artifactDirectory, isDirectory: true)
+        let directoryURL = screenshotArtifactDirectory()
         try? FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
         let fileURL = directoryURL.appending(path: "\(name).png")
         try? screenshot.pngRepresentation.write(to: fileURL)
+    }
+
+    private func screenshotArtifactDirectory() -> URL {
+        if let artifactDirectory = ProcessInfo.processInfo.environment["PLANINI_UI_TEST_ARTIFACT_DIR"],
+            artifactDirectory.isEmpty == false
+        {
+            return URL(fileURLWithPath: artifactDirectory, isDirectory: true)
+        }
+
+        return URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appending(path: "e2e-artifacts/ios-ui-e2e", directoryHint: .isDirectory)
     }
 
 }
