@@ -1427,6 +1427,8 @@ main {
 .item-edit-header-actions {
   gap: 0.65rem;
   flex: 0 0 auto;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
 .item-edit-history-actions {
@@ -1788,6 +1790,19 @@ main {
   min-height: 1.5rem;
   color: var(--text-muted);
   font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.item-edit-header-actions .item-edit-live-status {
+  max-width: min(10rem, 32vw);
+  overflow: hidden;
+}
+
+.item-edit-header-actions .item-edit-live-status [data-item-edit-status-text] {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .item-edit-live-status[hidden] {
@@ -2406,6 +2421,15 @@ main {
     background: var(--surface-muted);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
+  }
+
+  .item-edit-header-actions {
+    gap: 0.45rem;
+  }
+
+  .item-edit-header-actions .item-edit-live-status {
+    max-width: min(8rem, 28vw);
+    font-size: 0.86rem;
   }
 
   .add-item-panel .add-item-panel-header > div:first-child {
