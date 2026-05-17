@@ -22,6 +22,7 @@ private struct AddItemPresentation: Identifiable {
 
 struct RootView: View {
     @EnvironmentObject private var viewModel: MobileAppViewModel
+    @EnvironmentObject private var l10n: AppLocalization
     @State private var selectedTab: AppTab = .favorite
     @State private var presentedError: AppErrorAlert?
     @State private var showingReviewerOnboarding = false
@@ -39,7 +40,10 @@ struct RootView: View {
                                     Button {
                                         showingReviewerOnboarding = true
                                     } label: {
-                                        Label("Having trouble signing in?", systemImage: "questionmark.circle")
+                                        Label(
+                                            l10n.t("ios.login.trouble_signing_in"),
+                                            systemImage: "questionmark.circle"
+                                        )
                                     }
                                     .accessibilityIdentifier("login-help-trouble-button")
                                 } label: {
@@ -69,9 +73,9 @@ struct RootView: View {
         }
         .alert(item: $presentedError) { error in
             Alert(
-                title: Text("Error"),
+                title: Text(l10n.t("ios.error.title")),
                 message: Text(error.message),
-                dismissButton: .cancel(Text("OK")) {
+                dismissButton: .cancel(Text(l10n.t("common.ok"))) {
                     viewModel.errorMessage = nil
                 }
             )
@@ -87,18 +91,18 @@ struct RootView: View {
 
     private var loginPane: some View {
         Form {
-            Section("Backend") {
-                LabeledContent("Configured host", value: viewModel.backendDisplayName)
+            Section(l10n.t("ios.login.backend")) {
+                LabeledContent(l10n.t("ios.login.configured_host"), value: viewModel.backendDisplayName)
             }
 
-            Section("Sign in") {
+            Section(l10n.t("ios.login.sign_in")) {
                 Button {
                     Task { await viewModel.loginWithPasskey() }
                 } label: {
                     if viewModel.isAuthenticating {
-                        Label("Signing in…", systemImage: "hourglass")
+                        Label(l10n.t("ios.login.signing_in"), systemImage: "hourglass")
                     } else {
-                        Label("Continue with Passkey", systemImage: "person.badge.key")
+                        Label(l10n.t("ios.login.continue_with_passkey"), systemImage: "person.badge.key")
                     }
                 }
                 .disabled(viewModel.isAuthenticating)
@@ -114,7 +118,7 @@ struct RootView: View {
             }
             .tabItem {
                 Label(
-                    viewModel.favoriteList?.name ?? "Favorite",
+                    viewModel.favoriteList?.name ?? l10n.t("ios.tabs.favorite"),
                     systemImage: viewModel.favoriteListID == nil ? "star" : "star.fill"
                 )
             }
@@ -125,7 +129,7 @@ struct RootView: View {
                 ListsTab(selectedTab: $selectedTab)
             }
             .tabItem {
-                Label("Lists", systemImage: "rectangle.grid.1x2")
+                Label(l10n.t("ios.tabs.lists"), systemImage: "rectangle.grid.1x2")
             }
             .tag(AppTab.lists)
             .accessibilityIdentifier("tab-lists")
@@ -134,7 +138,7 @@ struct RootView: View {
                 SettingsTab()
             }
             .tabItem {
-                Label("Settings", systemImage: "gearshape")
+                Label(l10n.t("common.settings"), systemImage: "gearshape")
             }
             .tag(AppTab.settings)
             .accessibilityIdentifier("tab-settings")
@@ -146,6 +150,7 @@ struct RootView: View {
 private struct ReviewerOnboardingSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var viewModel: MobileAppViewModel
+    @EnvironmentObject private var l10n: AppLocalization
 
     private enum Action {
         case addPasskey
@@ -169,8 +174,8 @@ private struct ReviewerOnboardingSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Add passkey") {
-                    TextField("Passkey add link or key", text: $passkeyAddInput, axis: .vertical)
+                Section(l10n.t("ios.onboarding.add_passkey")) {
+                    TextField(l10n.t("ios.onboarding.passkey_add_link_or_key"), text: $passkeyAddInput, axis: .vertical)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .accessibilityIdentifier("passkey-add-link-field")
@@ -188,17 +193,18 @@ private struct ReviewerOnboardingSheet: View {
                                 AppHaptics.confirmation()
                                 dismiss()
                             } else {
-                                addPasskeyErrorMessage = viewModel.errorMessage ?? "Could not add that passkey."
+                                addPasskeyErrorMessage = viewModel.errorMessage
+                                    ?? l10n.t("ios.onboarding.could_not_add_passkey")
                             }
                         }
                     } label: {
                         if busyAction == .addPasskey {
                             HStack {
                                 ProgressView()
-                                Text("Adding passkey…")
+                                Text(l10n.t("ios.onboarding.adding_passkey"))
                             }
                         } else {
-                            Label("Add passkey", systemImage: "person.badge.key")
+                            Label(l10n.t("ios.onboarding.add_passkey"), systemImage: "person.badge.key")
                         }
                     }
                     .disabled(busyAction != nil || trimmedPasskeyAddInput.isEmpty)
@@ -212,12 +218,12 @@ private struct ReviewerOnboardingSheet: View {
                     }
                 }
 
-                Section("Create account") {
-                    TextField("Name", text: $registrationDisplayName)
+                Section(l10n.t("ios.onboarding.create_account")) {
+                    TextField(l10n.t("ios.item.name"), text: $registrationDisplayName)
                         .textContentType(.name)
                         .accessibilityIdentifier("registration-display-name-field")
 
-                    TextField("Email", text: $registrationEmail)
+                    TextField(l10n.t("ios.onboarding.email"), text: $registrationEmail)
                         .keyboardType(.emailAddress)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -240,17 +246,18 @@ private struct ReviewerOnboardingSheet: View {
                                 AppHaptics.confirmation()
                                 dismiss()
                             } else {
-                                registrationErrorMessage = viewModel.errorMessage ?? "Could not create that account."
+                                registrationErrorMessage = viewModel.errorMessage
+                                    ?? l10n.t("ios.onboarding.could_not_create_account")
                             }
                         }
                     } label: {
                         if busyAction == .registerAccount {
                             HStack {
                                 ProgressView()
-                                Text("Creating account…")
+                                Text(l10n.t("ios.onboarding.creating_account"))
                             }
                         } else {
-                            Label("Create account", systemImage: "person.crop.circle.badge.plus")
+                            Label(l10n.t("ios.onboarding.create_account"), systemImage: "person.crop.circle.badge.plus")
                         }
                     }
                     .disabled(busyAction != nil || trimmedName.isEmpty || trimmedEmail.isEmpty)
@@ -271,11 +278,11 @@ private struct ReviewerOnboardingSheet: View {
                     }
                 }
             }
-            .navigationTitle("Sign-in help")
+            .navigationTitle(l10n.t("ios.onboarding.sign_in_help"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(l10n.t("common.cancel")) { dismiss() }
                 }
             }
         }
@@ -311,6 +318,7 @@ private struct ReviewerOnboardingSheet: View {
 
 private struct FavoriteListTab: View {
     @EnvironmentObject private var viewModel: MobileAppViewModel
+    @EnvironmentObject private var l10n: AppLocalization
 
     var body: some View {
         Group {
@@ -318,11 +326,11 @@ private struct FavoriteListTab: View {
                 ListDetailScreen(listID: favoriteList.id, showsFavoriteButton: false)
             } else {
                 EmptyStateView(
-                    title: "No favorite list yet",
+                    title: l10n.t("ios.favorite.empty_title"),
                     systemImage: "star",
-                    message: "Pick a list in the Lists tab to keep it one tap away."
+                    message: l10n.t("ios.favorite.empty_message")
                 )
-                .navigationTitle("Favorite")
+                .navigationTitle(l10n.t("ios.tabs.favorite"))
             }
         }
     }
@@ -330,6 +338,7 @@ private struct FavoriteListTab: View {
 
 private struct ListsTab: View {
     @EnvironmentObject private var viewModel: MobileAppViewModel
+    @EnvironmentObject private var l10n: AppLocalization
     @Binding var selectedTab: AppTab
 
     private var householdSections: [(name: String, lists: [GroceryListSummary])] {
@@ -352,7 +361,7 @@ private struct ListsTab: View {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(list.name)
                                     if list.id == viewModel.favoriteListID {
-                                        Label("Favorite list", systemImage: "star.fill")
+                                        Label(l10n.t("ios.favorite.favorite_list"), systemImage: "star.fill")
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                     }
@@ -369,7 +378,7 @@ private struct ListsTab: View {
                                 selectedTab = .favorite
                                 Task { await viewModel.showFavoriteList() }
                             } label: {
-                                Label("Favorite", systemImage: "star.fill")
+                                Label(l10n.t("ios.tabs.favorite"), systemImage: "star.fill")
                             }
                             .tint(.yellow)
                         }
@@ -377,39 +386,72 @@ private struct ListsTab: View {
                 }
             }
         }
-        .navigationTitle("Lists")
+        .navigationTitle(l10n.t("ios.tabs.lists"))
     }
 }
 
 private struct SettingsTab: View {
     @EnvironmentObject private var viewModel: MobileAppViewModel
+    @EnvironmentObject private var l10n: AppLocalization
 
     var body: some View {
         Form {
-            Section("Account") {
-                LabeledContent("Signed in as", value: viewModel.displayName ?? "Unknown")
+            Section(l10n.t("ios.settings.account")) {
+                LabeledContent(l10n.t("settings.signed_in_as"), value: viewModel.displayName ?? l10n.t("ios.settings.unknown"))
                 if let favoriteList = viewModel.favoriteList {
-                    LabeledContent("Favorite list", value: favoriteList.name)
+                    LabeledContent(l10n.t("ios.favorite.favorite_list"), value: favoriteList.name)
                 }
-                Button("Sign out", role: .destructive) {
+                Button(l10n.t("ios.settings.sign_out"), role: .destructive) {
                     viewModel.signOut()
                 }
                 .accessibilityIdentifier("settings-sign-out-button")
             }
 
-            Section("App") {
-                LabeledContent("Backend", value: viewModel.backendDisplayName)
-                LabeledContent("Available lists", value: "\(viewModel.lists.count)")
-                LabeledContent("Visible categories", value: "\(viewModel.categories.count)")
+            Section(l10n.t("settings.language")) {
+                LabeledContent(l10n.t("settings.current_language"), value: l10n.currentLanguageSummary())
+                Text(l10n.t("ios.settings.language_helper"))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                languageOption(id: AppLocalization.systemPreferenceID)
+                ForEach(l10n.availableLocaleIDs, id: \.self) { locale in
+                    languageOption(id: locale)
+                }
+            }
+
+            Section(l10n.t("ios.settings.app")) {
+                LabeledContent(l10n.t("ios.settings.backend"), value: viewModel.backendDisplayName)
+                LabeledContent(l10n.t("ios.settings.available_lists"), value: "\(viewModel.lists.count)")
+                LabeledContent(l10n.t("ios.settings.visible_categories"), value: "\(viewModel.categories.count)")
             }
         }
-        .navigationTitle("Settings")
+        .navigationTitle(l10n.t("common.settings"))
         .accessibilityIdentifier("settings-screen")
+    }
+
+    private func languageOption(id: String) -> some View {
+        Button {
+            l10n.setPreference(id: id)
+        } label: {
+            HStack {
+                Text(l10n.languagePreferenceTitle(for: id))
+                Spacer()
+                if l10n.preferenceID == id {
+                    Image(systemName: "checkmark")
+                        .accessibilityLabel(l10n.t("ios.settings.language_option_selected"))
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("language-option-\(id)")
+        .accessibilityValue(
+            l10n.preferenceID == id ? l10n.t("ios.settings.language_option_selected") : ""
+        )
     }
 }
 
 private struct ListDetailScreen: View {
     @EnvironmentObject private var viewModel: MobileAppViewModel
+    @EnvironmentObject private var l10n: AppLocalization
     let listID: UUID
     let showsFavoriteButton: Bool
 
@@ -432,7 +474,15 @@ private struct ListDetailScreen: View {
                         Text(list.name)
                             .font(.title2.weight(.semibold))
                             .accessibilityIdentifier("list-detail-title")
-                        Text("\(viewModel.sections.reduce(0) { $0 + $1.itemCount }) items across \(viewModel.sections.count) sections")
+                        Text(
+                            l10n.t(
+                                "ios.list.item_summary",
+                                [
+                                    "items": viewModel.sections.reduce(0) { $0 + $1.itemCount },
+                                    "sections": viewModel.sections.count,
+                                ]
+                            )
+                        )
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
@@ -443,9 +493,9 @@ private struct ListDetailScreen: View {
             if viewModel.sections.isEmpty {
                 Section {
                     EmptyStateView(
-                        title: "Nothing on this list",
+                        title: l10n.t("ios.list.empty_title"),
                         systemImage: "basket",
-                        message: "Add an item to start grouping it into categories."
+                        message: l10n.t("ios.list.empty_message")
                     )
                 }
             } else {
@@ -458,7 +508,7 @@ private struct ListDetailScreen: View {
                             .background(rowHighlight(for: item))
                         }
                     } header: {
-                        SectionHeader(section: section) { categoryID in
+                        SectionHeader(section: section, title: localizedTitle(for: section)) { categoryID in
                             addItemPresentation = AddItemPresentation(categoryID: categoryID)
                         }
                     }
@@ -466,14 +516,14 @@ private struct ListDetailScreen: View {
             }
         }
         .listStyle(.insetGrouped)
-        .navigationTitle(currentList?.name ?? "List")
+        .navigationTitle(currentList?.name ?? l10n.t("ios.list.fallback_title"))
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     addItemPresentation = AddItemPresentation(categoryID: nil)
                 } label: {
-                    Label("Add item", systemImage: "plus")
+                    Label(l10n.t("ios.item.add_title"), systemImage: "plus")
                 }
                 .accessibilityIdentifier("add-item-button")
             }
@@ -485,7 +535,7 @@ private struct ListDetailScreen: View {
                         viewModel.toggleFavoriteList(id: currentList.id)
                     } label: {
                         Label(
-                            isFavorite ? "Unfavorite" : "Favorite",
+                            isFavorite ? l10n.t("ios.favorite.unfavorite") : l10n.t("ios.tabs.favorite"),
                             systemImage: isFavorite ? "star.fill" : "star"
                         )
                     }
@@ -512,10 +562,23 @@ private struct ListDetailScreen: View {
     private func rowHighlight(for item: GroceryItemRecord) -> Color {
         item.id == highlightedItemID ? Color.accentColor.opacity(0.16) : Color.clear
     }
+
+    private func localizedTitle(for section: GroceryItemSection) -> String {
+        switch section.kind {
+        case .uncategorized:
+            return l10n.t("ios.list.uncategorized")
+        case .checked:
+            return l10n.t("ios.list.checked_off")
+        case .category:
+            return section.title
+        }
+    }
 }
 
 private struct SectionHeader: View {
+    @EnvironmentObject private var l10n: AppLocalization
     let section: GroceryItemSection
+    let title: String
     let onQuickAdd: (UUID?) -> Void
 
     private var allowsQuickAdd: Bool {
@@ -541,7 +604,7 @@ private struct SectionHeader: View {
             Circle()
                 .fill(Color(hex: section.colorHex) ?? Color.secondary.opacity(0.4))
                 .frame(width: 10, height: 10)
-            Text(section.title)
+            Text(title)
             Spacer()
             Text("\(section.itemCount)")
                 .foregroundStyle(.secondary)
@@ -555,7 +618,11 @@ private struct SectionHeader: View {
                 .buttonStyle(.bordered)
                 .controlSize(.mini)
                 .accessibilityIdentifier("quick-add-category-\(section.id)")
-                .accessibilityLabel(section.kind == .uncategorized ? "Quick add uncategorized item" : "Quick add to \(section.title)")
+                .accessibilityLabel(
+                    section.kind == .uncategorized
+                        ? l10n.t("ios.list.quick_add_uncategorized")
+                        : l10n.t("ios.list.quick_add_to", ["category": title])
+                )
             }
         }
         .textCase(nil)
@@ -565,6 +632,7 @@ private struct SectionHeader: View {
 
 private struct ItemRow: View {
     @EnvironmentObject private var viewModel: MobileAppViewModel
+    @EnvironmentObject private var l10n: AppLocalization
     let item: GroceryItemRecord
     let onEdit: () -> Void
 
@@ -584,7 +652,11 @@ private struct ItemRow: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("toggle-item-\(item.id.uuidString)")
-            .accessibilityLabel(item.checked ? "Uncheck \(item.name)" : "Check \(item.name)")
+            .accessibilityLabel(
+                item.checked
+                    ? l10n.t("ios.item.uncheck", ["name": item.name])
+                    : l10n.t("ios.item.check", ["name": item.name])
+            )
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.name)
@@ -592,7 +664,7 @@ private struct ItemRow: View {
                     .foregroundStyle(item.checked ? .secondary : .primary)
 
                 if let quantity = item.quantityText, quantity.isEmpty == false {
-                    Text("Qty: \(quantity)")
+                    Text(l10n.t("ios.item.quantity_value", ["quantity": quantity]))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -619,13 +691,13 @@ private struct ItemRow: View {
                     }
                 }
             } label: {
-                Label("Delete", systemImage: "trash")
+                Label(l10n.t("common.delete"), systemImage: "trash")
             }
 
             Button {
                 onEdit()
             } label: {
-                Label("Edit", systemImage: "pencil")
+                Label(l10n.t("common.edit"), systemImage: "pencil")
             }
             .tint(.blue)
         }
@@ -635,6 +707,7 @@ private struct ItemRow: View {
 private struct AddItemSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var viewModel: MobileAppViewModel
+    @EnvironmentObject private var l10n: AppLocalization
     let initialCategoryID: UUID?
     let onSuggestionFocused: (UUID) -> Void
 
@@ -666,18 +739,18 @@ private struct AddItemSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Item") {
-                    TextField("Name", text: $name)
+                Section(l10n.t("ios.item.item_section")) {
+                    TextField(l10n.t("ios.item.name"), text: $name)
                         .focused($focusedField, equals: .name)
                         .submitLabel(.done)
                         .onSubmit(saveItem)
                         .accessibilityIdentifier("add-item-name-field")
-                    TextField("Quantity", text: $quantity)
+                    TextField(l10n.t("ios.item.quantity"), text: $quantity)
                         .accessibilityIdentifier("add-item-quantity-field")
                 }
 
                 if suggestions.isEmpty == false {
-                    Section("Suggestions") {
+                    Section(l10n.t("ios.item.suggestions")) {
                         ForEach(suggestions) { suggestion in
                             Button {
                                 Task { await useSuggestion(suggestion) }
@@ -689,17 +762,17 @@ private struct AddItemSheet: View {
                             .accessibilityIdentifier("add-item-suggestion-\(suggestion.item.id.uuidString)")
                             .accessibilityLabel(
                                 suggestion.item.checked
-                                    ? "Add \(suggestion.item.name) back to the list"
-                                    : "Jump to \(suggestion.item.name) in the list"
+                                    ? l10n.t("ios.item.add_back_to_list", ["name": suggestion.item.name])
+                                    : l10n.t("ios.item.jump_to_item", ["name": suggestion.item.name])
                             )
                         }
                     }
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
-                Section("Category") {
-                    Picker("Category", selection: $categoryID) {
-                        Text("Uncategorized").tag(Optional<UUID>.none)
+                Section(l10n.t("ios.item.category_section")) {
+                    Picker(l10n.t("ios.item.category"), selection: $categoryID) {
+                        Text(l10n.t("ios.list.uncategorized")).tag(Optional<UUID>.none)
                         ForEach(viewModel.availableCategories) { category in
                             Text(category.name).tag(Optional(category.id))
                         }
@@ -707,20 +780,20 @@ private struct AddItemSheet: View {
                     .accessibilityIdentifier("add-item-category-picker")
                 }
 
-                Section("Notes") {
-                    TextField("Note", text: $note, axis: .vertical)
+                Section(l10n.t("ios.item.notes_section")) {
+                    TextField(l10n.t("ios.item.note"), text: $note, axis: .vertical)
                         .accessibilityIdentifier("add-item-note-field")
                 }
             }
-            .navigationTitle("Add item")
+            .navigationTitle(l10n.t("ios.item.add_title"))
             .navigationBarTitleDisplayMode(.inline)
             .animation(.easeInOut(duration: 0.18), value: suggestions.map(\.id))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(l10n.t("common.cancel")) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
+                    Button(l10n.t("common.save")) {
                         saveItem()
                     }
                     .disabled(canSave == false)
@@ -772,6 +845,7 @@ private struct AddItemSheet: View {
 }
 
 private struct ItemSuggestionRow: View {
+    @EnvironmentObject private var l10n: AppLocalization
     let suggestion: GroceryItemSuggestion
 
     var body: some View {
@@ -798,14 +872,17 @@ private struct ItemSuggestionRow: View {
     }
 
     private var metaText: String {
-        let categoryName = suggestion.category?.name ?? "Uncategorized"
-        return suggestion.item.checked ? "\(categoryName) · checked off" : categoryName
+        let categoryName = suggestion.category?.name ?? l10n.t("ios.list.uncategorized")
+        return suggestion.item.checked
+            ? l10n.t("ios.item.suggestion_checked_off", ["category": categoryName])
+            : categoryName
     }
 }
 
 private struct EditItemSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var viewModel: MobileAppViewModel
+    @EnvironmentObject private var l10n: AppLocalization
     let item: GroceryItemRecord
 
     @State private var name: String
@@ -824,16 +901,16 @@ private struct EditItemSheet: View {
         case offline
         case invalid
 
-        var label: String {
+        var labelKey: String {
             switch self {
             case .saved:
-                return "Saved"
+                return "ios.item.status_saved"
             case .saving:
-                return "Saving..."
+                return "ios.item.status_saving"
             case .offline:
-                return "Saved offline"
+                return "ios.item.status_saved_offline"
             case .invalid:
-                return "Name required"
+                return "ios.item.status_name_required"
             }
         }
 
@@ -865,16 +942,16 @@ private struct EditItemSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Item") {
-                    TextField("Name", text: $name)
+                Section(l10n.t("ios.item.item_section")) {
+                    TextField(l10n.t("ios.item.name"), text: $name)
                         .accessibilityIdentifier("edit-item-name-field")
-                    TextField("Quantity", text: $quantity)
+                    TextField(l10n.t("ios.item.quantity"), text: $quantity)
                         .accessibilityIdentifier("edit-item-quantity-field")
                 }
 
-                Section("Category") {
-                    Picker("Category", selection: $categoryID) {
-                        Text("Uncategorized").tag(Optional<UUID>.none)
+                Section(l10n.t("ios.item.category_section")) {
+                    Picker(l10n.t("ios.item.category"), selection: $categoryID) {
+                        Text(l10n.t("ios.list.uncategorized")).tag(Optional<UUID>.none)
                         ForEach(viewModel.availableCategories) { category in
                             Text(category.name).tag(Optional(category.id))
                         }
@@ -882,23 +959,23 @@ private struct EditItemSheet: View {
                     .accessibilityIdentifier("edit-item-category-picker")
                 }
 
-                Section("Notes") {
-                    TextField("Note", text: $note, axis: .vertical)
+                Section(l10n.t("ios.item.notes_section")) {
+                    TextField(l10n.t("ios.item.note"), text: $note, axis: .vertical)
                         .accessibilityIdentifier("edit-item-note-field")
                 }
 
                 Section {
-                    Label(saveStatus.label, systemImage: saveStatus.systemImage)
+                    Label(l10n.t(saveStatus.labelKey), systemImage: saveStatus.systemImage)
                         .font(.footnote)
                         .foregroundStyle(saveStatus == .invalid ? .red : .secondary)
                         .accessibilityIdentifier("edit-item-save-status")
                 }
             }
-            .navigationTitle("Edit item")
+            .navigationTitle(l10n.t("ios.item.edit_title"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") {
+                    Button(l10n.t("common.done")) {
                         flushCurrentEdit()
                         dismiss()
                     }
@@ -907,7 +984,7 @@ private struct EditItemSheet: View {
                     Button {
                         applyUndo()
                     } label: {
-                        Label("Undo", systemImage: "arrow.uturn.backward")
+                        Label(l10n.t("common.undo"), systemImage: "arrow.uturn.backward")
                     }
                     .disabled(history.canUndo == false)
                     .accessibilityIdentifier("edit-item-undo-button")
@@ -915,7 +992,7 @@ private struct EditItemSheet: View {
                     Button {
                         applyRedo()
                     } label: {
-                        Label("Redo", systemImage: "arrow.uturn.forward")
+                        Label(l10n.t("common.redo"), systemImage: "arrow.uturn.forward")
                     }
                     .disabled(history.canRedo == false)
                     .accessibilityIdentifier("edit-item-redo-button")

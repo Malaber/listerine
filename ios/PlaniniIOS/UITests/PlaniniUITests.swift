@@ -216,6 +216,7 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(tapTab("Settings", in: app))
         XCTAssertTrue(app.buttons["settings-sign-out-button"].waitForExistence(timeout: 5))
         captureScreenshot(named: "ios-ui-settings")
+        assertLanguageSettings(in: app)
     }
 
     func testListReceivesLiveUpdates() throws {
@@ -432,6 +433,47 @@ final class PlaniniUITests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
         return app.staticTexts[status].exists
+    }
+
+    private func assertLanguageSettings(in app: XCUIApplication) {
+        let germanOption = app.buttons["language-option-de"]
+        scrollToElement(germanOption, in: app, maxSwipes: 3)
+        XCTAssertTrue(germanOption.waitForExistence(timeout: 3))
+        tapElement(germanOption)
+
+        XCTAssertTrue(
+            firstExistingElement(
+                [app.navigationBars["Einstellungen"], app.staticTexts["Einstellungen"]],
+                timeout: 3
+            ).exists
+        )
+        XCTAssertTrue(app.buttons["settings-sign-out-button"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["settings-sign-out-button"].label.contains("Abmelden"))
+        XCTAssertTrue(waitForLanguageOptionSelected(app.buttons["language-option-de"]))
+        captureScreenshot(named: "ios-ui-settings-german")
+
+        let systemOption = app.buttons["language-option-system"]
+        scrollToElement(systemOption, in: app, maxSwipes: 3)
+        XCTAssertTrue(systemOption.waitForExistence(timeout: 3))
+        tapElement(systemOption)
+
+        XCTAssertTrue(waitForLanguageOptionSelected(app.buttons["language-option-system"]))
+    }
+
+    private func waitForLanguageOptionSelected(
+        _ element: XCUIElement,
+        timeout: TimeInterval = 3
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let value = element.valueText
+            if value.contains("Selected") || value.contains("Ausgewählt") {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
+        let value = element.valueText
+        return value.contains("Selected") || value.contains("Ausgewählt")
     }
 
     private func waitForElementToDisappear(_ element: XCUIElement, timeout: TimeInterval = 8) -> Bool {
