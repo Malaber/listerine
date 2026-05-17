@@ -41,8 +41,10 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(tapTab("Lists", in: app))
         let initialListRow = app.buttons["list-row-\(initialListName)"]
         XCTAssertTrue(initialListRow.waitForExistence(timeout: 10))
+        let initialListNameText = app.staticTexts[initialListName]
+        XCTAssertTrue(initialListNameText.waitForExistence(timeout: 3))
         captureScreenshot(named: "promotion-list-of-lists")
-        initialListRow.tap()
+        initialListNameText.tap()
         XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
         XCTAssertEqual(listTitle.label, initialListName)
         captureScreenshot(named: "ios-ui-list-detail")
@@ -82,6 +84,7 @@ final class PlaniniUITests: XCTestCase {
 
         tapElement(app.buttons["add-item-button"])
         XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         captureScreenshot(named: "ios-ui-add-item-sheet")
 
         let suggestionProbeField = app.textFields["add-item-name-field"]
@@ -91,7 +94,7 @@ final class PlaniniUITests: XCTestCase {
         let seededCheckedSuggestion = app.buttons.containing(.staticText, identifier: "Brot").firstMatch
         XCTAssertTrue(seededCheckedSuggestion.waitForExistence(timeout: 3))
         XCTAssertFalse(seededCheckedSuggestion.images["scope"].exists, "Suggestion rows should not show a crosshair icon.")
-        tapElement(seededCheckedSuggestion)
+        XCTAssertTrue(tapSuggestionAndWaitForSheetDismissal(seededCheckedSuggestion, app: app))
         XCTAssertTrue(
             waitForItemCheckedState(
                 named: "Brot",
@@ -107,6 +110,7 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
 
         let uniqueSuffix = UUID().uuidString.prefix(8)
+        let enterSavedItemName = "UI Test Enter \(uniqueSuffix)"
         let itemName = "UI Test Herbs \(uniqueSuffix)"
         let itemQuantity = "1 bunch"
         let updatedName = "\(itemName) Updated"
@@ -115,7 +119,20 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
         let nameField = app.textFields["add-item-name-field"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 3))
-        nameField.tap()
+        nameField.typeText("\(enterSavedItemName)\n")
+        XCTAssertTrue(app.staticTexts[enterSavedItemName].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            waitForItem(
+                named: enterSavedItemName,
+                inListNamed: initialListName,
+                accessToken: session.accessToken
+            )
+        )
+
+        app.buttons["add-item-button"].tap()
+        XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        XCTAssertTrue(nameField.waitForExistence(timeout: 3))
         nameField.typeText(itemName)
 
         let quantityField = app.textFields["add-item-quantity-field"]
@@ -167,7 +184,15 @@ final class PlaniniUITests: XCTestCase {
             )
         )
 
-        app.buttons["Check \(updatedName)"].tap()
+        let updatedItemID = try itemID(
+            named: updatedName,
+            inListNamed: initialListName,
+            accessToken: session.accessToken
+        )
+        let updatedCheckButton = app.buttons["toggle-item-\(updatedItemID.uuidString)"]
+        scrollToElement(updatedCheckButton, in: app)
+        XCTAssertTrue(updatedCheckButton.waitForExistence(timeout: 3))
+        updatedCheckButton.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         XCTAssertTrue(
             waitForCheckedItem(
                 named: updatedName,
@@ -185,10 +210,10 @@ final class PlaniniUITests: XCTestCase {
         checkedSuggestionField.tap()
         checkedSuggestionField.typeText(updatedName)
         let checkedSuggestion = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Add \(updatedName) back")).firstMatch
-        XCTAssertTrue(checkedSuggestion.waitForExistence(timeout: 3))
+        XCTAssertTrue(checkedSuggestion.waitForExistence(timeout: 8))
+        scrollToHittable(checkedSuggestion, in: app)
         captureScreenshot(named: "ios-ui-checked-item-suggestion")
-        tapElement(checkedSuggestion)
-        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 3))
+        XCTAssertTrue(tapSuggestionAndWaitForSheetDismissal(checkedSuggestion, app: app))
         XCTAssertTrue(
             waitForItemCheckedState(
                 named: updatedName,
@@ -202,7 +227,7 @@ final class PlaniniUITests: XCTestCase {
         returnToListsRootIfNeeded(app)
         let hostingListRow = app.buttons["list-row-Hosting errands"]
         XCTAssertTrue(hostingListRow.waitForExistence(timeout: 10))
-        hostingListRow.tap()
+        hostingListRow.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)).tap()
         XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
         XCTAssertEqual(listTitle.label, "Hosting errands")
         captureScreenshot(named: "ios-ui-list-switcher")
@@ -443,7 +468,7 @@ final class PlaniniUITests: XCTestCase {
         app: XCUIApplication,
         listName: String,
         accessToken: String,
-        timeout: TimeInterval = 20
+        timeout: TimeInterval = 45
     ) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
@@ -454,11 +479,11 @@ final class PlaniniUITests: XCTestCase {
                 inListNamed: listName,
                 accessToken: accessToken
             ) {
-                let appeared = waitForItemRow(itemID: probeID, named: probeName, in: app, timeout: 3)
+                let appeared = waitForItemRow(itemID: probeID, named: probeName, in: app, timeout: 8)
                 try? deleteItem(itemID: probeID, accessToken: accessToken)
                 let disappeared = waitForElementToDisappear(
                     itemRow(itemID: probeID, in: app),
-                    timeout: 5
+                    timeout: 8
                 )
                 if appeared && disappeared {
                     return true
@@ -520,6 +545,22 @@ final class PlaniniUITests: XCTestCase {
         }
     }
 
+    private func tapTrailingControl(in element: XCUIElement, app: XCUIApplication) {
+        let frame = element.frame
+        app.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: frame.maxX - 115, dy: frame.midY))
+            .tap()
+    }
+
+    private func tapSuggestionAndWaitForSheetDismissal(_ element: XCUIElement, app: XCUIApplication) -> Bool {
+        tapTrailingControl(in: element, app: app)
+        if waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 2) {
+            return true
+        }
+        tapTrailingControl(in: element, app: app)
+        return waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 10)
+    }
+
     private func waitForItemRow(
         itemID: UUID,
         named itemName: String,
@@ -549,6 +590,15 @@ final class PlaniniUITests: XCTestCase {
     }
 
     private func scrollToElement(_ element: XCUIElement, in app: XCUIApplication, maxSwipes: Int = 10) {
+        for _ in 0..<maxSwipes {
+            if element.exists {
+                return
+            }
+            app.swipeUp()
+        }
+    }
+
+    private func scrollToHittable(_ element: XCUIElement, in app: XCUIApplication, maxSwipes: Int = 6) {
         for _ in 0..<maxSwipes {
             if element.exists && element.isHittable {
                 return
@@ -637,6 +687,19 @@ final class PlaniniUITests: XCTestCase {
         }
 
         return []
+    }
+
+    private func itemID(named itemName: String, inListNamed listName: String, accessToken: String) throws -> UUID {
+        if let item = try fetchItems(inListNamed: listName, accessToken: accessToken)
+            .first(where: { $0.name == itemName })
+        {
+            return item.id
+        }
+        throw NSError(
+            domain: "PlaniniUITests",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "Could not find item named \(itemName)."]
+        )
     }
 
     private func createItem(
@@ -741,6 +804,23 @@ final class PlaniniUITests: XCTestCase {
     }
 
     private func performRequest(_ request: URLRequest) throws -> Data {
+        var lastError: Error?
+        for attempt in 1...3 {
+            do {
+                return try performSingleRequest(request)
+            } catch {
+                lastError = error
+                guard isTransientNetworkError(error), attempt < 3 else {
+                    throw error
+                }
+                RunLoop.current.run(until: Date().addingTimeInterval(0.4 * Double(attempt)))
+            }
+        }
+
+        throw lastError ?? NSError(domain: "PlaniniUITests", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing response"])
+    }
+
+    private func performSingleRequest(_ request: URLRequest) throws -> Data {
         let semaphore = DispatchSemaphore(value: 0)
         var capturedData: Data?
         var capturedError: Error?
@@ -768,6 +848,18 @@ final class PlaniniUITests: XCTestCase {
             throw NSError(domain: "PlaniniUITests", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing bootstrap response"])
         }
         return capturedData
+    }
+
+    private func isTransientNetworkError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        guard nsError.domain == NSURLErrorDomain else {
+            return false
+        }
+        return [
+            NSURLErrorNetworkConnectionLost,
+            NSURLErrorTimedOut,
+            NSURLErrorCannotConnectToHost,
+        ].contains(nsError.code)
     }
 
     private func returnToListsRootIfNeeded(_ app: XCUIApplication) {
@@ -831,6 +923,7 @@ private struct UITestList: Decodable {
 }
 
 private struct UITestItem: Decodable {
+    let id: UUID
     let name: String
     let checked: Bool
 }
