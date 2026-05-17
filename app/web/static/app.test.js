@@ -573,7 +573,17 @@ function createEditListRoot() {
       <div data-item-list></div>
       <div data-item-edit-overlay hidden>
         <section data-item-edit-panel hidden>
-          <h2 data-item-edit-title></h2>
+          <div class="add-item-panel-header">
+            <h2 data-item-edit-title></h2>
+            <div data-item-edit-header-actions>
+              <div data-item-edit-status hidden>
+                <span data-item-edit-spinner></span>
+                <span data-item-edit-status-text></span>
+              </div>
+              <button type="button" data-item-edit-undo disabled>Undo</button>
+              <button type="button" data-item-edit-redo disabled>Redo</button>
+            </div>
+          </div>
           <form data-item-edit-form>
             <input type="text" name="name" />
             <input type="text" name="quantity_text" />
@@ -581,12 +591,6 @@ function createEditListRoot() {
             <label data-item-edit-list-field hidden>
               <select name="list_id" data-item-edit-list-select></select>
             </label>
-            <div data-item-edit-status hidden>
-              <span data-item-edit-spinner></span>
-              <span data-item-edit-status-text></span>
-            </div>
-            <button type="button" data-item-edit-undo disabled>Undo</button>
-            <button type="button" data-item-edit-redo disabled>Redo</button>
           </form>
         </section>
       </div>
@@ -1686,6 +1690,10 @@ test("live item editing debounces saves, flushes before close, and undoes local 
       },
     });
     assert.equal(document.querySelector("[data-item-edit-status-text]").textContent, "Saved.");
+    assert.equal(
+      document.querySelector("[data-item-edit-status]").closest("[data-item-edit-header-actions]") !== null,
+      true,
+    );
     assert.equal(window.localStorage.getItem(itemEditHistoryStorageKey("list-1")).includes("Milk"), true);
 
     form.elements.namedItem("quantity_text").value = "wrong amount";
