@@ -204,6 +204,69 @@ final class PlaniniUITests: XCTestCase {
             )
         )
 
+        let moveItemName = "UI Test Move \(uniqueSuffix)"
+        app.buttons["add-item-button"].tap()
+        XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
+        let moveNameField = app.textFields["add-item-name-field"]
+        XCTAssertTrue(moveNameField.waitForExistence(timeout: 3))
+        moveNameField.typeText(moveItemName)
+        app.buttons["add-item-save-button"].tap()
+        XCTAssertTrue(app.staticTexts[moveItemName].waitForExistence(timeout: 5))
+        let moveItemID = try itemID(
+            named: moveItemName,
+            inListNamed: initialListName,
+            accessToken: session.accessToken
+        )
+        app.staticTexts[moveItemName].tap()
+        XCTAssertTrue(app.otherElements["edit-item-sheet"].waitForExistence(timeout: 3))
+        let movePicker = firstExistingElement(
+            [
+                app.buttons["edit-item-list-picker"],
+                app.pickers["edit-item-list-picker"],
+                app.otherElements["edit-item-list-picker"],
+                app.buttons["Move to list"],
+            ],
+            timeout: 3
+        )
+        tapElement(movePicker)
+        let hostingChoice = firstExistingElement(
+            [
+                app.buttons["Hosting errands"],
+                app.staticTexts["Hosting errands"],
+                app.cells["Hosting errands"],
+            ],
+            timeout: 3
+        )
+        tapElement(hostingChoice)
+        XCTAssertTrue(waitForElementToDisappear(app.otherElements["edit-item-sheet"], timeout: 8))
+        XCTAssertTrue(
+            waitForItem(
+                named: moveItemName,
+                inListNamed: "Hosting errands",
+                accessToken: session.accessToken
+            )
+        )
+        let moveNotice = app.otherElements["item-move-notice-\(moveItemID.uuidString)"]
+        XCTAssertTrue(moveNotice.waitForExistence(timeout: 5))
+        XCTAssertTrue(moveNotice.label.contains(moveItemName))
+        XCTAssertTrue(moveNotice.label.contains("Hosting errands"))
+        app.buttons["move-item-undo-button-\(moveItemID.uuidString)"].tap()
+        XCTAssertTrue(
+            waitForItem(
+                named: moveItemName,
+                inListNamed: initialListName,
+                accessToken: session.accessToken
+            )
+        )
+        XCTAssertTrue(
+            waitForItemAbsent(
+                named: moveItemName,
+                inListNamed: "Hosting errands",
+                accessToken: session.accessToken
+            )
+        )
+        try deleteItem(itemID: moveItemID, accessToken: session.accessToken)
+
         XCTAssertTrue(tapTab("Lists", in: app))
         returnToListsRootIfNeeded(app)
         let hostingListRow = app.buttons["list-row-Hosting errands"]
@@ -411,6 +474,24 @@ final class PlaniniUITests: XCTestCase {
         while Date() < deadline {
             if let items = try? fetchItems(inListNamed: listName, accessToken: accessToken),
                 items.contains(where: { $0.name == itemName })
+            {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.35))
+        }
+        return false
+    }
+
+    private func waitForItemAbsent(
+        named itemName: String,
+        inListNamed listName: String,
+        accessToken: String,
+        timeout: TimeInterval = 8
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let items = try? fetchItems(inListNamed: listName, accessToken: accessToken),
+                items.contains(where: { $0.name == itemName }) == false
             {
                 return true
             }
