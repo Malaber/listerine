@@ -1561,9 +1561,11 @@ async function main() {
     );
     await editForm.locator(".category-radio-option", { hasText: "Backwaren" }).click();
     await editForm.locator('input[name="quantity_text"]').fill("4 loaves");
+    const editPanel = page.locator("[data-item-edit-panel]");
+    const editHeader = editPanel.locator(".add-item-panel-header");
     await expectVisible(
-      editForm.locator("[data-item-edit-status]", { hasText: "Saved." }),
-      "Expected quantity edit to live-save after debounce",
+      editHeader.locator("[data-item-edit-status]", { hasText: "Saved." }),
+      "Expected quantity edit to live-save in the sticky header after debounce",
     );
     await editForm.locator('input[name="note"]').fill("for the weekend");
     await page.locator("[data-item-edit-panel] .add-item-close[data-item-edit-close]").click();
@@ -1586,11 +1588,17 @@ async function main() {
       page.locator("[data-item-edit-header-actions]"),
       "Edit history controls and close button should stay in the sticky header",
     );
-    const editHeaderMetrics = await page.locator("[data-item-edit-panel] .add-item-panel-header").evaluate((header) => {
+    const editHeaderMetrics = await editHeader.evaluate((header) => {
       const panel = header.closest("[data-item-edit-panel]");
       const undo = header.querySelector("[data-item-edit-undo]");
       const icon = undo?.querySelector(".item-edit-history-icon");
-      if (!(panel instanceof HTMLElement) || !(undo instanceof HTMLElement) || !(icon instanceof Element)) {
+      const status = header.querySelector("[data-item-edit-status]");
+      if (
+        !(panel instanceof HTMLElement)
+          || !(undo instanceof HTMLElement)
+          || !(icon instanceof Element)
+          || !(status instanceof HTMLElement)
+      ) {
         return null;
       }
       const headerRect = header.getBoundingClientRect();
@@ -1607,6 +1615,7 @@ async function main() {
         panelLeft: panelRect.left,
         panelRight: panelRect.right,
         panelTop: panelRect.top,
+        statusInHeader: status.closest(".add-item-panel-header") === header,
         undoHeight: undoRect.height,
         undoWidth: undoRect.width,
       };
@@ -1632,9 +1641,13 @@ async function main() {
         && editHeaderMetrics.iconHeight <= 18,
       "Edit history icons should stay compact",
     );
+    assert(
+      editHeaderMetrics.statusInHeader,
+      "Live save status should belong to the sticky edit header",
+    );
     await editForm.locator('input[name="quantity_text"]').fill("wrong amount");
     await expectVisible(
-      editForm.locator("[data-item-edit-status]", { hasText: "Saved." }),
+      editHeader.locator("[data-item-edit-status]", { hasText: "Saved." }),
       "Expected wrong quantity to live-save before undo",
     );
     await page.getByRole("button", { name: "Undo last edit" }).click();
