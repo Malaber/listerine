@@ -50,6 +50,8 @@ final class PlaniniUITests: XCTestCase {
         captureScreenshot(named: "ios-ui-list-detail")
 
         XCTAssertTrue(app.staticTexts["Uncategorized"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Konserven"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Milch & Eier"].waitForExistence(timeout: 3))
         let favoriteButton = app.buttons["favorite-list-button"]
         XCTAssertTrue(favoriteButton.waitForExistence(timeout: 3))
         XCTAssertTrue(favoriteButton.label.contains("Unfavorite"))

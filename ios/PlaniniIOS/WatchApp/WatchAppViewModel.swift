@@ -12,6 +12,7 @@ private let watchAppLog = Logger(
 final class WatchAppViewModel: ObservableObject {
     @Published private(set) var state: SharedAppState
     @Published private(set) var categories: [GroceryCategorySummary] = []
+    @Published private(set) var categoryOrder: [ListCategoryOrderEntry] = []
     @Published private(set) var selectedListID: UUID?
     @Published var draftItemName = ""
     @Published var errorMessage: String?
@@ -30,12 +31,15 @@ final class WatchAppViewModel: ObservableObject {
         connectivityBridge: WatchConnectivityBridge = WatchConnectivityBridge(),
         liveUpdates: WatchListLiveUpdateClient = WatchListLiveUpdateClient()
     ) {
+        let initialState = store.load()
         self.store = store
         self.backendClient = backendClient
         self.connectivityBridge = connectivityBridge
         self.liveUpdates = liveUpdates
-        state = store.load()
-        selectedListID = store.load().favoriteListID
+        state = initialState
+        categories = initialState.categories
+        categoryOrder = initialState.categoryOrder
+        selectedListID = initialState.favoriteListID
         self.connectivityBridge.onStateUpdate = { [weak self] updatedState in
             self?.applySyncedState(updatedState)
         }
@@ -80,6 +84,15 @@ final class WatchAppViewModel: ObservableObject {
         }
     }
 
+    func sections(for list: GroceryListSummary) -> [GroceryItemSection] {
+        guard selectedListID == list.id else { return [] }
+        return GroceryItemSectionBuilder.build(
+            items: state.items,
+            categories: categories,
+            categoryOrder: categoryOrder
+        )
+    }
+
     func categoryColorHex(for item: GroceryItemRecord) -> String? {
         guard let categoryID = item.categoryID else { return nil }
         return categories.first(where: { $0.id == categoryID })?.colorHex
@@ -121,7 +134,8 @@ final class WatchAppViewModel: ObservableObject {
             if state.items.first?.listID != list.id {
                 state.items = []
             }
-            categories = []
+            categories = list.id == state.favoriteListID ? state.categories : []
+            categoryOrder = list.id == state.favoriteListID ? state.categoryOrder : []
         }
         await refreshSelectedList()
     }
@@ -219,8 +233,11 @@ final class WatchAppViewModel: ObservableObject {
         var updatedState = state
         updatedState.authToken = nil
         updatedState.items = []
+        updatedState.categories = []
+        updatedState.categoryOrder = []
         state = updatedState
         categories = []
+        categoryOrder = []
         store.save(updatedState)
         liveUpdates.disconnect()
     }
@@ -256,6 +273,10 @@ final class WatchAppViewModel: ObservableObject {
         if selectedListID == nil || displayedLists.contains(where: { $0.id == selectedListID }) == false {
             selectedListID = updatedState.favoriteListID ?? updatedState.lists.first?.id
         }
+        if selectedListID == updatedState.favoriteListID {
+            categories = updatedState.categories
+            categoryOrder = updatedState.categoryOrder
+        }
         store.save(updatedState)
         if let selectedListID {
             liveUpdates.connect(listID: selectedListID, using: updatedState)
@@ -280,6 +301,7 @@ final class WatchAppViewModel: ObservableObject {
             let snapshot = try await backendClient.refreshList(for: listID, using: state)
             state = snapshot.state
             categories = snapshot.categories
+            categoryOrder = snapshot.categoryOrder
             store.save(snapshot.state)
         } catch {
             if let backendError = error as? WatchBackendClientError, backendError == .unauthorized {
@@ -294,6 +316,7 @@ final class WatchAppViewModel: ObservableObject {
     private func applySnapshot(_ snapshot: WatchListSnapshot) {
         state = snapshot.state
         categories = snapshot.categories
+        categoryOrder = snapshot.categoryOrder
         store.save(snapshot.state)
     }
 }
