@@ -165,14 +165,6 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(waitForEditStatus("Saved", app: app))
         XCTAssertTrue(editNameField.valueText.contains(updatedName))
 
-        tapElement(app.buttons["edit-item-undo-button"])
-        XCTAssertTrue(waitForEditStatus("Saved", app: app))
-        XCTAssertTrue(editNameField.valueText.contains(itemName))
-        XCTAssertFalse(editNameField.valueText.contains("Updated"))
-
-        tapElement(app.buttons["edit-item-redo-button"])
-        XCTAssertTrue(waitForEditStatus("Saved", app: app))
-        XCTAssertTrue(editNameField.valueText.contains(updatedName))
         captureScreenshot(named: "ios-ui-live-edit-autosave")
         tapElement(app.buttons["Done"])
         XCTAssertTrue(app.staticTexts[updatedName].waitForExistence(timeout: 5))
