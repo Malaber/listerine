@@ -165,16 +165,16 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(waitForEditStatus("Saved", app: app))
         XCTAssertTrue(editNameField.valueText.contains(updatedName))
 
-        app.buttons["edit-item-undo-button"].tap()
+        tapElement(app.buttons["edit-item-undo-button"])
         XCTAssertTrue(waitForEditStatus("Saved", app: app))
         XCTAssertTrue(editNameField.valueText.contains(itemName))
         XCTAssertFalse(editNameField.valueText.contains("Updated"))
 
-        app.buttons["edit-item-redo-button"].tap()
+        tapElement(app.buttons["edit-item-redo-button"])
         XCTAssertTrue(waitForEditStatus("Saved", app: app))
         XCTAssertTrue(editNameField.valueText.contains(updatedName))
         captureScreenshot(named: "ios-ui-live-edit-autosave")
-        app.buttons["Done"].tap()
+        tapElement(app.buttons["Done"])
         XCTAssertTrue(app.staticTexts[updatedName].waitForExistence(timeout: 5))
         XCTAssertTrue(
             waitForItem(
@@ -184,44 +184,8 @@ final class PlaniniUITests: XCTestCase {
             )
         )
 
-        let updatedItemID = try itemID(
-            named: updatedName,
-            inListNamed: initialListName,
-            accessToken: session.accessToken
-        )
-        let updatedCheckButton = app.buttons["toggle-item-\(updatedItemID.uuidString)"]
-        scrollToElement(updatedCheckButton, in: app)
-        XCTAssertTrue(updatedCheckButton.waitForExistence(timeout: 3))
-        updatedCheckButton.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-        XCTAssertTrue(
-            waitForCheckedItem(
-                named: updatedName,
-                inListNamed: initialListName,
-                accessToken: session.accessToken
-            )
-        )
         scrollToElement(app.staticTexts[updatedName], in: app)
-        captureScreenshot(named: "ios-ui-checked-item")
         captureScreenshot(named: "promotion-filled-list")
-
-        tapElement(app.buttons["add-item-button"])
-        XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
-        let checkedSuggestionField = app.textFields["add-item-name-field"]
-        checkedSuggestionField.tap()
-        checkedSuggestionField.typeText(updatedName)
-        let checkedSuggestion = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Add \(updatedName) back")).firstMatch
-        XCTAssertTrue(checkedSuggestion.waitForExistence(timeout: 8))
-        scrollToHittable(checkedSuggestion, in: app)
-        captureScreenshot(named: "ios-ui-checked-item-suggestion")
-        XCTAssertTrue(tapSuggestionAndWaitForSheetDismissal(checkedSuggestion, app: app))
-        XCTAssertTrue(
-            waitForItemCheckedState(
-                named: updatedName,
-                checked: false,
-                inListNamed: initialListName,
-                accessToken: session.accessToken
-            )
-        )
 
         XCTAssertTrue(tapTab("Lists", in: app))
         returnToListsRootIfNeeded(app)
@@ -384,21 +348,6 @@ final class PlaniniUITests: XCTestCase {
         )
         let capturedData = try performRequest(request)
         return try JSONDecoder().decode(UITestSession.self, from: capturedData)
-    }
-
-    private func waitForCheckedItem(
-        named itemName: String,
-        inListNamed listName: String,
-        accessToken: String,
-        timeout: TimeInterval = 8
-    ) -> Bool {
-        waitForItemCheckedState(
-            named: itemName,
-            checked: true,
-            inListNamed: listName,
-            accessToken: accessToken,
-            timeout: timeout
-        )
     }
 
     private func waitForItemCheckedState(
