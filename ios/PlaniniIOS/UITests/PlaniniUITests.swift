@@ -143,6 +143,7 @@ final class PlaniniUITests: XCTestCase {
 
         let editNameField = app.textFields["edit-item-name-field"]
         editNameField.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         editNameField.typeText(" Updated")
         XCTAssertTrue(waitForEditStatus("Saved", app: app))
         XCTAssertTrue(editNameField.valueText.contains(updatedName))
