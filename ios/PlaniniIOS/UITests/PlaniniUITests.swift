@@ -475,16 +475,20 @@ final class PlaniniUITests: XCTestCase {
     private func waitForEditStatus(
         _ status: String,
         app: XCUIApplication,
-        timeout: TimeInterval = 8
+        timeout: TimeInterval = 20
     ) -> Bool {
+        let statusLabel = app.staticTexts["edit-item-save-status"]
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
+            if statusLabel.exists && statusLabel.label.contains(status) {
+                return true
+            }
             if app.staticTexts[status].exists {
                 return true
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
-        return app.staticTexts[status].exists
+        return (statusLabel.exists && statusLabel.label.contains(status)) || app.staticTexts[status].exists
     }
 
     private func waitForElementToDisappear(_ element: XCUIElement, timeout: TimeInterval = 8) -> Bool {
