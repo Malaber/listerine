@@ -482,7 +482,19 @@ def test_pwa_assets_are_exposed(client) -> None:
     assert "Planini helps households share grocery lists" in login_page.text
     assert 'link rel="canonical" href="http://testserver/login"' in login_page.text
     assert 'property="og:site_name" content="Planini"' in login_page.text
-    assert 'name="twitter:card" content="summary"' in login_page.text
+    assert 'property="og:url" content="http://testserver/login"' in login_page.text
+    assert (
+        'property="og:image" content="http://testserver/static/img/link-preview.png"'
+        in login_page.text
+    )
+    assert 'property="og:image:type" content="image/png"' in login_page.text
+    assert 'property="og:image:width" content="1200"' in login_page.text
+    assert 'property="og:image:height" content="630"' in login_page.text
+    assert 'name="twitter:card" content="summary_large_image"' in login_page.text
+    assert (
+        'name="twitter:image" content="http://testserver/static/img/link-preview.png"'
+        in login_page.text
+    )
     assert 'rel="manifest" href="/manifest.webmanifest"' in login_page.text
     assert 'name="theme-color" content="#6b4f3b"' in login_page.text
     assert 'rel="icon" type="image/png" href="/static/img/Favicon.png"' in login_page.text
@@ -494,6 +506,11 @@ def test_pwa_assets_are_exposed(client) -> None:
     assert favicon.status_code == 200
     assert favicon.headers["content-type"].startswith("image/png")
     assert favicon.content.startswith(b"\x89PNG\r\n\x1a\n")
+
+    link_preview = client.get("/static/img/link-preview.png")
+    assert link_preview.status_code == 200
+    assert link_preview.headers["content-type"].startswith("image/png")
+    assert link_preview.content.startswith(b"\x89PNG\r\n\x1a\n")
 
     manifest = client.get("/manifest.webmanifest")
     assert manifest.status_code == 200

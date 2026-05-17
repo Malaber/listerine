@@ -378,6 +378,37 @@ async function assertFaviconAsset(page, requestContext) {
   );
 }
 
+async function assertLinkPreviewMetadata(page, requestContext) {
+  logStep("Checking social link preview metadata uses PNG banner asset");
+  const ogImage = page.locator('head meta[property="og:image"]').first();
+  await ogImage.waitFor({ state: "attached" });
+  const ogImageUrl = await ogImage.getAttribute("content");
+  const expectedImageUrl = new URL("/static/img/link-preview.png", baseUrl).toString();
+  assert.equal(ogImageUrl, expectedImageUrl);
+  assert.equal(
+    await page.locator('head meta[name="twitter:card"]').getAttribute("content"),
+    "summary_large_image",
+  );
+  assert.equal(
+    await page.locator('head meta[property="og:image:type"]').getAttribute("content"),
+    "image/png",
+  );
+  assert.equal(
+    await page.locator('head meta[property="og:image:width"]').getAttribute("content"),
+    "1200",
+  );
+  assert.equal(
+    await page.locator('head meta[property="og:image:height"]').getAttribute("content"),
+    "630",
+  );
+  const response = await requestContext.fetch(ogImageUrl);
+  assert(response.ok(), `Expected link preview image to load, got ${response.status()}`);
+  assert(
+    response.headers()["content-type"]?.startsWith("image/png"),
+    "Expected link preview image to be served as image/png",
+  );
+}
+
 async function screenshot(page, name) {
   await page.screenshot({ path: path.join(artifactDir, `${name}.png`), fullPage: true });
 }
@@ -1346,6 +1377,7 @@ async function main() {
     await loginFromRoot(page, owner, "Households and Lists");
     await screenshot(page, "promotion-list-of-lists");
     await assertFaviconAsset(page, context.request);
+    await assertLinkPreviewMetadata(page, context.request);
     await assertHeaderActionsFitTranslatedLabels(page);
     await runAdminPasskeyAddLinkFlow(page, seed, rpId);
     await runPasskeyManagementFlow(page, context, owner, rpId, authenticator);

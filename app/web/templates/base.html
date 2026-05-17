@@ -10,20 +10,33 @@
     />
     <link rel="canonical" href="{{ canonical_url }}" />
     <meta property="og:type" content="website" />
+    <meta property="og:url" content="{{ canonical_url }}" />
     <meta property="og:site_name" content="{{ t("common.app_name") }}" />
     <meta property="og:title" content="{{ t("common.app_name") }}" />
     <meta
       property="og:description"
       content="Shared shopping lists and household coordination in one app."
     />
-    <meta property="og:image" content="/static/img/planini.svg" />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:image" content="{{ link_preview_image_url }}" />
+    <meta property="og:image:secure_url" content="{{ link_preview_image_url }}" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="Planini preview card with logo and shared shopping list message."
+    />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="{{ t("common.app_name") }}" />
     <meta
       name="twitter:description"
       content="Shared shopping lists and household coordination in one app."
     />
-    <meta name="twitter:image" content="/static/img/planini.svg" />
+    <meta name="twitter:image" content="{{ link_preview_image_url }}" />
+    <meta
+      name="twitter:image:alt"
+      content="Planini preview card with logo and shared shopping list message."
+    />
     <meta name="theme-color" content="#6b4f3b" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
