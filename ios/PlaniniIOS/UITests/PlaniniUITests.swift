@@ -99,7 +99,7 @@ final class PlaniniUITests: XCTestCase {
 
         let uniqueSuffix = UUID().uuidString.prefix(8)
         let enterSavedItemName = "UI Test Enter \(uniqueSuffix)"
-        let itemName = "UI Test Herbs \(uniqueSuffix)"
+        let itemName = "UI Test Item \(uniqueSuffix)"
         let itemQuantity = "1 bunch"
         let updatedName = "\(itemName) Updated"
 
