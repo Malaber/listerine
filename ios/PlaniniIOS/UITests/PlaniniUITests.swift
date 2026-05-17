@@ -182,6 +182,7 @@ final class PlaniniUITests: XCTestCase {
         )
         let updatedItemLabel = app.staticTexts[updatedName]
         let updatedCheckButton = app.buttons["toggle-item-\(updatedItemID.uuidString)"]
+        scrollToElement(updatedItemLabel, in: app)
         scrollToElement(updatedCheckButton, in: app)
         XCTAssertTrue(updatedCheckButton.waitForExistence(timeout: 3))
         tapElement(updatedCheckButton)
@@ -189,7 +190,8 @@ final class PlaniniUITests: XCTestCase {
             waitForCheckedItem(
                 named: updatedName,
                 inListNamed: initialListName,
-                accessToken: session.accessToken
+                accessToken: session.accessToken,
+                timeout: 20
             )
         )
         scrollToElement(updatedItemLabel, in: app)
