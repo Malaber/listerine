@@ -284,6 +284,51 @@ final class PlaniniUITests: XCTestCase {
         )
     }
 
+    func testCachedListDoesNotShowErrorAlertWhenBackendIsOffline() throws {
+        try assertLocalTestBackend()
+        let session = if let injectedSession {
+            injectedSession
+        } else {
+            try bootstrapSession(email: userEmail)
+        }
+
+        let app = XCUIApplication()
+        app.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
+        app.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
+        app.launchEnvironment["PLANINI_UI_TEST_ACCESS_TOKEN"] = session.accessToken
+        app.launchEnvironment["PLANINI_UI_TEST_DISPLAY_NAME"] = session.displayName
+        app.launchEnvironment["PLANINI_UI_TEST_INITIAL_LIST_NAME"] = initialListName
+        app.launch()
+
+        let listTitle = app.staticTexts["list-detail-title"]
+        XCTAssertTrue(
+            openInitialListDetail(in: app, listTitle: listTitle),
+            "Expected online launch to cache the initial list before offline relaunch."
+        )
+        XCTAssertTrue(app.staticTexts["Loose item"].waitForExistence(timeout: 5))
+        app.terminate()
+
+        let offlineApp = XCUIApplication()
+        offlineApp.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
+        offlineApp.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = unavailableBaseURL.absoluteString
+        offlineApp.launchEnvironment["PLANINI_UI_TEST_ACCESS_TOKEN"] = session.accessToken
+        offlineApp.launchEnvironment["PLANINI_UI_TEST_DISPLAY_NAME"] = session.displayName
+        offlineApp.launchEnvironment["PLANINI_UI_TEST_INITIAL_LIST_NAME"] = initialListName
+        offlineApp.launch()
+
+        let offlineListTitle = offlineApp.staticTexts["list-detail-title"]
+        XCTAssertTrue(
+            openInitialListDetail(in: offlineApp, listTitle: offlineListTitle, timeout: 15),
+            "Expected cached list to open while the backend is offline."
+        )
+        XCTAssertTrue(offlineApp.otherElements["offline-status-banner"].waitForExistence(timeout: 5))
+        XCTAssertFalse(
+            offlineApp.alerts["Error"].waitForExistence(timeout: 2),
+            "Expected offline cache fallback to avoid the generic error popup."
+        )
+        captureScreenshot(named: "ios-ui-offline-cache-banner")
+    }
+
     private var baseURL: URL {
         if
             let value = environmentValue("PLANINI_UI_TEST_BASE_URL"),
@@ -292,6 +337,10 @@ final class PlaniniUITests: XCTestCase {
             return url
         }
         return URL(string: "http://localhost:8018")!
+    }
+
+    private var unavailableBaseURL: URL {
+        URL(string: "http://localhost:9")!
     }
 
     private var bootstrapBaseURL: URL {

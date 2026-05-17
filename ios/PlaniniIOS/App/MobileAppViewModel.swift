@@ -71,6 +71,7 @@ final class MobileAppViewModel: ObservableObject {
     @Published private(set) var favoriteListID: UUID?
     @Published var quickAddItemName: String
     @Published var errorMessage: String?
+    @Published var offlineStatusMessage: String?
     @Published var reviewerOnboardingMessage: String?
 
     private let passkeyClient: ApplePasskeyClient
@@ -493,7 +494,9 @@ final class MobileAppViewModel: ObservableObject {
         authToken = accessToken
         userDefaults.set(accessToken, forKey: Self.authTokenKey)
 
-        if let backendURL {
+        if let displayNameOverride, displayNameOverride.isEmpty == false {
+            displayName = displayNameOverride
+        } else if let backendURL {
             let me = try await requestJSON(
                 backendURL: backendURL,
                 path: "/api/v1/auth/me",
@@ -502,8 +505,6 @@ final class MobileAppViewModel: ObservableObject {
                 token: accessToken
             )
             displayName = me["display_name"] as? String
-        } else if let displayNameOverride, displayNameOverride.isEmpty == false {
-            displayName = displayNameOverride
         }
 
         userDefaults.set(displayName, forKey: Self.displayNameKey)
@@ -534,6 +535,7 @@ final class MobileAppViewModel: ObservableObject {
         categoryOrder = []
         selectedListID = nil
         errorMessage = nil
+        offlineStatusMessage = nil
         reviewerOnboardingMessage = nil
         userDefaults.removeObject(forKey: Self.authTokenKey)
         userDefaults.removeObject(forKey: Self.displayNameKey)
@@ -623,10 +625,11 @@ final class MobileAppViewModel: ObservableObject {
 
             lists = sortedLists(loadedLists)
             cacheLists(lists)
+            clearOfflineStatus()
         } catch {
             if let cachedLists = cachedLists(), cachedLists.isEmpty == false {
                 lists = cachedLists
-                errorMessage = "Offline. Showing saved list."
+                showOfflineStatus("Offline. Showing saved list.")
             } else {
                 throw error
             }
@@ -686,10 +689,11 @@ final class MobileAppViewModel: ObservableObject {
                 listID: reloadedListID
             )
             cacheListData(listData, listID: reloadedListID)
+            clearOfflineStatus()
         } catch {
             if let cachedListData = cachedListData(listID: reloadedListID) {
                 listData = cachedListData
-                errorMessage = "Offline. Showing saved list."
+                showOfflineStatus("Offline. Showing saved list.")
             } else {
                 throw error
             }
@@ -731,6 +735,7 @@ final class MobileAppViewModel: ObservableObject {
                 token: authToken
             )
             try await reloadItems()
+            clearOfflineStatus()
             watchSyncCoordinator.publishCurrentState()
             return true
         } catch {
@@ -752,6 +757,7 @@ final class MobileAppViewModel: ObservableObject {
                 token: authToken
             )
             try await reloadItems()
+            clearOfflineStatus()
             watchSyncCoordinator.publishCurrentState()
             return true
         } catch {
@@ -802,12 +808,13 @@ final class MobileAppViewModel: ObservableObject {
             if itemEditSaveRevisions[item.id] == revision, let savedItem = GroceryItemRecord(json: saved) {
                 upsertLocalItem(savedItem)
             }
+            clearOfflineStatus()
             watchSyncCoordinator.publishCurrentState()
             return true
         } catch {
             if itemEditSaveRevisions[item.id] == revision {
                 queuePendingItemEdit(listID: item.listID, itemID: item.id, payload: payload)
-                errorMessage = "Changes saved offline. They will sync when the backend is reachable."
+                showOfflineStatus("Changes saved offline. They will sync when the backend is reachable.")
             }
             return true
         }
@@ -826,6 +833,7 @@ final class MobileAppViewModel: ObservableObject {
                 token: authToken
             )
             try await reloadItems()
+            clearOfflineStatus()
             watchSyncCoordinator.publishCurrentState()
             return true
         } catch {
@@ -863,6 +871,15 @@ final class MobileAppViewModel: ObservableObject {
             backendURL: backendURL,
             authToken: authToken
         )
+    }
+
+    private func showOfflineStatus(_ message: String) {
+        errorMessage = nil
+        offlineStatusMessage = message
+    }
+
+    private func clearOfflineStatus() {
+        offlineStatusMessage = nil
     }
 
     private func handleLiveListChanged(_ listID: UUID) async {

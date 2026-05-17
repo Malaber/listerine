@@ -65,6 +65,14 @@ struct RootView: View {
             guard showingReviewerOnboarding == false else { return }
             if let newValue, newValue.isEmpty == false {
                 presentedError = AppErrorAlert(message: newValue)
+            } else {
+                presentedError = nil
+            }
+        }
+        .safeAreaInset(edge: .top) {
+            if viewModel.authToken != nil, let offlineStatusMessage = viewModel.offlineStatusMessage {
+                OfflineStatusBanner(message: offlineStatusMessage)
+                    .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
         .alert(item: $presentedError) { error in
@@ -76,6 +84,7 @@ struct RootView: View {
                 }
             )
         }
+        .animation(.easeInOut(duration: 0.2), value: viewModel.offlineStatusMessage)
         .task(id: selectedTab) {
             guard selectedTab == .favorite else { return }
             await viewModel.showFavoriteList()
@@ -140,6 +149,26 @@ struct RootView: View {
             .accessibilityIdentifier("tab-settings")
         }
         .accessibilityIdentifier("main-tab-view")
+    }
+}
+
+private struct OfflineStatusBanner: View {
+    let message: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "wifi.slash")
+                .imageScale(.medium)
+            Text(message)
+                .font(.footnote.weight(.semibold))
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(.primary)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.yellow.opacity(0.22))
+        .accessibilityIdentifier("offline-status-banner")
     }
 }
 
