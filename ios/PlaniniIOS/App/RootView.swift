@@ -26,6 +26,7 @@ struct RootView: View {
     @State private var presentedError: AppErrorAlert?
     @State private var showingReviewerOnboarding = false
     @State private var passkeyAddLinkInput = ""
+    @State private var listNavigationPath: [UUID] = []
 
     var body: some View {
         Group {
@@ -57,9 +58,16 @@ struct RootView: View {
             ReviewerOnboardingSheet(initialPasskeyAddInput: passkeyAddLinkInput)
         }
         .onOpenURL { url in
-            guard MobileAppViewModel.passkeyAddToken(from: url.absoluteString) != nil else { return }
-            passkeyAddLinkInput = url.absoluteString
-            showingReviewerOnboarding = true
+            handleIncomingURL(url)
+        }
+        .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+            guard let url = activity.webpageURL else { return }
+            handleIncomingURL(url)
+        }
+        .onChange(of: viewModel.linkedListNavigationRequest) { request in
+            guard let request else { return }
+            selectedTab = .lists
+            listNavigationPath = [request.listID]
         }
         .onChange(of: viewModel.errorMessage) { newValue in
             guard showingReviewerOnboarding == false else { return }
@@ -121,8 +129,11 @@ struct RootView: View {
             .tag(AppTab.favorite)
             .accessibilityIdentifier("tab-favorite")
 
-            NavigationStack {
+            NavigationStack(path: $listNavigationPath) {
                 ListsTab(selectedTab: $selectedTab)
+                    .navigationDestination(for: UUID.self) { listID in
+                        ListDetailScreen(listID: listID, showsFavoriteButton: true)
+                    }
             }
             .tabItem {
                 Label("Lists", systemImage: "rectangle.grid.1x2")
@@ -140,6 +151,18 @@ struct RootView: View {
             .accessibilityIdentifier("tab-settings")
         }
         .accessibilityIdentifier("main-tab-view")
+    }
+
+    private func handleIncomingURL(_ url: URL) {
+        if MobileAppViewModel.passkeyAddToken(from: url.absoluteString) != nil {
+            passkeyAddLinkInput = url.absoluteString
+            showingReviewerOnboarding = true
+            return
+        }
+
+        Task {
+            await viewModel.handleIncomingPlaniniLink(url.absoluteString)
+        }
     }
 }
 
@@ -345,9 +368,7 @@ private struct ListsTab: View {
             ForEach(householdSections, id: \.name) { section in
                 Section(section.name) {
                     ForEach(section.lists) { list in
-                        NavigationLink {
-                            ListDetailScreen(listID: list.id, showsFavoriteButton: true)
-                        } label: {
+                        NavigationLink(value: list.id) {
                             HStack(spacing: 12) {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(list.name)

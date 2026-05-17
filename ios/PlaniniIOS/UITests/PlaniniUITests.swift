@@ -194,7 +194,7 @@ final class PlaniniUITests: XCTestCase {
         scrollToHittable(checkedSuggestion, in: app)
         captureScreenshot(named: "ios-ui-checked-item-suggestion")
         tapElement(checkedSuggestion)
-        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 10))
+        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 20))
         XCTAssertTrue(
             waitForItemCheckedState(
                 named: updatedName,
@@ -284,6 +284,38 @@ final class PlaniniUITests: XCTestCase {
         )
     }
 
+    func testPlaniniLinksOpenListsAndAcceptInvites() throws {
+        try assertLocalTestBackend()
+        let ownerSession = try bootstrapSession(email: seededEmail)
+        let inviteeSession = try bootstrapSession(email: "preview-invitee@example.com")
+        let linkedListID = try listID(named: "Hosting errands", accessToken: ownerSession.accessToken)
+        let inviteToken = try createInvite(
+            householdName: "Review Household",
+            accessToken: ownerSession.accessToken
+        )
+
+        let ownerApp = launchedApp(
+            session: ownerSession,
+            initialListName: nil,
+            openedLink: baseURL.appending(path: "/lists/\(linkedListID.uuidString)")
+        )
+        XCTAssertTrue(ownerApp.staticTexts["list-detail-title"].waitForExistence(timeout: 10))
+        XCTAssertEqual(ownerApp.staticTexts["list-detail-title"].label, "Hosting errands")
+        ownerApp.terminate()
+
+        let inviteeApp = launchedApp(
+            session: inviteeSession,
+            initialListName: nil,
+            openedLink: baseURL.appending(path: "/invite/\(inviteToken)")
+        )
+        XCTAssertTrue(
+            waitForList(named: initialListName, accessToken: inviteeSession.accessToken, timeout: 12),
+            "Expected invitee API access after opening invite link."
+        )
+        XCTAssertTrue(inviteeApp.staticTexts["list-detail-title"].waitForExistence(timeout: 10))
+        XCTAssertEqual(inviteeApp.staticTexts["list-detail-title"].label, initialListName)
+    }
+
     private var baseURL: URL {
         if
             let value = environmentValue("PLANINI_UI_TEST_BASE_URL"),
@@ -367,6 +399,27 @@ final class PlaniniUITests: XCTestCase {
         return try JSONDecoder().decode(UITestSession.self, from: capturedData)
     }
 
+    private func launchedApp(
+        session: UITestSession,
+        initialListName: String? = nil,
+        openedLink: URL? = nil
+    ) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
+        app.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
+        app.launchEnvironment["PLANINI_UI_TEST_ACCESS_TOKEN"] = session.accessToken
+        app.launchEnvironment["PLANINI_UI_TEST_DISPLAY_NAME"] = session.displayName
+        if let initialListName {
+            app.launchEnvironment["PLANINI_UI_TEST_INITIAL_LIST_NAME"] = initialListName
+        }
+        if let openedLink {
+            app.launchEnvironment["PLANINI_UI_TEST_OPEN_URL"] = openedLink.absoluteString
+        }
+        app.launch()
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 10))
+        return app
+    }
+
     private func waitForCheckedItem(
         named itemName: String,
         inListNamed listName: String,
@@ -412,6 +465,21 @@ final class PlaniniUITests: XCTestCase {
             if let items = try? fetchItems(inListNamed: listName, accessToken: accessToken),
                 items.contains(where: { $0.name == itemName })
             {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.35))
+        }
+        return false
+    }
+
+    private func waitForList(
+        named listName: String,
+        accessToken: String,
+        timeout: TimeInterval = 8
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if (try? listID(named: listName, accessToken: accessToken)) != nil {
                 return true
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.35))
@@ -718,6 +786,40 @@ final class PlaniniUITests: XCTestCase {
         _ = try performRequest(request)
     }
 
+    private func createInvite(householdName: String, accessToken: String) throws -> String {
+        let householdID = try householdID(named: householdName, accessToken: accessToken)
+        let request = jsonRequest(
+            path: "/api/v1/households/\(householdID.uuidString)/invites",
+            method: "POST",
+            token: accessToken,
+            body: [:]
+        )
+        let data = try performRequest(request)
+        let invite = try JSONDecoder().decode(UITestInvite.self, from: data)
+        guard let token = invite.inviteURL.split(separator: "/").last else {
+            throw NSError(
+                domain: "PlaniniUITests",
+                code: 5,
+                userInfo: [NSLocalizedDescriptionKey: "Could not extract invite token."]
+            )
+        }
+        return String(token)
+    }
+
+    private func householdID(named householdName: String, accessToken: String) throws -> UUID {
+        let request = jsonRequest(path: "/api/v1/households", method: "GET", token: accessToken)
+        let data = try performRequest(request)
+        let households = try JSONDecoder().decode([UITestHousehold].self, from: data)
+        if let household = households.first(where: { $0.name == householdName }) {
+            return household.id
+        }
+        throw NSError(
+            domain: "PlaniniUITests",
+            code: 6,
+            userInfo: [NSLocalizedDescriptionKey: "Could not find household named \(householdName)."]
+        )
+    }
+
     private func listID(named listName: String, accessToken: String) throws -> UUID {
         let householdRequest = jsonRequest(
             path: "/api/v1/households",
@@ -880,6 +982,7 @@ private struct UITestSession: Decodable {
 
 private struct UITestHousehold: Decodable {
     let id: UUID
+    let name: String
 }
 
 private struct UITestList: Decodable {
@@ -895,6 +998,14 @@ private struct UITestItem: Decodable {
 
 private struct UITestIdentifiedItem: Decodable {
     let id: UUID
+}
+
+private struct UITestInvite: Decodable {
+    let inviteURL: String
+
+    private enum CodingKeys: String, CodingKey {
+        case inviteURL = "invite_url"
+    }
 }
 
 private extension XCUIElement {

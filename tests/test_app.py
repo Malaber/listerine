@@ -1851,11 +1851,17 @@ def test_apple_app_site_association_returns_webcredentials_apps(client, monkeypa
             "details": [
                 {
                     "appID": "VWKG94374J.de.malaber.planini",
-                    "paths": ["/passkey-add/*"],
+                    "paths": ["/passkey-add/*", "/invite/*", "/lists/*"],
                     "components": [
                         {
                             "/": "/passkey-add/*",
-                        }
+                        },
+                        {
+                            "/": "/invite/*",
+                        },
+                        {
+                            "/": "/lists/*",
+                        },
                     ],
                 }
             ],

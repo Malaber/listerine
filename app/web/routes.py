@@ -212,11 +212,17 @@ async def apple_app_site_association() -> JSONResponse:
                 "details": [
                     {
                         "appID": app_id,
-                        "paths": ["/passkey-add/*"],
+                        "paths": ["/passkey-add/*", "/invite/*", "/lists/*"],
                         "components": [
                             {
                                 "/": "/passkey-add/*",
-                            }
+                            },
+                            {
+                                "/": "/invite/*",
+                            },
+                            {
+                                "/": "/lists/*",
+                            },
                         ],
                     }
                     for app_id in settings.webcredentials_apps
