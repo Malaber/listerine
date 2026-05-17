@@ -22,8 +22,9 @@ struct AppearanceModeStoreTests {
 
     @Test(arguments: AppearanceMode.allCases)
     func savePersistsSelectedAppearanceMode(mode: AppearanceMode) {
-        let defaults = UserDefaults(suiteName: #function)!
-        defaults.removePersistentDomain(forName: #function)
+        let suiteName = "\(#function)-\(mode.rawValue)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
         let store = AppearanceModeStore(userDefaults: defaults, appearanceModeKey: "appearance")
 
         store.save(mode)
