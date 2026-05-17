@@ -30,6 +30,7 @@ final class PlaniniUITests: XCTestCase {
         app.launchEnvironment["PLANINI_UI_TEST_ACCESS_TOKEN"] = session.accessToken
         app.launchEnvironment["PLANINI_UI_TEST_DISPLAY_NAME"] = session.displayName
         app.launchEnvironment["PLANINI_UI_TEST_INITIAL_LIST_NAME"] = initialListName
+        app.launchEnvironment["PLANINI_UI_TEST_RESET_APPEARANCE_MODE"] = "1"
 
         app.launch()
 
@@ -213,8 +214,22 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertEqual(listTitle.label, "Hosting errands")
         captureScreenshot(named: "ios-ui-list-switcher")
 
-        XCTAssertTrue(tapTab("Settings", in: app))
+        XCTAssertTrue(tapTab("Settings", in: app, timeout: 10))
         XCTAssertTrue(app.buttons["settings-sign-out-button"].waitForExistence(timeout: 5))
+        assertAppearanceMode("System", in: app)
+        selectAppearanceMode("Dark", in: app)
+        assertAppearanceMode("Dark", in: app)
+        captureScreenshot(named: "ios-ui-settings-dark-mode")
+
+        app.terminate()
+        app.launchEnvironment.removeValue(forKey: "PLANINI_UI_TEST_RESET_APPEARANCE_MODE")
+        app.launch()
+        XCTAssertTrue(tapTab("Settings", in: app, timeout: 15))
+        assertAppearanceMode("Dark", in: app)
+        selectAppearanceMode("Light", in: app)
+        assertAppearanceMode("Light", in: app)
+        selectAppearanceMode("System", in: app)
+        assertAppearanceMode("System", in: app)
         captureScreenshot(named: "ios-ui-settings")
     }
 
@@ -516,6 +531,32 @@ final class PlaniniUITests: XCTestCase {
         }
         tapElement(tabButton)
         return true
+    }
+
+    private func selectAppearanceMode(_ label: String, in app: XCUIApplication) {
+        let picker = app.segmentedControls["settings-appearance-picker"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        let option = picker.buttons[label]
+        XCTAssertTrue(option.waitForExistence(timeout: 3))
+        tapElement(option)
+    }
+
+    private func assertAppearanceMode(
+        _ label: String,
+        in app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let picker = app.segmentedControls["settings-appearance-picker"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 5), file: file, line: line)
+        let option = picker.buttons[label]
+        XCTAssertTrue(option.waitForExistence(timeout: 3), file: file, line: line)
+        XCTAssertTrue(
+            option.isSelected || picker.valueText == label,
+            "Expected \(label) appearance mode to be selected.",
+            file: file,
+            line: line
+        )
     }
 
     private func tapElement(_ element: XCUIElement) {
