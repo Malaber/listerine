@@ -227,7 +227,7 @@ final class PlaniniUITests: XCTestCase {
 
         let switcherButton = app.buttons["list-switcher-button"]
         XCTAssertTrue(switcherButton.waitForExistence(timeout: 5))
-        switcherButton.tap()
+        tapElement(switcherButton)
         let initialSwitchTarget = firstExistingElement(
             [
                 app.buttons["switch-list-\(initialListName)"],
@@ -241,7 +241,7 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
         XCTAssertEqual(listTitle.label, initialListName)
 
-        switcherButton.tap()
+        tapElement(switcherButton)
         let hostingSwitchTarget = firstExistingElement(
             [
                 app.buttons["switch-list-\(hostingListName)"],
