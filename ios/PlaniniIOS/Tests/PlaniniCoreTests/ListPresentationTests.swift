@@ -203,6 +203,16 @@ struct ListPresentationTests {
         let checked = makeItem(name: "Tofu", listID: listID, checked: true)
         let active = makeItem(name: "tofu", listID: listID, checked: false)
 
+        let rankSuggestions = GroceryItemSuggestionMatcher.suggestions(
+            for: "tof",
+            items: [
+                makeItem(name: "Soft tofu", listID: listID, checked: false),
+                makeItem(name: "Tofu", listID: listID, checked: false),
+            ],
+            categories: []
+        )
+        #expect(rankSuggestions.map(\.item.name) == ["Tofu", "Soft tofu"])
+
         let checkedTieSuggestions = GroceryItemSuggestionMatcher.suggestions(
             for: "tofu",
             items: [checked, active],
