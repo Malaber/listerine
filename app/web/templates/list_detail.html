@@ -200,6 +200,10 @@
           <h2 data-item-edit-title>{{ t("list_detail.edit_item") }}</h2>
         </div>
         <div class="item-edit-header-actions" data-item-edit-header-actions>
+          <div class="item-edit-live-status" data-item-edit-status hidden>
+            <span class="item-edit-live-spinner" data-item-edit-spinner aria-hidden="true"></span>
+            <span data-item-edit-status-text></span>
+          </div>
           <div class="item-edit-history-actions" role="group" aria-label="{{ t("list_detail.edit_history_actions") }}">
             <button
               type="button"
@@ -259,10 +263,6 @@
           <span>{{ t("list_detail.move_to_list") }}</span>
           <select name="list_id" data-item-edit-list-select></select>
         </label>
-        <div class="item-edit-live-status" data-item-edit-status hidden>
-          <span class="item-edit-live-spinner" data-item-edit-spinner aria-hidden="true"></span>
-          <span data-item-edit-status-text></span>
-        </div>
         <div class="item-edit-actions">
           <button type="button" class="danger-button" data-item-edit-delete>{{ t("common.delete") }}</button>
         </div>
