@@ -5,6 +5,7 @@ services:
     environment:
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in your .env file}
       DATABASE_URL: ${DATABASE_URL:-sqlite+aiosqlite:////data/planini.db}
+      BACKUP_DIRECTORY: ${BACKUP_DIRECTORY:-/backups}
       SECURE_COOKIES: ${SECURE_COOKIES:-true}
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
       UVICORN_FORWARDED_ALLOW_IPS: ${UVICORN_FORWARDED_ALLOW_IPS:-127.0.0.1}
@@ -12,6 +13,7 @@ services:
       - "8000:8000"
     volumes:
       - ./data:/data
+      - ./backups:/backups
     healthcheck:
       test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/health')"]
       interval: 30s

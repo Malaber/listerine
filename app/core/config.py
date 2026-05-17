@@ -53,6 +53,8 @@ class Settings(BaseSettings):
     seed_data_path: str | None = None
     bootstrap_admin_email: EmailStr | None = None
     ui_test_bootstrap_enabled: bool = False
+    backup_directory: str | None = None
+    pg_dump_command: str = "pg_dump"
 
     @field_validator("app_base_url", mode="before")
     @classmethod

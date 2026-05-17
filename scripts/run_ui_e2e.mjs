@@ -5,6 +5,7 @@ import { chromium, devices } from "playwright";
 
 const baseUrl = process.env.PREVIEW_BASE_URL ?? "http://127.0.0.1:8000";
 const artifactDir = process.env.PREVIEW_ARTIFACT_DIR ?? "e2e-artifacts/ui-e2e";
+const backupDir = process.env.PREVIEW_BACKUP_DIR ?? "e2e-artifacts/backups";
 const videoDir = path.join(artifactDir, "videos");
 const seedPath = process.env.E2E_SEED_PATH ?? "app/fixtures/review_seed_e2e.json";
 const deviceName = process.env.E2E_DEVICE ?? "desktop";
@@ -705,6 +706,24 @@ async function runAdminTableControlsFlow(page) {
   assert(!page.url().includes("?"), `Expected reset to clear admin table params, got ${page.url()}`);
 }
 
+async function runAdminBackupFlow(page) {
+  logStep("Creating database backup from admin frontend");
+  await page.getByRole("link", { name: "Backups", exact: true }).click();
+  await page.waitForURL(/\/admin\/backups$/);
+  await expectVisible(
+    page.getByRole("heading", { name: "Database backups" }),
+    "Expected database backups admin page",
+  );
+  await page.getByRole("button", { name: "Create backup" }).click();
+  const result = page.locator("[data-backup-result]");
+  await expectVisible(result, "Expected admin backup success message");
+  const fileName = (await page.locator("[data-backup-file-name]").innerText()).trim();
+  assert.match(fileName, /^planini-sqlite-.+\.sql$/u);
+  const stat = await fs.stat(path.join(backupDir, fileName));
+  assert(stat.size > 0, `Expected backup file ${fileName} to be non-empty`);
+  await screenshot(page, "admin-backup-created");
+}
+
 async function runAdminPasskeyAddLinkFlow(page, seed, rpId) {
   const adminUser = fixtureUser(seed, "planini_admin@schaedler.rocks");
   const targetUser = fixtureAccount(seed, "review-neighbor@example.com");
@@ -734,6 +753,7 @@ async function runAdminPasskeyAddLinkFlow(page, seed, rpId) {
 
     logStep("Signing in as admin and generating an add-passkey link from the user edit page");
     await loginAsAdmin(adminPage, adminUser);
+    await runAdminBackupFlow(adminPage);
     await runAdminTableControlsFlow(adminPage);
     await adminPage.goto(new URL("/admin/user/list", baseUrl).toString(), { waitUntil: "networkidle" });
     const targetUserRow = adminPage.locator("tr", { hasText: targetUser.email }).first();

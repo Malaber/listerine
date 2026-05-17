@@ -17,6 +17,7 @@ from app.core.database import AsyncSessionLocal
 from app.core.security import create_access_token
 from app.models import AuthSession, HouseholdInvite, HouseholdMember, Passkey, PasskeyAddLink, User
 from app.schemas.auth import PasskeyOut
+from app.services.backups import BackupConfigurationError, BackupExecutionError, BackupResult
 
 REGISTERED_CREDENTIAL_ID = bytes_to_base64url(b"credential-id")
 SECOND_CREDENTIAL_ID = bytes_to_base64url(b"second-credential-id")
@@ -2779,6 +2780,97 @@ def test_admin_page_shows_application_link_for_admin(client, monkeypatch) -> Non
     assert "Go to application" in response.text
     assert "Planini version:" in response.text
     assert "development" in response.text
+
+
+def test_admin_can_create_backup_from_admin_frontend(client, monkeypatch, tmp_path) -> None:
+    _register_admin_session(client, monkeypatch)
+    backup_path = tmp_path / "planini-sqlite.sql"
+    result = BackupResult(
+        file_path=backup_path,
+        file_name=backup_path.name,
+        database="sqlite",
+        size_bytes=42,
+        created_at=datetime(2026, 5, 17, tzinfo=UTC),
+    )
+    monkeypatch.setattr("app.admin.settings.backup_directory", str(tmp_path))
+    monkeypatch.setattr("app.admin.create_database_backup", lambda: result)
+
+    page = client.get("/admin/backups")
+    assert page.status_code == 200
+    assert "Database backups" in page.text
+    assert str(tmp_path) in page.text
+    assert "Create backup" in page.text
+
+    response = client.post("/admin/backups")
+    assert response.status_code == 200
+    assert "Backup created." in response.text
+    assert "planini-sqlite.sql" in response.text
+    assert "42 bytes" in response.text
+
+
+def test_admin_backup_frontend_shows_configuration_errors(client, monkeypatch) -> None:
+    _register_admin_session(client, monkeypatch)
+    monkeypatch.setattr("app.admin.settings.backup_directory", None)
+
+    def fail_backup() -> None:
+        raise BackupConfigurationError("BACKUP_DIRECTORY must be configured.")
+
+    monkeypatch.setattr("app.admin.create_database_backup", fail_backup)
+
+    response = client.post("/admin/backups")
+    assert response.status_code == 200
+    assert "BACKUP_DIRECTORY is not configured." in response.text
+    assert "BACKUP_DIRECTORY must be configured." in response.text
+
+
+def test_admin_can_create_backup_via_api(client) -> None:
+    admin_headers = _auth_headers(client, f"{uuid4()}@example.com", is_admin=True)
+    response = client.post("/api/v1/admin/backups", headers=admin_headers)
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "BACKUP_DIRECTORY must be configured."
+
+
+def test_admin_backup_api_success_and_error_paths(client, monkeypatch, tmp_path) -> None:
+    admin_headers = _auth_headers(client, f"{uuid4()}@example.com", is_admin=True)
+    backup_path = tmp_path / "backup.sql"
+    result = BackupResult(
+        file_path=backup_path,
+        file_name=backup_path.name,
+        database="sqlite",
+        size_bytes=120,
+        created_at=datetime(2026, 5, 17, 12, 30, tzinfo=UTC),
+    )
+    calls = [result, BackupExecutionError("pg_dump failed")]
+
+    def backup_stub():
+        item = calls.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+    monkeypatch.setattr("app.api.v1.routes.backups.create_database_backup", backup_stub)
+
+    response = client.post("/api/v1/admin/backups", headers=admin_headers)
+    assert response.status_code == 201
+    assert response.json() == {
+        "file_name": "backup.sql",
+        "path": str(backup_path),
+        "database": "sqlite",
+        "size_bytes": 120,
+        "created_at": "2026-05-17T12:30:00Z",
+    }
+
+    response = client.post("/api/v1/admin/backups", headers=admin_headers)
+    assert response.status_code == 500
+    assert response.json()["detail"] == "pg_dump failed"
+
+
+def test_admin_backup_api_requires_admin_user(client) -> None:
+    user_headers = _auth_headers(client, f"{uuid4()}@example.com", is_admin=False)
+    response = client.post("/api/v1/admin/backups", headers=user_headers)
+
+    assert response.status_code == 403
 
 
 def test_admin_can_generate_passkey_add_link_from_admin_frontend(client, monkeypatch) -> None:

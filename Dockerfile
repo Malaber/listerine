@@ -9,7 +9,10 @@ ARG PLANINI_VERSION=0.0.0.dev0
 WORKDIR /app
 
 RUN addgroup --system app && adduser --system --ingroup app app
-RUN mkdir /data && chown app:app /data
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+RUN mkdir /data /backups && chown app:app /data /backups
 
 COPY pyproject.toml ./
 COPY docker/export_runtime_requirements.py ./docker/export_runtime_requirements.py

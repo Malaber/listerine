@@ -11,6 +11,8 @@ The published container is intended to run behind Docker Compose. For a low-traf
 - database migrations run automatically on startup
 - SQLite database path inside the container: `/data/planini.db`
 - persisted SQLite file on the host: `./data/planini.db`
+- backup dump path inside the container: `/backups`
+- persisted backup files on the host: `./backups`
 
 ## Example `.env`
 
@@ -23,6 +25,7 @@ WEBCREDENTIALS_APPS=["VWKG94374J.de.malaber.planini"]
 SECURE_COOKIES=true
 UVICORN_FORWARDED_ALLOW_IPS=127.0.0.1
 BOOTSTRAP_ADMIN_EMAIL=admin@example.com
+BACKUP_DIRECTORY=/backups
 ```
 
 ## Example `docker-compose.yml`
@@ -35,6 +38,7 @@ services:
     environment:
       SECRET_KEY: ${SECRET_KEY}
       DATABASE_URL: sqlite+aiosqlite:////data/planini.db
+      BACKUP_DIRECTORY: ${BACKUP_DIRECTORY}
       APP_BASE_URL: ${APP_BASE_URL}
       WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID}
       WEBCREDENTIALS_APPS: ${WEBCREDENTIALS_APPS}
@@ -45,6 +49,7 @@ services:
       - "8000:8000"
     volumes:
       - ./data:/data
+      - ./backups:/backups
     healthcheck:
       test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/health')"]
       interval: 30s
@@ -56,8 +61,8 @@ services:
 ## Deploy
 
 ```bash
-mkdir -p data
-sudo chown -R 100:101 data
+mkdir -p data backups
+sudo chown -R 100:101 data backups
 docker compose pull
 docker compose up -d
 ```
@@ -97,6 +102,7 @@ Notes:
 - set `WEBAUTHN_RP_ID` to that public hostname
 - set `WEBCREDENTIALS_APPS` to a JSON array of Apple app IDs allowed to use native passkeys
 - make the mounted data directory writable by the container user before first start, for example `sudo chown -R 100:101 data`
+- make the mounted backup directory writable too, for example `sudo chown -R 100:101 backups`
 - verify `https://YOUR_HOST/.well-known/apple-app-site-association` returns the expected `webcredentials.apps` payload
 - set `UVICORN_FORWARDED_ALLOW_IPS` to the IP or CIDR of your trusted proxy network
 - keep `./data` on persistent storage so `./data/planini.db` survives container replacement
