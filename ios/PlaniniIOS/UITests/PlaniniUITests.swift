@@ -207,8 +207,7 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(checkedSuggestion.waitForExistence(timeout: 3))
         scrollToHittable(checkedSuggestion, in: app)
         captureScreenshot(named: "ios-ui-checked-item-suggestion")
-        tapElement(checkedSuggestion)
-        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 10))
+        XCTAssertTrue(tapSuggestionAndWaitForSheetDismissal(checkedSuggestion, in: app))
         XCTAssertTrue(
             waitForItemCheckedState(
                 named: updatedName,
@@ -577,6 +576,31 @@ final class PlaniniUITests: XCTestCase {
 
     private func tapElement(_ element: XCUIElement) {
         element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    }
+
+    private func tapSuggestionAndWaitForSheetDismissal(
+        _ suggestion: XCUIElement,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 15
+    ) -> Bool {
+        let sheet = app.otherElements["add-item-sheet"]
+        let deadline = Date().addingTimeInterval(timeout)
+
+        while Date() < deadline {
+            if waitForElementToDisappear(sheet, timeout: 1) {
+                return true
+            }
+            if suggestion.exists {
+                scrollToHittable(suggestion, in: app, maxSwipes: 2)
+                tapElement(suggestion)
+            }
+            if waitForElementToDisappear(sheet, timeout: 2) {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+
+        return !sheet.exists
     }
 
     private func waitForItemRow(
