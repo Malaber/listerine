@@ -76,6 +76,48 @@ struct LiveBackendE2ETests {
         #expect(initialSections.last?.title == "Checked off")
         #expect(initialSections.last?.items.contains(where: { $0.name == "Brot" }) == true)
 
+        let originalCategoryOrderIDs = categoryOrder.map(\.categoryID)
+        if originalCategoryOrderIDs.count >= 2 {
+            let reorderedCategoryIDs = [originalCategoryOrderIDs[1], originalCategoryOrderIDs[0]]
+                + originalCategoryOrderIDs.dropFirst(2)
+            let reorderedPayload = try await client.jsonArray(
+                path: "/api/v1/lists/\(listID)/category-order",
+                method: "PUT",
+                body: ["category_ids": reorderedCategoryIDs.map(\.uuidString)],
+                token: accessToken
+            )
+            let reorderedCategoryOrder = reorderedPayload.compactMap(ListCategoryOrderEntry.init)
+            #expect(reorderedCategoryOrder.first?.categoryID == originalCategoryOrderIDs[1])
+
+            _ = try await client.jsonArray(
+                path: "/api/v1/lists/\(listID)/category-order",
+                method: "PUT",
+                body: ["category_ids": originalCategoryOrderIDs.map(\.uuidString)],
+                token: accessToken
+            )
+        }
+
+        let usedCategoryIDs = Set(initialItems.compactMap(\.categoryID))
+        if let unusedCategory = categories.first(where: { usedCategoryIDs.contains($0.id) == false }) {
+            let disabledPayload = try await client.jsonObject(
+                path: "/api/v1/lists/\(listID)/disabled-categories",
+                method: "PUT",
+                body: ["category_ids": [unusedCategory.id.uuidString]],
+                token: accessToken
+            )
+            let disabledCategoryIDs = (disabledPayload["category_ids"] as? [String] ?? [])
+                .compactMap(UUID.init(uuidString:))
+            #expect(disabledCategoryIDs == [unusedCategory.id])
+
+            let enabledPayload = try await client.jsonObject(
+                path: "/api/v1/lists/\(listID)/disabled-categories",
+                method: "PUT",
+                body: ["category_ids": []],
+                token: accessToken
+            )
+            #expect((enabledPayload["category_ids"] as? [String] ?? []).isEmpty)
+        }
+
         let konservenID = try #require(categories.first { $0.name == "Konserven" }?.id)
         let gemueseID = try #require(categories.first { $0.name == "Gemuese" }?.id)
 
@@ -449,8 +491,13 @@ private final class LiveBackendClient {
         return payload
     }
 
-    func jsonArray(path: String, token: String) async throws -> [[String: Any]] {
-        let data = try await data(path: path, method: "GET", body: nil, token: token)
+    func jsonArray(
+        path: String,
+        method: String = "GET",
+        body: [String: Any]? = nil,
+        token: String
+    ) async throws -> [[String: Any]] {
+        let data = try await data(path: path, method: method, body: body, token: token)
         guard let payload = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
             throw LiveBackendE2EError("Expected JSON array for \(path).")
         }

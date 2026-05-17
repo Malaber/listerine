@@ -12,18 +12,30 @@ if [[ -z "$profdata" ]]; then
   exit 1
 fi
 
-binary=$(find .build -path '*/debug/PlaniniIOSPackageTests.xctest' -type f | head -n 1)
+binary=$(find .build -path '*/debug/PlaniniIOSPackageTests.xctest' | head -n 1)
 if [[ -z "$binary" ]]; then
-  binary=$(find .build -path '*/debug/PlaniniCorePackageTests.xctest' -type f | head -n 1)
+  binary=$(find .build -path '*/debug/PlaniniCorePackageTests.xctest' | head -n 1)
 fi
 if [[ -z "$binary" ]]; then
   echo "Swift test bundle not found" >&2
   exit 1
 fi
+if [[ -d "$binary" ]]; then
+  executable_name=$(basename "$binary" .xctest)
+  binary="$binary/Contents/MacOS/$executable_name"
+fi
+if [[ ! -f "$binary" ]]; then
+  echo "Swift test executable not found" >&2
+  exit 1
+fi
 
 coverage_json=$(mktemp)
 coverage_script=$(mktemp)
-llvm-cov export "$binary" -instr-profile "$profdata" > "$coverage_json"
+llvm_cov=(llvm-cov)
+if ! command -v llvm-cov >/dev/null 2>&1; then
+  llvm_cov=(xcrun llvm-cov)
+fi
+"${llvm_cov[@]}" export "$binary" -instr-profile "$profdata" > "$coverage_json"
 
 cat > "$coverage_script" <<'SWIFT'
 import Foundation
