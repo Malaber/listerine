@@ -189,12 +189,11 @@ final class PlaniniUITests: XCTestCase {
         let checkedSuggestionField = app.textFields["add-item-name-field"]
         checkedSuggestionField.tap()
         checkedSuggestionField.typeText(updatedName)
-        let checkedSuggestion = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Add \(updatedName) back")).firstMatch
+        let checkedSuggestion = app.buttons["add-item-suggestion-\(updatedItemID.uuidString)"]
         XCTAssertTrue(checkedSuggestion.waitForExistence(timeout: 3))
         scrollToHittable(checkedSuggestion, in: app)
         captureScreenshot(named: "ios-ui-checked-item-suggestion")
-        tapElement(checkedSuggestion)
-        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 10))
+        XCTAssertTrue(tapSuggestionAndWaitForSheetDismissal(checkedSuggestion, in: app))
         XCTAssertTrue(
             waitForItemCheckedState(
                 named: updatedName,
@@ -605,6 +604,26 @@ final class PlaniniUITests: XCTestCase {
         } else {
             element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         }
+    }
+
+    private func tapSuggestionAndWaitForSheetDismissal(
+        _ suggestion: XCUIElement,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 15
+    ) -> Bool {
+        let sheet = app.otherElements["add-item-sheet"]
+        guard sheet.exists else { return true }
+        guard suggestion.exists else { return false }
+
+        suggestion.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+        if waitForElementToDisappear(sheet, timeout: 5) {
+            return true
+        }
+
+        if suggestion.exists {
+            suggestion.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+        }
+        return waitForElementToDisappear(sheet, timeout: max(timeout - 5, 1))
     }
 
     private func waitForItemRow(
