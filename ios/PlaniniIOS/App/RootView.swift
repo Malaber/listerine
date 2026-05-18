@@ -530,7 +530,7 @@ private struct SectionHeader: View {
 
     private var allowsQuickAdd: Bool {
         switch section.kind {
-        case .checked:
+        case .hidden, .checked:
             return false
         case .uncategorized, .category:
             return true
@@ -539,7 +539,7 @@ private struct SectionHeader: View {
 
     private var quickAddCategoryID: UUID? {
         switch section.kind {
-        case .uncategorized, .checked:
+        case .uncategorized, .hidden, .checked:
             return nil
         case let .category(categoryID):
             return categoryID
@@ -603,23 +603,53 @@ private struct ItemRow: View {
     let item: GroceryItemRecord
     let onEdit: () -> Void
 
+    private var isHiddenForLater: Bool {
+        item.isHiddenForLater()
+    }
+
+    private var toggleSystemImageName: String {
+        if isHiddenForLater {
+            return "hourglass.circle"
+        }
+        return item.checked ? "checkmark.circle.fill" : "circle"
+    }
+
+    private var toggleForegroundStyle: Color {
+        if isHiddenForLater {
+            return .orange
+        }
+        return item.checked ? .green : .secondary
+    }
+
+    private var toggleAccessibilityLabel: String {
+        if isHiddenForLater {
+            return "Show \(item.name) now"
+        }
+        return item.checked ? "Uncheck \(item.name)" : "Check \(item.name)"
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             Button {
                 Task {
-                    let toggled = await viewModel.toggle(item)
-                    if toggled {
+                    let didChange: Bool
+                    if isHiddenForLater {
+                        didChange = await viewModel.restoreHiddenItem(item)
+                    } else {
+                        didChange = await viewModel.toggle(item)
+                    }
+                    if didChange {
                         AppHaptics.itemToggle()
                     }
                 }
             } label: {
-                Image(systemName: item.checked ? "checkmark.circle.fill" : "circle")
+                Image(systemName: toggleSystemImageName)
                     .font(.title3)
-                    .foregroundStyle(item.checked ? .green : .secondary)
+                    .foregroundStyle(toggleForegroundStyle)
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("toggle-item-\(item.id.uuidString)")
-            .accessibilityLabel(item.checked ? "Uncheck \(item.name)" : "Check \(item.name)")
+            .accessibilityLabel(toggleAccessibilityLabel)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.name)
@@ -645,6 +675,22 @@ private struct ItemRow: View {
         .onTapGesture(perform: onEdit)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("item-row-\(item.id.uuidString)")
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            if item.checked == false && isHiddenForLater == false {
+                Button {
+                    Task {
+                        let hidden = await viewModel.hideForLater(item)
+                        if hidden {
+                            AppHaptics.itemToggle()
+                        }
+                    }
+                } label: {
+                    Label("Later 4h", systemImage: "hourglass")
+                }
+                .tint(.orange)
+                .accessibilityIdentifier("hide-item-\(item.id.uuidString)")
+            }
+        }
         .swipeActions {
             Button(role: .destructive) {
                 Task {

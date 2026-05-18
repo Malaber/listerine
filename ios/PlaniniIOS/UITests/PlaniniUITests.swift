@@ -145,6 +145,61 @@ final class PlaniniUITests: XCTestCase {
         )
         XCTAssertTrue(app.staticTexts[enterSavedItemName].waitForExistence(timeout: 15))
 
+        let enterSavedItemID = try itemID(
+            named: enterSavedItemName,
+            inListNamed: initialListName,
+            accessToken: session.accessToken
+        )
+        let enteredRow = itemRow(itemID: enterSavedItemID, in: app)
+        scrollToElement(enteredRow, in: app)
+        XCTAssertTrue(enteredRow.waitForExistence(timeout: 3))
+        enteredRow.swipeRight()
+        if waitForItemHiddenState(
+            named: enterSavedItemName,
+            hidden: true,
+            inListNamed: initialListName,
+            accessToken: session.accessToken,
+            timeout: 3
+        ) == false {
+            let hideButton = firstExistingElement(
+                [
+                    app.buttons["hide-item-\(enterSavedItemID.uuidString)"],
+                    app.buttons["Later 4h"],
+                    app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Later 4h")).firstMatch,
+                ],
+                timeout: 3
+            )
+            XCTAssertTrue(hideButton.waitForExistence(timeout: 3))
+            tapElement(hideButton)
+        }
+        XCTAssertTrue(
+            waitForItemHiddenState(
+                named: enterSavedItemName,
+                hidden: true,
+                inListNamed: initialListName,
+                accessToken: session.accessToken,
+                timeout: 20
+            )
+        )
+        let hiddenForLaterHeader = app.staticTexts["Hidden for 4h"]
+        scrollToElement(hiddenForLaterHeader, in: app)
+        XCTAssertTrue(hiddenForLaterHeader.waitForExistence(timeout: 5))
+        let restoreHiddenButton = app.buttons["toggle-item-\(enterSavedItemID.uuidString)"]
+        XCTAssertTrue(restoreHiddenButton.waitForExistence(timeout: 5))
+        XCTAssertTrue(restoreHiddenButton.label.contains("Show \(enterSavedItemName) now"))
+        captureScreenshot(named: "ios-ui-item-hidden-for-later")
+        tapElement(restoreHiddenButton)
+        XCTAssertTrue(
+            waitForItemHiddenState(
+                named: enterSavedItemName,
+                hidden: false,
+                inListNamed: initialListName,
+                accessToken: session.accessToken,
+                timeout: 20
+            )
+        )
+        XCTAssertTrue(waitForElementToDisappear(hiddenForLaterHeader, timeout: 8))
+
         tapElement(app.buttons["add-item-button"])
         XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
@@ -469,6 +524,26 @@ final class PlaniniUITests: XCTestCase {
         while Date() < deadline {
             if let items = try? fetchItems(inListNamed: listName, accessToken: accessToken),
                 items.contains(where: { $0.name == itemName && $0.checked == checked })
+            {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.35))
+        }
+        return false
+    }
+
+    private func waitForItemHiddenState(
+        named itemName: String,
+        hidden: Bool,
+        inListNamed listName: String,
+        accessToken: String,
+        timeout: TimeInterval = 8
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let item = try? fetchItems(inListNamed: listName, accessToken: accessToken)
+                .first(where: { $0.name == itemName }),
+                (item.hiddenUntil != nil) == hidden
             {
                 return true
             }
@@ -1119,12 +1194,14 @@ private struct UITestItem: Decodable {
     let name: String
     let checked: Bool
     let categoryID: UUID?
+    let hiddenUntil: String?
 
     private enum CodingKeys: String, CodingKey {
         case id
         case name
         case checked
         case categoryID = "category_id"
+        case hiddenUntil = "hidden_until"
     }
 }
 
