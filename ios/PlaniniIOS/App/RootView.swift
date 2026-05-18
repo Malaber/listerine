@@ -759,13 +759,20 @@ private struct AddItemSheet: View {
                 }
 
                 Section("Category") {
-                    Picker("Category", selection: $categoryID) {
-                        Text("Uncategorized").tag(Optional<UUID>.none)
-                        ForEach(viewModel.availableCategories) { category in
-                            Text(category.name).tag(Optional(category.id))
-                        }
+                    NavigationLink {
+                        CategorySelectionScreen(
+                            selectedCategoryID: $categoryID,
+                            categories: viewModel.categories,
+                            items: viewModel.items,
+                            categoryOrder: viewModel.categoryOrder
+                        )
+                    } label: {
+                        SelectedCategorySummary(
+                            category: selectedCategory,
+                            itemCount: selectedCategoryItemCount
+                        )
                     }
-                    .accessibilityIdentifier("add-item-category-picker")
+                    .accessibilityIdentifier("add-item-category-link")
                 }
 
                 Section("Notes") {
@@ -797,6 +804,18 @@ private struct AddItemSheet: View {
         .accessibilityIdentifier("add-item-sheet")
     }
 
+    private var selectedCategory: GroceryCategorySummary? {
+        guard let categoryID else { return nil }
+        return viewModel.categories.first { $0.id == categoryID }
+    }
+
+    private var selectedCategoryItemCount: Int {
+        if let categoryID {
+            return viewModel.items.filter { $0.categoryID == categoryID }.count
+        }
+        return GroceryCategorySelectionBuilder.uncategorizedItemCount(items: viewModel.items)
+    }
+
     private var canSave: Bool {
         isSaving == false && name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
     }
@@ -823,10 +842,10 @@ private struct AddItemSheet: View {
     @MainActor
     private func useSuggestion(_ suggestion: GroceryItemSuggestion) async {
         if suggestion.item.checked {
-            dismiss()
             let toggled = await viewModel.toggle(suggestion.item)
             guard toggled else { return }
             AppHaptics.confirmation()
+            dismiss()
             onSuggestionFocused(suggestion.item.id)
             return
         }
@@ -862,6 +881,149 @@ private struct ItemSuggestionRow: View {
     private var metaText: String {
         let categoryName = suggestion.category?.name ?? "Uncategorized"
         return suggestion.item.checked ? "\(categoryName) · checked off" : categoryName
+    }
+}
+
+private struct SelectedCategorySummary: View {
+    let category: GroceryCategorySummary?
+    let itemCount: Int
+
+    var body: some View {
+        HStack(spacing: 12) {
+            CategoryColorSwatch(colorHex: category?.colorHex)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(category?.name ?? "Uncategorized")
+                    .foregroundStyle(.primary)
+                Text("\(itemCount) items")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+private struct CategorySelectionScreen: View {
+    @Environment(\.dismiss) private var dismiss
+
+    @Binding var selectedCategoryID: UUID?
+    let categories: [GroceryCategorySummary]
+    let items: [GroceryItemRecord]
+    let categoryOrder: [ListCategoryOrderEntry]
+
+    @State private var query = ""
+    @State private var sort: GroceryCategorySelectionSort = .listOrder
+
+    private var options: [GroceryCategorySelectionOption] {
+        GroceryCategorySelectionBuilder.options(
+            categories: categories,
+            items: items,
+            categoryOrder: categoryOrder,
+            query: query,
+            sort: sort
+        )
+    }
+
+    var body: some View {
+        List {
+            Section {
+                TextField("Search categories", text: $query)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .accessibilityIdentifier("category-search-field")
+
+                Picker("Sort", selection: $sort) {
+                    ForEach(GroceryCategorySelectionSort.allCases, id: \.self) { sortOption in
+                        Text(sortOption.shortTitle)
+                            .tag(sortOption)
+                            .accessibilityLabel(sortOption.title)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("category-sort-picker")
+            }
+
+            Section("Categories") {
+                Button {
+                    selectCategory(nil)
+                } label: {
+                    CategorySelectionRow(
+                        title: "Uncategorized",
+                        colorHex: nil,
+                        itemCount: GroceryCategorySelectionBuilder.uncategorizedItemCount(items: items),
+                        isSelected: selectedCategoryID == nil
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("category-option-uncategorized")
+
+                ForEach(options) { option in
+                    Button {
+                        selectCategory(option.category.id)
+                    } label: {
+                        CategorySelectionRow(
+                            title: option.category.name,
+                            colorHex: option.category.colorHex,
+                            itemCount: option.itemCount,
+                            isSelected: selectedCategoryID == option.category.id
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("category-option-\(option.category.name)")
+                    .accessibilityLabel("\(option.category.name), \(option.itemCount) items")
+                }
+
+                if options.isEmpty {
+                    Text("No categories found")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .navigationTitle("Category")
+        .navigationBarTitleDisplayMode(.inline)
+        .accessibilityIdentifier("category-selection-screen")
+    }
+
+    private func selectCategory(_ categoryID: UUID?) {
+        selectedCategoryID = categoryID
+        dismiss()
+    }
+}
+
+private struct CategorySelectionRow: View {
+    let title: String
+    let colorHex: String?
+    let itemCount: Int
+    let isSelected: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            CategoryColorSwatch(colorHex: colorHex)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .foregroundStyle(.primary)
+                Text("\(itemCount) items")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if isSelected {
+                Image(systemName: "checkmark")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+            }
+        }
+        .contentShape(Rectangle())
+        .padding(.vertical, 2)
+    }
+}
+
+private struct CategoryColorSwatch: View {
+    let colorHex: String?
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 3)
+            .fill(Color(hex: colorHex) ?? Color.secondary.opacity(0.35))
+            .frame(width: 14, height: 32)
     }
 }
 
@@ -935,13 +1097,20 @@ private struct EditItemSheet: View {
                 }
 
                 Section("Category") {
-                    Picker("Category", selection: $categoryID) {
-                        Text("Uncategorized").tag(Optional<UUID>.none)
-                        ForEach(viewModel.availableCategories) { category in
-                            Text(category.name).tag(Optional(category.id))
-                        }
+                    NavigationLink {
+                        CategorySelectionScreen(
+                            selectedCategoryID: $categoryID,
+                            categories: viewModel.categories,
+                            items: viewModel.items,
+                            categoryOrder: viewModel.categoryOrder
+                        )
+                    } label: {
+                        SelectedCategorySummary(
+                            category: selectedCategory,
+                            itemCount: selectedCategoryItemCount
+                        )
                     }
-                    .accessibilityIdentifier("edit-item-category-picker")
+                    .accessibilityIdentifier("edit-item-category-link")
                 }
 
                 Section("Notes") {
@@ -959,28 +1128,36 @@ private struct EditItemSheet: View {
             .navigationTitle("Edit item")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") {
-                        flushCurrentEdit()
-                        dismiss()
+                ToolbarItem(placement: .topBarLeading) {
+                    ControlGroup {
+                        Button {
+                            applyUndo()
+                        } label: {
+                            Label("Undo", systemImage: "arrow.uturn.backward")
+                                .labelStyle(.iconOnly)
+                        }
+                        .accessibilityIdentifier("edit-item-undo-button")
+                        .disabled(history.canUndo == false)
+
+                        Button {
+                            applyRedo()
+                        } label: {
+                            Label("Redo", systemImage: "arrow.uturn.forward")
+                                .labelStyle(.iconOnly)
+                        }
+                        .accessibilityIdentifier("edit-item-redo-button")
+                        .disabled(history.canRedo == false)
                     }
                 }
-                ToolbarItemGroup(placement: .confirmationAction) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        applyUndo()
+                        flushCurrentEdit()
+                        dismiss()
                     } label: {
-                        Label("Undo", systemImage: "arrow.uturn.backward")
+                        Label("Done", systemImage: "xmark")
+                            .labelStyle(.iconOnly)
                     }
-                    .disabled(history.canUndo == false)
-                    .accessibilityIdentifier("edit-item-undo-button")
-
-                    Button {
-                        applyRedo()
-                    } label: {
-                        Label("Redo", systemImage: "arrow.uturn.forward")
-                    }
-                    .disabled(history.canRedo == false)
-                    .accessibilityIdentifier("edit-item-redo-button")
+                    .accessibilityIdentifier("edit-item-close-button")
                 }
             }
         }
@@ -1002,6 +1179,18 @@ private struct EditItemSheet: View {
             note: note,
             categoryID: categoryID
         )
+    }
+
+    private var selectedCategory: GroceryCategorySummary? {
+        guard let categoryID else { return nil }
+        return viewModel.categories.first { $0.id == categoryID }
+    }
+
+    private var selectedCategoryItemCount: Int {
+        if let categoryID {
+            return viewModel.items.filter { $0.categoryID == categoryID }.count
+        }
+        return GroceryCategorySelectionBuilder.uncategorizedItemCount(items: viewModel.items)
     }
 
     private static func historyKey(itemID: UUID) -> String {
@@ -1133,6 +1322,34 @@ private enum AppHaptics {
         generator.prepare()
         generator.impactOccurred(intensity: 0.7)
         #endif
+    }
+}
+
+private extension GroceryCategorySelectionSort {
+    var shortTitle: String {
+        switch self {
+        case .listOrder:
+            return "List"
+        case .nameAscending:
+            return "A-Z"
+        case .nameDescending:
+            return "Z-A"
+        case .mostUsed:
+            return "Used"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .listOrder:
+            return "List order"
+        case .nameAscending:
+            return "A-Z"
+        case .nameDescending:
+            return "Z-A"
+        case .mostUsed:
+            return "Most used"
+        }
     }
 }
 
