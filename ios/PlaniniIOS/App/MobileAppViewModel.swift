@@ -824,6 +824,40 @@ final class MobileAppViewModel: ObservableObject {
     }
 
     @discardableResult
+    func moveItem(item: GroceryItemRecord, payload: GroceryItemEditPayload) async -> Bool {
+        guard payload.isValid else { return false }
+        guard let targetListID = payload.listID, targetListID != item.listID else {
+            return await saveEdit(item: item, payload: payload)
+        }
+        guard let backendURL, let authToken else {
+            errorMessage = "Move items while online so both lists stay in sync."
+            return false
+        }
+
+        let revision = (itemEditSaveRevisions[item.id] ?? 0) + 1
+        itemEditSaveRevisions[item.id] = revision
+
+        do {
+            let saved = try await requestJSON(
+                backendURL: backendURL,
+                path: "/api/v1/items/\(item.id.uuidString)",
+                method: "PATCH",
+                body: payload.jsonBody,
+                token: authToken
+            )
+            removePendingItemEdit(itemID: item.id)
+            if itemEditSaveRevisions[item.id] == revision, let savedItem = GroceryItemRecord(json: saved) {
+                applyMovedItem(savedItem, sourceListID: item.listID)
+            }
+            watchSyncCoordinator.publishCurrentState()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    @discardableResult
     func delete(item: GroceryItemRecord) async -> Bool {
         guard let backendURL, let authToken else { return false }
 
@@ -1026,6 +1060,15 @@ final class MobileAppViewModel: ObservableObject {
             items[index] = item
         } else {
             items.append(item)
+        }
+    }
+
+    private func applyMovedItem(_ item: GroceryItemRecord, sourceListID: UUID) {
+        if selectedListID == sourceListID, item.listID != sourceListID {
+            items.removeAll { $0.id == item.id }
+        }
+        if selectedListID == item.listID {
+            upsertLocalItem(item)
         }
     }
 

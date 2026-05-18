@@ -21,6 +21,7 @@ struct ItemEditingTests {
         #expect(payload.jsonBody["quantity_text"] is NSNull)
         #expect(payload.jsonBody["note"] as? String == "cold")
         #expect(payload.jsonBody["category_id"] as? String == categoryID.uuidString)
+        #expect(payload.jsonBody["list_id"] is NSNull)
     }
 
     @Test func editPayloadRejectsBlankNames() {
@@ -47,6 +48,7 @@ struct ItemEditingTests {
         #expect(payload.jsonBody["quantity_text"] is NSNull)
         #expect(payload.jsonBody["note"] is NSNull)
         #expect(payload.jsonBody["category_id"] is NSNull)
+        #expect(payload.jsonBody["list_id"] is NSNull)
     }
 
     @Test func editPayloadCanApplyToExistingItemWithoutChangingStateFields() {
@@ -86,11 +88,41 @@ struct ItemEditingTests {
         #expect(edited.sortOrder == 7)
     }
 
-    @Test func editPayloadInitializesFromExistingItem() {
-        let categoryID = UUID()
+    @Test func editPayloadCanMoveExistingItemToAnotherList() {
+        let sourceListID = UUID()
+        let targetListID = UUID()
         let item = GroceryItemRecord(
             id: UUID(),
-            listID: UUID(),
+            listID: sourceListID,
+            name: "Old",
+            quantityText: nil,
+            note: nil,
+            categoryID: nil,
+            checked: false,
+            checkedAt: nil,
+            sortOrder: 7
+        )
+
+        let payload = GroceryItemEditPayload(
+            name: "Old",
+            quantityText: nil,
+            note: nil,
+            categoryID: nil,
+            listID: targetListID
+        )
+        let edited = item.applyingEditPayload(payload)
+
+        #expect(payload.jsonBody["list_id"] as? String == targetListID.uuidString)
+        #expect(edited.listID == targetListID)
+        #expect(edited.sortOrder == 7)
+    }
+
+    @Test func editPayloadInitializesFromExistingItem() {
+        let categoryID = UUID()
+        let listID = UUID()
+        let item = GroceryItemRecord(
+            id: UUID(),
+            listID: listID,
             name: "Apples",
             quantityText: "4",
             note: "green",
@@ -106,6 +138,7 @@ struct ItemEditingTests {
         #expect(payload.quantityText == "4")
         #expect(payload.note == "green")
         #expect(payload.categoryID == categoryID)
+        #expect(payload.listID == listID)
     }
 
     @Test func editHistorySupportsUndoRedoAndClearsRedoOnNewEdit() {
