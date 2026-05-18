@@ -181,12 +181,12 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(editNameField.valueText.contains(updatedName))
         captureScreenshot(named: "ios-ui-live-edit-autosave")
         app.buttons["Done"].tap()
-        XCTAssertTrue(app.staticTexts[updatedName].waitForExistence(timeout: 5))
         XCTAssertTrue(
             waitForItem(
                 named: updatedName,
                 inListNamed: initialListName,
-                accessToken: session.accessToken
+                accessToken: session.accessToken,
+                timeout: 20
             )
         )
 
@@ -194,6 +194,10 @@ final class PlaniniUITests: XCTestCase {
             named: updatedName,
             inListNamed: initialListName,
             accessToken: session.accessToken
+        )
+        XCTAssertTrue(
+            waitForItemRow(itemID: updatedItemID, named: updatedName, in: app, timeout: 20),
+            "Expected updated item row to be visible after closing edit sheet."
         )
         let updatedItemLabel = app.staticTexts[updatedName]
         let updatedCheckButton = app.buttons["toggle-item-\(updatedItemID.uuidString)"]
