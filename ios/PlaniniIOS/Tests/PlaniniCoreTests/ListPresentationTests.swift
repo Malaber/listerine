@@ -297,6 +297,7 @@ struct ListPresentationTests {
         #expect(suggestions.first?.id == suggestions.first?.item.id)
         #expect(suggestions.map(\.item.name) == ["Spaghetti"])
         #expect(suggestions.first?.category?.name == "Pantry")
+        #expect(suggestions.first?.category?.colorHex == "#ffcc00")
         #expect(suggestions.first?.item.checked == true)
     }
 
