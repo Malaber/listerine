@@ -63,6 +63,28 @@ _REGISTRATION_FAILURE_DETAIL = (
 )
 
 
+def _new_passkey(
+    *,
+    name: str,
+    credential_id: str,
+    public_key: bytes,
+    sign_count: int,
+    user_id: UUID | None = None,
+) -> Passkey:
+    created_at = datetime.now(UTC)
+    passkey = Passkey(
+        name=name,
+        credential_id=credential_id,
+        public_key=public_key,
+        sign_count=sign_count,
+        created_at=created_at,
+        last_used_at=created_at,
+    )
+    if user_id is not None:
+        passkey.user_id = user_id
+    return passkey
+
+
 def _configured_origin() -> str | None:
     return settings.app_base_url
 
@@ -326,7 +348,7 @@ async def finish_passkey_registration(
         display_name=pending["display_name"],
     )
     user.passkeys.append(
-        Passkey(
+        _new_passkey(
             name=_DEFAULT_INITIAL_PASSKEY_NAME,
             credential_id=credential_id,
             public_key=verified.credential_public_key,
@@ -470,7 +492,7 @@ async def finish_passkey_replace(
 
     await db.execute(delete(Passkey).where(Passkey.user_id == refreshed.id))
     db.add(
-        Passkey(
+        _new_passkey(
             user_id=refreshed.id,
             name=_DEFAULT_INITIAL_PASSKEY_NAME,
             credential_id=credential_id,
@@ -578,7 +600,7 @@ async def finish_add_passkey(
     ).scalar_one_or_none() is not None:
         raise HTTPException(status_code=400, detail="That passkey is already registered")
 
-    passkey = Passkey(
+    passkey = _new_passkey(
         user_id=user.id,
         name=pending["name"],
         credential_id=credential_id,
@@ -656,7 +678,7 @@ async def finish_passkey_add_from_link(
         raise HTTPException(status_code=400, detail="That passkey is already registered")
 
     db.add(
-        Passkey(
+        _new_passkey(
             user_id=user.id,
             name=_default_passkey_name_for_count(len(user.passkeys)),
             credential_id=credential_id,
