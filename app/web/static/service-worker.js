@@ -1,9 +1,10 @@
-const CACHE_NAME = "planini-shell-v6";
+const CACHE_NAME = "planini-shell-v7";
 const APP_SHELL_ASSETS = [
   "/manifest.webmanifest",
   "/static/app.css",
   "/static/app.js",
   "/static/img/planini.svg",
+  "/static/img/link-preview.png",
   "/static/img/Favicon.png",
   "/static/img/apple-touch-icon.png",
   "/static/img/pwa-192.png",
