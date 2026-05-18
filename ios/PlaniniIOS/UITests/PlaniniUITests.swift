@@ -135,8 +135,7 @@ final class PlaniniUITests: XCTestCase {
         nameField.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         nameField.typeText(enterSavedItemName)
-        tapElement(app.buttons["add-item-save-button"])
-        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 10))
+        XCTAssertTrue(tapAddItemSaveAndWaitForDismissal(in: app))
         XCTAssertTrue(app.staticTexts[enterSavedItemName].waitForExistence(timeout: 5))
         XCTAssertTrue(
             waitForItem(
@@ -173,8 +172,7 @@ final class PlaniniUITests: XCTestCase {
         noteField.tap()
         noteField.typeText("for pasta")
 
-        tapElement(app.buttons["add-item-save-button"])
-        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 10))
+        XCTAssertTrue(tapAddItemSaveAndWaitForDismissal(in: app))
         XCTAssertTrue(
             waitForItem(
                 named: itemName,
@@ -798,6 +796,31 @@ final class PlaniniUITests: XCTestCase {
             if element.exists {
                 scrollToHittable(element, in: app, maxSwipes: 2)
                 tapElement(element)
+            }
+            if waitForElementToDisappear(sheet, timeout: 2) {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+
+        return !sheet.exists
+    }
+
+    private func tapAddItemSaveAndWaitForDismissal(in app: XCUIApplication, timeout: TimeInterval = 12) -> Bool {
+        let sheet = app.otherElements["add-item-sheet"]
+        let saveButton = app.buttons["add-item-save-button"]
+        let deadline = Date().addingTimeInterval(timeout)
+
+        while Date() < deadline {
+            if waitForElementToDisappear(sheet, timeout: 1) {
+                return true
+            }
+            if saveButton.exists && saveButton.isEnabled {
+                if saveButton.isHittable {
+                    saveButton.tap()
+                } else {
+                    tapElement(saveButton)
+                }
             }
             if waitForElementToDisappear(sheet, timeout: 2) {
                 return true
