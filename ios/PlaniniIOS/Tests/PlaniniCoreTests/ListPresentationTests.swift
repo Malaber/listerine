@@ -220,6 +220,13 @@ struct ListPresentationTests {
         )
         #expect(checkedTieSuggestions.map(\.item.checked) == [false, true])
 
+        let reversedCheckedTieSuggestions = GroceryItemSuggestionMatcher.suggestions(
+            for: "tofu",
+            items: [active, checked],
+            categories: []
+        )
+        #expect(reversedCheckedTieSuggestions.map(\.item.checked) == [false, true])
+
         let distanceSuggestions = GroceryItemSuggestionMatcher.suggestions(
             for: "abcde",
             items: [
