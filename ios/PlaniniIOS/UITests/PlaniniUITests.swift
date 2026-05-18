@@ -149,6 +149,7 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         XCTAssertTrue(nameField.waitForExistence(timeout: 3))
+        nameField.tap()
         nameField.typeText(itemName)
 
         let quantityField = app.textFields["add-item-quantity-field"]
