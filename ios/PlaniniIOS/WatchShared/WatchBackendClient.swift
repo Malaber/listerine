@@ -4,6 +4,7 @@ import PlaniniCore
 struct WatchListSnapshot {
     let state: SharedAppState
     let categories: [GroceryCategorySummary]
+    let categoryOrder: [ListCategoryOrderEntry]
 }
 
 enum WatchBackendClientError: LocalizedError, Equatable {
@@ -47,13 +48,21 @@ struct WatchBackendClient {
             path: "/api/v1/lists/\(listID.uuidString)/categories",
             token: session.authToken
         )
+        async let categoryOrderPayload = requestArray(
+            backendURL: session.backendURL,
+            path: "/api/v1/lists/\(listID.uuidString)/category-order",
+            token: session.authToken
+        )
 
         let items = try await itemsPayload.compactMap(GroceryItemRecord.init)
         let categories = try await categoriesPayload.compactMap(GroceryCategorySummary.init)
+        let categoryOrder = try await categoryOrderPayload.compactMap(ListCategoryOrderEntry.init)
 
         var updatedState = state
         updatedState.items = items
-        return WatchListSnapshot(state: updatedState, categories: categories)
+        updatedState.categories = categories
+        updatedState.categoryOrder = categoryOrder
+        return WatchListSnapshot(state: updatedState, categories: categories, categoryOrder: categoryOrder)
     }
 
     func refreshItems(for listID: UUID, using state: SharedAppState) async throws -> SharedAppState {

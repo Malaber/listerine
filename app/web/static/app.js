@@ -3616,10 +3616,17 @@ function renderItemSuggestions(root, state) {
       const main = document.createElement("div");
       main.className = "item-main";
 
-      const checkmark = document.createElement("span");
-      checkmark.className = `item-check item-suggestion-check${item.checked ? " is-checked" : ""}`;
-      checkmark.setAttribute("aria-hidden", "true");
-      main.appendChild(checkmark);
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.itemReuse = item.id;
+      button.setAttribute(
+        "aria-label",
+        item.checked
+          ? translate("list_detail.suggestion_add_back", { name: item.name }, "Add {name} back to the list")
+          : translate("list_detail.suggestion_jump_to", { name: item.name }, "Jump to {name} in the list")
+      );
+      button.textContent = "+";
+      main.appendChild(button);
 
       const copy = document.createElement("div");
       copy.className = "item-copy item-suggestion-copy";
@@ -3635,19 +3642,6 @@ function renderItemSuggestions(root, state) {
 
       main.appendChild(copy);
       wrapper.appendChild(main);
-
-      const button = document.createElement("button");
-      button.type = "button";
-      button.dataset.itemReuse = item.id;
-      button.setAttribute(
-        "aria-label",
-        item.checked
-          ? translate("list_detail.suggestion_add_back", { name: item.name }, "Add {name} back to the list")
-          : translate("list_detail.suggestion_jump_to", { name: item.name }, "Jump to {name} in the list")
-      );
-      button.textContent = "+";
-
-      wrapper.appendChild(button);
     }
 
     const referenceNode = suggestionsNode.children[index] || null;
@@ -5341,7 +5335,8 @@ function initPasskeyAuth() {
     });
   });
 
-  root.querySelector("[data-passkey-register-button]")?.addEventListener("click", async () => {
+  registerForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
     toggleButtons(root, true);
     try {
       await registerWithPasskey(root, registerForm);

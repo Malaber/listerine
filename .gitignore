@@ -1,5 +1,6 @@
 .coverage
 .pytest_cache/
+.venv
 .venv/
 
 /.env
@@ -20,6 +21,8 @@ e2e-artifacts/*
 !e2e-artifacts/.gitkeep
 
 /build
+/backups/
+/tmp-backups*/
 
 # macOS / Xcode / SwiftPM local artifacts
 .DS_Store

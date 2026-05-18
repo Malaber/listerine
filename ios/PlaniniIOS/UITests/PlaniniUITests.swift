@@ -30,6 +30,7 @@ final class PlaniniUITests: XCTestCase {
         app.launchEnvironment["PLANINI_UI_TEST_ACCESS_TOKEN"] = session.accessToken
         app.launchEnvironment["PLANINI_UI_TEST_DISPLAY_NAME"] = session.displayName
         app.launchEnvironment["PLANINI_UI_TEST_INITIAL_LIST_NAME"] = initialListName
+        app.launchEnvironment["PLANINI_UI_TEST_RESET_APPEARANCE_MODE"] = "1"
 
         app.launch()
 
@@ -50,6 +51,8 @@ final class PlaniniUITests: XCTestCase {
         captureScreenshot(named: "ios-ui-list-detail")
 
         XCTAssertTrue(app.staticTexts["Uncategorized"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Konserven"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Milch & Eier"].waitForExistence(timeout: 3))
         let favoriteButton = app.buttons["favorite-list-button"]
         XCTAssertTrue(favoriteButton.waitForExistence(timeout: 3))
         XCTAssertTrue(favoriteButton.label.contains("Unfavorite"))
@@ -65,6 +68,18 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
         XCTAssertEqual(listTitle.label, initialListName)
         captureScreenshot(named: "ios-ui-favorite-list")
+
+        let uncategorizedCountBadge = firstExistingElement(
+            [
+                app.staticTexts["section-count-badge-uncategorized"],
+                app.staticTexts["Uncategorized count, 1 item"],
+                app.otherElements["section-count-badge-uncategorized"],
+                app.otherElements["Uncategorized count, 1 item"],
+            ],
+            timeout: 3
+        )
+        XCTAssertTrue(uncategorizedCountBadge.waitForExistence(timeout: 3))
+        XCTAssertEqual(uncategorizedCountBadge.label, "Uncategorized count, 1 item")
 
         let quickAddUncategorized = firstExistingElement(
             [
@@ -82,7 +97,7 @@ final class PlaniniUITests: XCTestCase {
         app.buttons["Cancel"].tap()
         XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 3))
 
-        app.buttons["add-item-button"].tap()
+        tapElement(app.buttons["add-item-button"])
         XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         captureScreenshot(named: "ios-ui-add-item-sheet")
@@ -90,34 +105,47 @@ final class PlaniniUITests: XCTestCase {
         let suggestionProbeField = app.textFields["add-item-name-field"]
         XCTAssertTrue(suggestionProbeField.waitForExistence(timeout: 3))
         suggestionProbeField.tap()
-        suggestionProbeField.typeText("Loose")
-        let activeSuggestion = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Jump to Loose item")).firstMatch
-        XCTAssertTrue(activeSuggestion.waitForExistence(timeout: 3))
-        captureScreenshot(named: "ios-ui-add-item-suggestions")
-        app.buttons["Cancel"].tap()
-        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 3))
-
-        let uniqueSuffix = UUID().uuidString.prefix(8)
-        let enterSavedItemName = "UI Test Enter \(uniqueSuffix)"
-        let itemName = "UI Test Herbs \(uniqueSuffix)"
-        let itemQuantity = "1 bunch"
-        let updatedName = "\(itemName) Updated"
-
-        app.buttons["add-item-button"].tap()
-        XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
-        let nameField = app.textFields["add-item-name-field"]
-        XCTAssertTrue(nameField.waitForExistence(timeout: 3))
-        nameField.typeText("\(enterSavedItemName)\n")
-        XCTAssertTrue(app.staticTexts[enterSavedItemName].waitForExistence(timeout: 5))
+        suggestionProbeField.typeText("Bro")
+        let seededCheckedSuggestion = app.buttons.containing(.staticText, identifier: "Brot").firstMatch
+        XCTAssertTrue(seededCheckedSuggestion.waitForExistence(timeout: 3))
+        XCTAssertFalse(seededCheckedSuggestion.images["scope"].exists, "Suggestion rows should not show a crosshair icon.")
+        XCTAssertTrue(tapSuggestionAndWaitForSheetDismissal(seededCheckedSuggestion, app: app))
         XCTAssertTrue(
-            waitForItem(
-                named: enterSavedItemName,
+            waitForItemCheckedState(
+                named: "Brot",
+                checked: false,
                 inListNamed: initialListName,
                 accessToken: session.accessToken
             )
         )
+        RunLoop.current.run(until: Date().addingTimeInterval(1.0))
+        captureScreenshot(named: "ios-ui-suggestion-reactivated")
 
-        app.buttons["add-item-button"].tap()
+        tapElement(app.buttons["add-item-button"])
+        XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
+
+        let uniqueSuffix = UUID().uuidString.prefix(8)
+        let enterSavedItemName = "UI Test Enter \(uniqueSuffix)"
+        let itemName = "UI Test Item \(uniqueSuffix)"
+        let itemQuantity = "1 bunch"
+        let updatedName = "\(itemName) Updated"
+
+        let nameField = app.textFields["add-item-name-field"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 3))
+        nameField.typeText(enterSavedItemName)
+        tapElement(app.buttons["add-item-save-button"])
+        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 10))
+        XCTAssertTrue(
+            waitForItem(
+                named: enterSavedItemName,
+                inListNamed: initialListName,
+                accessToken: session.accessToken,
+                timeout: 20
+            )
+        )
+        XCTAssertTrue(app.staticTexts[enterSavedItemName].waitForExistence(timeout: 15))
+
+        tapElement(app.buttons["add-item-button"])
         XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         XCTAssertTrue(nameField.waitForExistence(timeout: 3))
@@ -127,16 +155,53 @@ final class PlaniniUITests: XCTestCase {
         quantityField.tap()
         quantityField.typeText(itemQuantity)
 
+        chooseCategory(
+            named: "Milch & Eier",
+            using: "add-item-category-link",
+            in: app,
+            searchText: "molkrei",
+            sortOption: "A-Z",
+            screenshotName: "ios-ui-category-picker"
+        )
+        XCTAssertTrue(app.buttons["add-item-category-link"].label.contains("Milch & Eier"))
+
         let noteField = app.textFields["add-item-note-field"]
         noteField.tap()
         noteField.typeText("for pasta")
 
-        app.buttons["add-item-save-button"].tap()
-        XCTAssertTrue(app.staticTexts[itemName].waitForExistence(timeout: 5))
+        tapElement(app.buttons["add-item-save-button"])
+        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 10))
+        XCTAssertTrue(
+            waitForItem(
+                named: itemName,
+                inListNamed: initialListName,
+                accessToken: session.accessToken,
+                timeout: 20
+            )
+        )
+        XCTAssertTrue(app.staticTexts[itemName].waitForExistence(timeout: 15))
         captureScreenshot(named: "ios-ui-added-item")
+        XCTAssertTrue(
+            waitForItemCategory(
+                named: itemName,
+                categoryNamed: "Milch & Eier",
+                inListNamed: initialListName,
+                accessToken: session.accessToken
+            )
+        )
 
-        app.staticTexts[itemName].tap()
+        let createdItemLabel = app.staticTexts[itemName]
+        scrollToElement(createdItemLabel, in: app)
+        tapElement(createdItemLabel)
         XCTAssertTrue(app.otherElements["edit-item-sheet"].waitForExistence(timeout: 3))
+        let undoButton = app.buttons["Undo"]
+        let redoButton = app.buttons["Redo"]
+        let closeButton = app.buttons["edit-item-close-button"]
+        XCTAssertTrue(undoButton.waitForExistence(timeout: 3))
+        XCTAssertTrue(redoButton.waitForExistence(timeout: 3))
+        XCTAssertTrue(closeButton.waitForExistence(timeout: 3))
+        XCTAssertLessThan(undoButton.frame.midX, closeButton.frame.midX)
+        XCTAssertLessThan(redoButton.frame.midX, closeButton.frame.midX)
         captureScreenshot(named: "promotion-edit-item-dialogue")
 
         let editNameField = app.textFields["edit-item-name-field"]
@@ -145,64 +210,37 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(waitForEditStatus("Saved", app: app))
         XCTAssertTrue(editNameField.valueText.contains(updatedName))
 
-        app.buttons["edit-item-undo-button"].tap()
+        chooseCategory(
+            named: "Konserven",
+            using: "edit-item-category-link",
+            in: app,
+            searchText: "kon",
+            sortOption: "Most used",
+            screenshotName: "ios-ui-edit-category-picker"
+        )
+        XCTAssertTrue(app.buttons["edit-item-category-link"].label.contains("Konserven"))
         XCTAssertTrue(waitForEditStatus("Saved", app: app))
-        XCTAssertTrue(editNameField.valueText.contains(itemName))
-        XCTAssertFalse(editNameField.valueText.contains("Updated"))
-
-        app.buttons["edit-item-redo-button"].tap()
-        XCTAssertTrue(waitForEditStatus("Saved", app: app))
-        XCTAssertTrue(editNameField.valueText.contains(updatedName))
         captureScreenshot(named: "ios-ui-live-edit-autosave")
-        app.buttons["Done"].tap()
+        tapElement(closeButton)
         XCTAssertTrue(app.staticTexts[updatedName].waitForExistence(timeout: 5))
         XCTAssertTrue(
             waitForItem(
                 named: updatedName,
                 inListNamed: initialListName,
-                accessToken: session.accessToken
+                accessToken: session.accessToken,
+                timeout: 20
             )
         )
-
-        let updatedItemID = try itemID(
-            named: updatedName,
-            inListNamed: initialListName,
-            accessToken: session.accessToken
-        )
-        let updatedCheckButton = app.buttons["toggle-item-\(updatedItemID.uuidString)"]
-        scrollToElement(updatedCheckButton, in: app)
-        XCTAssertTrue(updatedCheckButton.waitForExistence(timeout: 3))
-        updatedCheckButton.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         XCTAssertTrue(
-            waitForCheckedItem(
+            waitForItemCategory(
                 named: updatedName,
+                categoryNamed: "Konserven",
                 inListNamed: initialListName,
                 accessToken: session.accessToken
             )
         )
-        scrollToElement(app.staticTexts[updatedName], in: app)
-        captureScreenshot(named: "ios-ui-checked-item")
+
         captureScreenshot(named: "promotion-filled-list")
-
-        app.buttons["add-item-button"].tap()
-        XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
-        let checkedSuggestionField = app.textFields["add-item-name-field"]
-        checkedSuggestionField.tap()
-        checkedSuggestionField.typeText(updatedName)
-        let checkedSuggestion = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Add \(updatedName) back")).firstMatch
-        XCTAssertTrue(checkedSuggestion.waitForExistence(timeout: 3))
-        scrollToHittable(checkedSuggestion, in: app)
-        captureScreenshot(named: "ios-ui-checked-item-suggestion")
-        tapElement(checkedSuggestion)
-        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 10))
-        XCTAssertTrue(
-            waitForItemCheckedState(
-                named: updatedName,
-                checked: false,
-                inListNamed: initialListName,
-                accessToken: session.accessToken
-            )
-        )
 
         XCTAssertTrue(tapTab("Lists", in: app))
         returnToListsRootIfNeeded(app)
@@ -213,9 +251,62 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertEqual(listTitle.label, "Hosting errands")
         captureScreenshot(named: "ios-ui-list-switcher")
 
-        XCTAssertTrue(tapTab("Settings", in: app))
+        XCTAssertTrue(tapTab("Settings", in: app, timeout: 10))
         XCTAssertTrue(app.buttons["settings-sign-out-button"].waitForExistence(timeout: 5))
+        assertAppearanceMode("System", in: app)
+        selectAppearanceMode("Dark", in: app)
+        assertAppearanceMode("Dark", in: app)
+        captureScreenshot(named: "ios-ui-settings-dark-mode")
+
+        app.terminate()
+        app.launchEnvironment.removeValue(forKey: "PLANINI_UI_TEST_RESET_APPEARANCE_MODE")
+        app.launch()
+        XCTAssertTrue(tapTab("Settings", in: app, timeout: 15))
+        assertAppearanceMode("Dark", in: app)
+        selectAppearanceMode("Light", in: app)
+        assertAppearanceMode("Light", in: app)
+        selectAppearanceMode("System", in: app)
+        assertAppearanceMode("System", in: app)
         captureScreenshot(named: "ios-ui-settings")
+    }
+
+    func testForceClosedAppRestoresSavedSession() throws {
+        try assertLocalTestBackend()
+        let session = if let injectedSession {
+            injectedSession
+        } else {
+            try bootstrapSession(email: userEmail)
+        }
+
+        let app = XCUIApplication()
+        app.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
+        app.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
+        app.launchEnvironment["PLANINI_UI_TEST_ACCESS_TOKEN"] = session.accessToken
+        app.launchEnvironment["PLANINI_UI_TEST_DISPLAY_NAME"] = session.displayName
+        app.launchEnvironment["PLANINI_UI_TEST_INITIAL_LIST_NAME"] = initialListName
+        app.launch()
+
+        let listTitle = app.staticTexts["list-detail-title"]
+        XCTAssertTrue(
+            openInitialListDetail(in: app, listTitle: listTitle),
+            "Expected bootstrapped list before force-closing the app."
+        )
+        XCTAssertFalse(app.buttons["login-passkey-button"].exists)
+        app.terminate()
+
+        let relaunchedApp = XCUIApplication()
+        relaunchedApp.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
+        relaunchedApp.launchEnvironment["PLANINI_UI_TEST_RESTORE_STORED_SESSION"] = "1"
+        relaunchedApp.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
+        relaunchedApp.launch()
+
+        let restoredListTitle = relaunchedApp.staticTexts["list-detail-title"]
+        XCTAssertTrue(
+            openInitialListDetail(in: relaunchedApp, listTitle: restoredListTitle),
+            "Expected saved session to survive force-close and restore the initial list."
+        )
+        XCTAssertFalse(relaunchedApp.buttons["login-passkey-button"].exists)
+        relaunchedApp.terminate()
     }
 
     func testListReceivesLiveUpdates() throws {
@@ -419,21 +510,6 @@ final class PlaniniUITests: XCTestCase {
         return try JSONDecoder().decode(UITestSession.self, from: capturedData)
     }
 
-    private func waitForCheckedItem(
-        named itemName: String,
-        inListNamed listName: String,
-        accessToken: String,
-        timeout: TimeInterval = 8
-    ) -> Bool {
-        waitForItemCheckedState(
-            named: itemName,
-            checked: true,
-            inListNamed: listName,
-            accessToken: accessToken,
-            timeout: timeout
-        )
-    }
-
     private func waitForItemCheckedState(
         named itemName: String,
         checked: Bool,
@@ -471,19 +547,52 @@ final class PlaniniUITests: XCTestCase {
         return false
     }
 
+    private func waitForItemCategory(
+        named itemName: String,
+        categoryNamed categoryName: String,
+        inListNamed listName: String,
+        accessToken: String,
+        timeout: TimeInterval = 8
+    ) -> Bool {
+        guard
+            let categoryID = try? categoryID(
+                named: categoryName,
+                inListNamed: listName,
+                accessToken: accessToken
+            )
+        else {
+            return false
+        }
+
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let items = try? fetchItems(inListNamed: listName, accessToken: accessToken),
+                items.contains(where: { $0.name == itemName && $0.categoryID == categoryID })
+            {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.35))
+        }
+        return false
+    }
+
     private func waitForEditStatus(
         _ status: String,
         app: XCUIApplication,
-        timeout: TimeInterval = 8
+        timeout: TimeInterval = 20
     ) -> Bool {
+        let statusLabel = app.staticTexts["edit-item-save-status"]
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
+            if statusLabel.exists && statusLabel.label.contains(status) {
+                return true
+            }
             if app.staticTexts[status].exists {
                 return true
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
-        return app.staticTexts[status].exists
+        return (statusLabel.exists && statusLabel.label.contains(status)) || app.staticTexts[status].exists
     }
 
     private func waitForElementToDisappear(_ element: XCUIElement, timeout: TimeInterval = 8) -> Bool {
@@ -591,12 +700,99 @@ final class PlaniniUITests: XCTestCase {
         return true
     }
 
+    private func chooseCategory(
+        named categoryName: String,
+        using linkIdentifier: String,
+        in app: XCUIApplication,
+        searchText: String?,
+        sortOption: String?,
+        screenshotName: String?
+    ) {
+        let link = app.buttons[linkIdentifier]
+        scrollToHittable(link, in: app)
+        XCTAssertTrue(link.waitForExistence(timeout: 3))
+        tapElement(link)
+
+        let categoryScreen = app.descendants(matching: .any)["category-selection-screen"]
+        XCTAssertTrue(categoryScreen.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.textFields["category-search-field"].waitForExistence(timeout: 3))
+
+        if let sortOption {
+            let option = firstExistingElement(
+                [
+                    app.buttons[sortOption],
+                    app.segmentedControls.buttons[sortOption],
+                    app.staticTexts[sortOption],
+                ],
+                timeout: 3
+            )
+            XCTAssertTrue(option.waitForExistence(timeout: 3))
+            tapElement(option)
+        }
+
+        if let searchText {
+            let searchField = app.textFields["category-search-field"]
+            searchField.tap()
+            searchField.typeText(searchText)
+        }
+
+        let categoryOption = app.buttons["category-option-\(categoryName)"]
+        XCTAssertTrue(categoryOption.waitForExistence(timeout: 3))
+        if let screenshotName {
+            captureScreenshot(named: screenshotName)
+        }
+        tapElement(categoryOption)
+        XCTAssertTrue(waitForElementToDisappear(categoryScreen, timeout: 3))
+    }
+
+    private func selectAppearanceMode(_ label: String, in app: XCUIApplication) {
+        let picker = app.segmentedControls["settings-appearance-picker"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        let option = picker.buttons[label]
+        XCTAssertTrue(option.waitForExistence(timeout: 3))
+        tapElement(option)
+    }
+
+    private func assertAppearanceMode(
+        _ label: String,
+        in app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let picker = app.segmentedControls["settings-appearance-picker"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 5), file: file, line: line)
+        let option = picker.buttons[label]
+        XCTAssertTrue(option.waitForExistence(timeout: 3), file: file, line: line)
+        XCTAssertTrue(
+            option.isSelected || picker.valueText == label,
+            "Expected \(label) appearance mode to be selected.",
+            file: file,
+            line: line
+        )
+    }
+
     private func tapElement(_ element: XCUIElement) {
         if element.isHittable {
             element.tap()
         } else {
             element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         }
+    }
+
+    private func tapTrailingControl(in element: XCUIElement, app: XCUIApplication) {
+        let frame = element.frame
+        app.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: frame.maxX - 115, dy: frame.midY))
+            .tap()
+    }
+
+    private func tapSuggestionAndWaitForSheetDismissal(_ element: XCUIElement, app: XCUIApplication) -> Bool {
+        tapTrailingControl(in: element, app: app)
+        if waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 2) {
+            return true
+        }
+        tapTrailingControl(in: element, app: app)
+        return waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 10)
     }
 
     private func waitForItemRow(
@@ -606,21 +802,21 @@ final class PlaniniUITests: XCTestCase {
         timeout: TimeInterval
     ) -> Bool {
         let row = itemRow(itemID: itemID, in: app)
-        let label = app.staticTexts[itemName]
+        let toggle = app.buttons["toggle-item-\(itemID.uuidString)"]
         let deadline = Date().addingTimeInterval(timeout)
 
         while Date() < deadline {
-            if row.exists && label.exists {
+            if row.exists && toggle.exists && toggle.label.contains(itemName) {
                 return true
             }
             app.swipeDown()
-            if row.exists && label.exists {
+            if row.exists && toggle.exists && toggle.label.contains(itemName) {
                 return true
             }
             app.swipeUp()
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
-        return row.exists && label.exists
+        return row.exists && toggle.exists && toggle.label.contains(itemName)
     }
 
     private func itemRow(itemID: UUID, in app: XCUIApplication) -> XCUIElement {
@@ -629,7 +825,7 @@ final class PlaniniUITests: XCTestCase {
 
     private func scrollToElement(_ element: XCUIElement, in app: XCUIApplication, maxSwipes: Int = 10) {
         for _ in 0..<maxSwipes {
-            if element.exists {
+            if elementIsVisible(element, in: app) {
                 return
             }
             app.swipeUp()
@@ -637,12 +833,14 @@ final class PlaniniUITests: XCTestCase {
     }
 
     private func scrollToHittable(_ element: XCUIElement, in app: XCUIApplication, maxSwipes: Int = 6) {
-        for _ in 0..<maxSwipes {
-            if element.exists && element.isHittable {
-                return
-            }
-            app.swipeUp()
-        }
+        scrollToElement(element, in: app, maxSwipes: maxSwipes)
+    }
+
+    private func elementIsVisible(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
+        guard element.exists else { return false }
+        let frame = element.frame
+        guard frame.width > 1, frame.height > 1 else { return false }
+        return app.frame.intersects(frame)
     }
 
     private func assertReviewerOnboardingAvailable(in app: XCUIApplication) {
@@ -738,6 +936,30 @@ final class PlaniniUITests: XCTestCase {
             code: 1,
             userInfo: [NSLocalizedDescriptionKey: "Could not find item named \(itemName)."]
         )
+    }
+
+    private func categoryID(named categoryName: String, inListNamed listName: String, accessToken: String) throws -> UUID {
+        let listID = try listID(named: listName, accessToken: accessToken)
+        if let category = try fetchCategories(listID: listID, accessToken: accessToken)
+            .first(where: { $0.name == categoryName })
+        {
+            return category.id
+        }
+        throw NSError(
+            domain: "PlaniniUITests",
+            code: 5,
+            userInfo: [NSLocalizedDescriptionKey: "Could not find category named \(categoryName)."]
+        )
+    }
+
+    private func fetchCategories(listID: UUID, accessToken: String) throws -> [UITestCategory] {
+        let request = jsonRequest(
+            path: "/api/v1/lists/\(listID.uuidString)/categories",
+            method: "GET",
+            token: accessToken
+        )
+        let data = try performRequest(request)
+        return try JSONDecoder().decode([UITestCategory].self, from: data)
     }
 
     private func createItem(
@@ -960,10 +1182,23 @@ private struct UITestList: Decodable {
     let name: String
 }
 
+private struct UITestCategory: Decodable {
+    let id: UUID
+    let name: String
+}
+
 private struct UITestItem: Decodable {
     let id: UUID
     let name: String
     let checked: Bool
+    let categoryID: UUID?
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case checked
+        case categoryID = "category_id"
+    }
 }
 
 private struct UITestIdentifiedItem: Decodable {

@@ -7,12 +7,22 @@ struct SharedAppStateTests {
         let state = SharedAppState()
 
         #expect(state.quickAddItemName == "Milk")
+        #expect(state.favoriteList == nil)
+        #expect(state.favoriteListName == nil)
         #expect(state.hasAuthenticatedSession == false)
         #expect(state.canQuickAdd == false)
+        #expect(PlaniniSharedConstants.watchAppGroupID == "group.de.malaber.planini.watch")
+        #expect(PlaniniSharedConstants.sharedAppStateKey == "planini.shared-app-state")
+        #expect(PlaniniSharedConstants.watchContextPayloadKey == "state")
+
+        let missingTokenState = SharedAppState(backendURL: URL(string: "https://api.example.com"))
+
+        #expect(missingTokenState.hasAuthenticatedSession == false)
     }
 
     @Test func favoriteListResolvesFromLists() {
         let favoriteListID = UUID()
+        let categoryID = UUID()
         let state = SharedAppState(
             backendURL: URL(string: "https://api.example.com"),
             authToken: "token",
@@ -26,12 +36,50 @@ struct SharedAppStateTests {
                     name: "Weekly shop",
                     archived: false
                 )
+            ],
+            categories: [
+                GroceryCategorySummary(id: categoryID, name: "Produce", colorHex: "#00ff00")
+            ],
+            categoryOrder: [
+                ListCategoryOrderEntry(categoryID: categoryID, sortOrder: 0)
             ]
         )
 
         #expect(state.favoriteList?.id == favoriteListID)
         #expect(state.favoriteListName == "Weekly shop")
         #expect(state.canQuickAdd == true)
+        #expect(state.categories.map(\.name) == ["Produce"])
+        #expect(state.categoryOrder.map(\.categoryID) == [categoryID])
+    }
+
+    @Test func decodesLegacyStateWithoutSyncedCategoryMetadata() throws {
+        let listID = UUID()
+        let payload = """
+        {
+          "backendURL": "https://api.example.com",
+          "authToken": "token",
+          "favoriteListID": "\(listID.uuidString)",
+          "quickAddItemName": "Milk",
+          "lists": [],
+          "items": []
+        }
+        """
+
+        let state = try JSONDecoder().decode(SharedAppState.self, from: Data(payload.utf8))
+
+        #expect(state.backendURL == URL(string: "https://api.example.com"))
+        #expect(state.authToken == "token")
+        #expect(state.favoriteListID == listID)
+        #expect(state.categories == [])
+        #expect(state.categoryOrder == [])
+    }
+
+    @Test func decodesEmptyLegacyStateWithDefaults() throws {
+        let state = try JSONDecoder().decode(SharedAppState.self, from: Data("{}".utf8))
+
+        #expect(state.quickAddItemName == SharedAppState.defaultQuickAddItemName)
+        #expect(state.lists == [])
+        #expect(state.items == [])
     }
 
     @Test func quickAddRequiresTrimmedNameFavoriteListAndSession() {
@@ -63,6 +111,7 @@ struct SharedAppStateTests {
         let store = SharedAppStateStore(userDefaults: defaults, storageKey: "state")
         let listID = UUID()
         let itemID = UUID()
+        let categoryID = UUID()
         let state = SharedAppState(
             backendURL: URL(string: "https://api.example.com"),
             authToken: "secret",
@@ -90,6 +139,12 @@ struct SharedAppStateTests {
                     checkedAt: nil,
                     sortOrder: 1
                 )
+            ],
+            categories: [
+                GroceryCategorySummary(id: categoryID, name: "Bakery", colorHex: "#cccccc")
+            ],
+            categoryOrder: [
+                ListCategoryOrderEntry(categoryID: categoryID, sortOrder: 1)
             ]
         )
 

@@ -93,6 +93,7 @@ import {
   addPasskeyWithLink,
   transitionAuthPanels,
   setAuthTab,
+  initPasskeyAuth,
 } from "./app.js";
 
 function setGlobalProperty(name, value) {
@@ -326,6 +327,113 @@ test("setAuthTab toggles panels, selected state, focus, and panel height", () =>
   } finally {
     restoreDomGlobals(originals);
     setGlobalProperty("window", originalWindow);
+    dom.window.close();
+  }
+});
+
+test("initPasskeyAuth submits registration form on Enter", async () => {
+  const dom = new JSDOM(`
+    <section data-passkey-auth data-next-url="/dashboard">
+      <p data-auth-error hidden></p>
+      <p data-auth-success hidden></p>
+      <div data-auth-panels>
+        <div data-auth-tab-panel="signin">
+          <form data-passkey-login>
+            <button type="button" data-passkey-login-button>Sign in</button>
+          </form>
+        </div>
+        <div data-auth-tab-panel="signup">
+          <form data-passkey-register>
+            <input name="display_name" value="Ada" />
+            <input name="email" value="ada@example.test" />
+            <button type="submit" data-passkey-register-button>Create passkey</button>
+          </form>
+        </div>
+      </div>
+      <button data-auth-tab-trigger="signin" aria-selected="false"></button>
+      <button data-auth-tab-trigger="signup" aria-selected="true"></button>
+    </section>
+  `, { url: "https://example.test/login" });
+  const originals = {
+    FormData: globalThis.FormData,
+    HTMLElement: globalThis.HTMLElement,
+    HTMLButtonElement: globalThis.HTMLButtonElement,
+    HTMLFormElement: globalThis.HTMLFormElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    HTMLSelectElement: globalThis.HTMLSelectElement,
+    document: globalThis.document,
+    fetch: globalThis.fetch,
+    navigator: globalThis.navigator,
+    window: globalThis.window,
+    __appNavigateTo: globalThis.__appNavigateTo,
+  };
+  const calls = [];
+  const assigned = [];
+  let createdPublicKey = null;
+  let resolveNavigate;
+  const navigated = new Promise((resolve) => {
+    resolveNavigate = resolve;
+  });
+
+  setDomGlobals(dom);
+  setGlobalProperty("document", dom.window.document);
+  setGlobalProperty("window", dom.window);
+  dom.window.PublicKeyCredential = function PublicKeyCredential() {};
+  setGlobalProperty("navigator", {
+    credentials: {
+      create: async ({ publicKey }) => {
+        createdPublicKey = publicKey;
+        return { id: "credential-id", type: "public-key", response: {} };
+      },
+    },
+  });
+  setGlobalProperty("fetch", async (url, options) => {
+    calls.push({ url, payload: JSON.parse(options.body) });
+    if (url === "/api/v1/auth/register/options") {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ challenge: "AA", user: { id: "AQ" } }),
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+    };
+  });
+  setGlobalProperty("__appNavigateTo", (url) => {
+    assigned.push(url);
+    resolveNavigate();
+  });
+
+  try {
+    initPasskeyAuth();
+    const form = dom.window.document.querySelector("[data-passkey-register]");
+    const submitted = form.dispatchEvent(
+      new dom.window.Event("submit", { bubbles: true, cancelable: true }),
+    );
+    assert.equal(submitted, false);
+    await navigated;
+
+    assert.deepEqual(calls[0], {
+      url: "/api/v1/auth/register/options",
+      payload: { email: "ada@example.test", display_name: "Ada" },
+    });
+    assert.equal(calls[1].url, "/api/v1/auth/register/verify");
+    assert.equal(calls[1].payload.credential.id, "credential-id");
+    assert.ok(createdPublicKey.challenge instanceof Uint8Array);
+    assert.ok(createdPublicKey.user.id instanceof Uint8Array);
+    assert.deepEqual(assigned, ["/dashboard"]);
+    assert.equal(dom.window.document.querySelector("[data-auth-success]").hidden, false);
+    assert.equal(dom.window.document.querySelector("[data-passkey-register-button]").disabled, false);
+  } finally {
+    restoreDomGlobals(originals);
+    setGlobalProperty("document", originals.document);
+    setGlobalProperty("fetch", originals.fetch);
+    setGlobalProperty("navigator", originals.navigator);
+    setGlobalProperty("window", originals.window);
+    setGlobalProperty("__appNavigateTo", originals.__appNavigateTo);
     dom.window.close();
   }
 });
@@ -1979,6 +2087,42 @@ test("renderItemSuggestions adds category color strips for categorized matches",
     assert.equal(suggestions[1].style.getPropertyValue("--suggestion-category-color"), "");
   } finally {
     Date.now = originalDateNow;
+    setGlobalProperty("HTMLElement", originalHTMLElement);
+    setGlobalProperty("HTMLInputElement", originalHTMLInputElement);
+  }
+});
+
+test("renderItemSuggestions puts the plus action inline before the suggestion copy", () => {
+  const { document, root, window } = createSuggestionRoot();
+  const originalHTMLElement = globalThis.HTMLElement;
+  const originalHTMLInputElement = globalThis.HTMLInputElement;
+  setGlobalProperty("HTMLElement", window.HTMLElement);
+  setGlobalProperty("HTMLInputElement", window.HTMLInputElement);
+  const state = createState([
+    {
+      id: "item-1",
+      name: "Milch",
+      checked: true,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+    },
+  ]);
+
+  try {
+    renderItemSuggestions(root, state);
+
+    const suggestion = document.querySelector(".item-suggestion");
+    const main = suggestion.querySelector(".item-main");
+    const button = suggestion.querySelector("button[data-item-reuse]");
+    assert.equal(suggestion.querySelector(".item-suggestion-check"), null);
+    assert.equal(suggestion.children.length, 1);
+    assert.equal(main.firstElementChild, button);
+    assert.equal(button.dataset.itemReuse, "item-1");
+    assert.equal(button.textContent, "+");
+    assert.equal(button.getAttribute("aria-label"), "Add Milch back to the list");
+    assert.equal(button.nextElementSibling.className, "item-copy item-suggestion-copy");
+  } finally {
     setGlobalProperty("HTMLElement", originalHTMLElement);
     setGlobalProperty("HTMLInputElement", originalHTMLInputElement);
   }

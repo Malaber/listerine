@@ -412,10 +412,23 @@ private struct ListsTab: View {
 }
 
 private struct SettingsTab: View {
+    @EnvironmentObject private var appearanceSettings: AppearanceSettings
     @EnvironmentObject private var viewModel: MobileAppViewModel
 
     var body: some View {
         Form {
+            Section("Appearance") {
+                Picker("Appearance", selection: $appearanceSettings.mode) {
+                    ForEach(AppearanceMode.allCases) { mode in
+                        Text(mode.settingsLabel)
+                            .tag(mode)
+                            .accessibilityIdentifier("settings-appearance-\(mode.rawValue)-option")
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("settings-appearance-picker")
+            }
+
             Section("Account") {
                 LabeledContent("Signed in as", value: viewModel.displayName ?? "Unknown")
                 if let favoriteList = viewModel.favoriteList {
@@ -445,10 +458,15 @@ private struct ListDetailScreen: View {
 
     @State private var editingItem: GroceryItemRecord?
     @State private var addItemPresentation: AddItemPresentation?
-    @State private var highlightedItemID: UUID?
 
     private var currentList: GroceryListSummary? {
         viewModel.lists.first { $0.id == listID }
+    }
+
+    private var visibleItemIDs: [UUID] {
+        viewModel.sections.flatMap { section in
+            section.items.map(\.id)
+        }
     }
 
     var body: some View {
@@ -485,7 +503,6 @@ private struct ListDetailScreen: View {
                             ItemRow(item: item) {
                                 editingItem = item
                             }
-                            .background(rowHighlight(for: item))
                         }
                     } header: {
                         SectionHeader(section: section) { categoryID in
@@ -530,17 +547,10 @@ private struct ListDetailScreen: View {
             EditItemSheet(item: item)
         }
         .sheet(item: $addItemPresentation) { presentation in
-            AddItemSheet(initialCategoryID: presentation.categoryID) { itemID in
-                highlightedItemID = itemID
-            }
+            AddItemSheet(initialCategoryID: presentation.categoryID)
         }
-        .animation(.easeInOut(duration: 0.22), value: viewModel.sections.map(\.id))
-        .animation(.easeInOut(duration: 0.22), value: highlightedItemID)
+        .animation(.spring(response: 0.34, dampingFraction: 0.86), value: visibleItemIDs)
         .accessibilityIdentifier("list-detail-screen")
-    }
-
-    private func rowHighlight(for item: GroceryItemRecord) -> Color {
-        item.id == highlightedItemID ? Color.accentColor.opacity(0.16) : Color.clear
     }
 }
 
@@ -571,10 +581,11 @@ private struct SectionHeader: View {
             Circle()
                 .fill(Color(hex: section.colorHex) ?? Color.secondary.opacity(0.4))
                 .frame(width: 10, height: 10)
-            Text(section.title)
-            Spacer()
-            Text("\(section.itemCount)")
-                .foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                Text(section.title)
+                SectionCountBadge(count: section.itemCount, sectionID: section.id, sectionTitle: section.title)
+            }
+            Spacer(minLength: 16)
             if allowsQuickAdd {
                 Button {
                     onQuickAdd(quickAddCategoryID)
@@ -590,6 +601,30 @@ private struct SectionHeader: View {
         }
         .textCase(nil)
         .accessibilityIdentifier("section-\(section.id)")
+    }
+}
+
+private struct SectionCountBadge: View {
+    let count: Int
+    let sectionID: String
+    let sectionTitle: String
+
+    private var countLabel: String {
+        count == 1 ? "1 item" : "\(count) items"
+    }
+
+    var body: some View {
+        Text("\(count)")
+            .font(.caption2.weight(.semibold))
+            .monospacedDigit()
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background {
+                Capsule().fill(Color.secondary.opacity(0.14))
+            }
+            .accessibilityIdentifier("section-count-badge-\(sectionID)")
+            .accessibilityLabel("\(sectionTitle) count, \(countLabel)")
     }
 }
 
@@ -666,7 +701,6 @@ private struct AddItemSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var viewModel: MobileAppViewModel
     let initialCategoryID: UUID?
-    let onSuggestionFocused: (UUID) -> Void
 
     private enum FocusedField {
         case name
@@ -679,9 +713,8 @@ private struct AddItemSheet: View {
     @State private var isSaving = false
     @FocusState private var focusedField: FocusedField?
 
-    init(initialCategoryID: UUID? = nil, onSuggestionFocused: @escaping (UUID) -> Void = { _ in }) {
+    init(initialCategoryID: UUID? = nil) {
         self.initialCategoryID = initialCategoryID
-        self.onSuggestionFocused = onSuggestionFocused
         _categoryID = State(initialValue: initialCategoryID)
     }
 
@@ -716,11 +749,12 @@ private struct AddItemSheet: View {
                             }
                             .buttonStyle(.plain)
                             .contentShape(Rectangle())
+                            .disabled(isSaving)
                             .accessibilityIdentifier("add-item-suggestion-\(suggestion.item.id.uuidString)")
                             .accessibilityLabel(
                                 suggestion.item.checked
                                     ? "Add \(suggestion.item.name) back to the list"
-                                    : "Jump to \(suggestion.item.name) in the list"
+                                    : "Add \(suggestion.item.name) to the list"
                             )
                         }
                     }
@@ -728,13 +762,20 @@ private struct AddItemSheet: View {
                 }
 
                 Section("Category") {
-                    Picker("Category", selection: $categoryID) {
-                        Text("Uncategorized").tag(Optional<UUID>.none)
-                        ForEach(viewModel.availableCategories) { category in
-                            Text(category.name).tag(Optional(category.id))
-                        }
+                    NavigationLink {
+                        CategorySelectionScreen(
+                            selectedCategoryID: $categoryID,
+                            categories: viewModel.categories,
+                            items: viewModel.items,
+                            categoryOrder: viewModel.categoryOrder
+                        )
+                    } label: {
+                        SelectedCategorySummary(
+                            category: selectedCategory,
+                            itemCount: selectedCategoryItemCount
+                        )
                     }
-                    .accessibilityIdentifier("add-item-category-picker")
+                    .accessibilityIdentifier("add-item-category-link")
                 }
 
                 Section("Notes") {
@@ -766,6 +807,18 @@ private struct AddItemSheet: View {
         .accessibilityIdentifier("add-item-sheet")
     }
 
+    private var selectedCategory: GroceryCategorySummary? {
+        guard let categoryID else { return nil }
+        return viewModel.categories.first { $0.id == categoryID }
+    }
+
+    private var selectedCategoryItemCount: Int {
+        if let categoryID {
+            return viewModel.items.filter { $0.categoryID == categoryID }.count
+        }
+        return GroceryCategorySelectionBuilder.uncategorizedItemCount(items: viewModel.items)
+    }
+
     private var canSave: Bool {
         isSaving == false && name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
     }
@@ -791,14 +844,29 @@ private struct AddItemSheet: View {
 
     @MainActor
     private func useSuggestion(_ suggestion: GroceryItemSuggestion) async {
+        guard isSaving == false else { return }
+        isSaving = true
+
+        let saved: Bool
         if suggestion.item.checked {
-            let toggled = await viewModel.toggle(suggestion.item)
-            guard toggled else { return }
-            AppHaptics.confirmation()
+            saved = await viewModel.toggle(suggestion.item)
+        } else {
+            saved = await viewModel.addItem(
+                name: suggestion.item.name,
+                quantity: suggestion.item.quantityText ?? "",
+                note: suggestion.item.note ?? "",
+                categoryID: suggestion.item.categoryID
+            )
         }
-        onSuggestionFocused(suggestion.item.id)
-        dismiss()
+
+        if saved {
+            AppHaptics.confirmation()
+            dismiss()
+        } else {
+            isSaving = false
+        }
     }
+
 }
 
 private struct ItemSuggestionRow: View {
@@ -806,30 +874,183 @@ private struct ItemSuggestionRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            RoundedRectangle(cornerRadius: 2)
-                .fill(Color(hex: suggestion.category?.colorHex) ?? Color.secondary.opacity(0.4))
-                .frame(width: 4, height: 36)
-            Image(systemName: suggestion.item.checked ? "arrow.uturn.backward.circle" : "scope")
-                .foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 3) {
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(Color(hex: suggestion.category?.colorHex) ?? Color.secondary.opacity(0.35))
+                .frame(width: 4, height: 48)
+
+            VStack(alignment: .leading, spacing: 4) {
                 Text(suggestion.item.name)
-                    .foregroundStyle(.primary)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(suggestion.item.checked ? .secondary : .primary)
+                    .strikethrough(suggestion.item.checked)
                 Text(metaText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer()
             Image(systemName: "plus")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 34, weight: .regular))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 44, height: 44)
+                .accessibilityHidden(true)
         }
-        .padding(.vertical, 2)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
     }
 
     private var metaText: String {
-        let categoryName = suggestion.category?.name ?? "Uncategorized"
-        return suggestion.item.checked ? "\(categoryName) · checked off" : categoryName
+        var parts: [String] = []
+        if let quantity = suggestion.item.quantityText, quantity.isEmpty == false {
+            parts.append("Qty: \(quantity)")
+        }
+        parts.append(suggestion.category?.name ?? "Uncategorized")
+        if suggestion.item.checked {
+            parts.append("checked off")
+        }
+        return parts.joined(separator: " · ")
+    }
+}
+
+private struct SelectedCategorySummary: View {
+    let category: GroceryCategorySummary?
+    let itemCount: Int
+
+    var body: some View {
+        HStack(spacing: 12) {
+            CategoryColorSwatch(colorHex: category?.colorHex)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(category?.name ?? "Uncategorized")
+                    .foregroundStyle(.primary)
+                Text("\(itemCount) items")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+private struct CategorySelectionScreen: View {
+    @Environment(\.dismiss) private var dismiss
+
+    @Binding var selectedCategoryID: UUID?
+    let categories: [GroceryCategorySummary]
+    let items: [GroceryItemRecord]
+    let categoryOrder: [ListCategoryOrderEntry]
+
+    @State private var query = ""
+    @State private var sort: GroceryCategorySelectionSort = .listOrder
+
+    private var options: [GroceryCategorySelectionOption] {
+        GroceryCategorySelectionBuilder.options(
+            categories: categories,
+            items: items,
+            categoryOrder: categoryOrder,
+            query: query,
+            sort: sort
+        )
+    }
+
+    var body: some View {
+        List {
+            Section {
+                TextField("Search categories", text: $query)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .accessibilityIdentifier("category-search-field")
+
+                Picker("Sort", selection: $sort) {
+                    ForEach(GroceryCategorySelectionSort.allCases, id: \.self) { sortOption in
+                        Text(sortOption.shortTitle)
+                            .tag(sortOption)
+                            .accessibilityLabel(sortOption.title)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("category-sort-picker")
+            }
+
+            Section("Categories") {
+                Button {
+                    selectCategory(nil)
+                } label: {
+                    CategorySelectionRow(
+                        title: "Uncategorized",
+                        colorHex: nil,
+                        itemCount: GroceryCategorySelectionBuilder.uncategorizedItemCount(items: items),
+                        isSelected: selectedCategoryID == nil
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("category-option-uncategorized")
+
+                ForEach(options) { option in
+                    Button {
+                        selectCategory(option.category.id)
+                    } label: {
+                        CategorySelectionRow(
+                            title: option.category.name,
+                            colorHex: option.category.colorHex,
+                            itemCount: option.itemCount,
+                            isSelected: selectedCategoryID == option.category.id
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("category-option-\(option.category.name)")
+                    .accessibilityLabel("\(option.category.name), \(option.itemCount) items")
+                }
+
+                if options.isEmpty {
+                    Text("No categories found")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .navigationTitle("Category")
+        .navigationBarTitleDisplayMode(.inline)
+        .accessibilityIdentifier("category-selection-screen")
+    }
+
+    private func selectCategory(_ categoryID: UUID?) {
+        selectedCategoryID = categoryID
+        dismiss()
+    }
+}
+
+private struct CategorySelectionRow: View {
+    let title: String
+    let colorHex: String?
+    let itemCount: Int
+    let isSelected: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            CategoryColorSwatch(colorHex: colorHex)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .foregroundStyle(.primary)
+                Text("\(itemCount) items")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if isSelected {
+                Image(systemName: "checkmark")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+            }
+        }
+        .contentShape(Rectangle())
+        .padding(.vertical, 2)
+    }
+}
+
+private struct CategoryColorSwatch: View {
+    let colorHex: String?
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 3)
+            .fill(Color(hex: colorHex) ?? Color.secondary.opacity(0.35))
+            .frame(width: 14, height: 32)
     }
 }
 
@@ -903,13 +1124,20 @@ private struct EditItemSheet: View {
                 }
 
                 Section("Category") {
-                    Picker("Category", selection: $categoryID) {
-                        Text("Uncategorized").tag(Optional<UUID>.none)
-                        ForEach(viewModel.availableCategories) { category in
-                            Text(category.name).tag(Optional(category.id))
-                        }
+                    NavigationLink {
+                        CategorySelectionScreen(
+                            selectedCategoryID: $categoryID,
+                            categories: viewModel.categories,
+                            items: viewModel.items,
+                            categoryOrder: viewModel.categoryOrder
+                        )
+                    } label: {
+                        SelectedCategorySummary(
+                            category: selectedCategory,
+                            itemCount: selectedCategoryItemCount
+                        )
                     }
-                    .accessibilityIdentifier("edit-item-category-picker")
+                    .accessibilityIdentifier("edit-item-category-link")
                 }
 
                 Section("Notes") {
@@ -927,28 +1155,36 @@ private struct EditItemSheet: View {
             .navigationTitle("Edit item")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") {
-                        flushCurrentEdit()
-                        dismiss()
+                ToolbarItem(placement: .topBarLeading) {
+                    ControlGroup {
+                        Button {
+                            applyUndo()
+                        } label: {
+                            Label("Undo", systemImage: "arrow.uturn.backward")
+                                .labelStyle(.iconOnly)
+                        }
+                        .accessibilityIdentifier("edit-item-undo-button")
+                        .disabled(history.canUndo == false)
+
+                        Button {
+                            applyRedo()
+                        } label: {
+                            Label("Redo", systemImage: "arrow.uturn.forward")
+                                .labelStyle(.iconOnly)
+                        }
+                        .accessibilityIdentifier("edit-item-redo-button")
+                        .disabled(history.canRedo == false)
                     }
                 }
-                ToolbarItemGroup(placement: .confirmationAction) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        applyUndo()
+                        flushCurrentEdit()
+                        dismiss()
                     } label: {
-                        Label("Undo", systemImage: "arrow.uturn.backward")
+                        Label("Done", systemImage: "xmark")
+                            .labelStyle(.iconOnly)
                     }
-                    .disabled(history.canUndo == false)
-                    .accessibilityIdentifier("edit-item-undo-button")
-
-                    Button {
-                        applyRedo()
-                    } label: {
-                        Label("Redo", systemImage: "arrow.uturn.forward")
-                    }
-                    .disabled(history.canRedo == false)
-                    .accessibilityIdentifier("edit-item-redo-button")
+                    .accessibilityIdentifier("edit-item-close-button")
                 }
             }
         }
@@ -970,6 +1206,18 @@ private struct EditItemSheet: View {
             note: note,
             categoryID: categoryID
         )
+    }
+
+    private var selectedCategory: GroceryCategorySummary? {
+        guard let categoryID else { return nil }
+        return viewModel.categories.first { $0.id == categoryID }
+    }
+
+    private var selectedCategoryItemCount: Int {
+        if let categoryID {
+            return viewModel.items.filter { $0.categoryID == categoryID }.count
+        }
+        return GroceryCategorySelectionBuilder.uncategorizedItemCount(items: viewModel.items)
     }
 
     private static func historyKey(itemID: UUID) -> String {
@@ -1101,6 +1349,34 @@ private enum AppHaptics {
         generator.prepare()
         generator.impactOccurred(intensity: 0.7)
         #endif
+    }
+}
+
+private extension GroceryCategorySelectionSort {
+    var shortTitle: String {
+        switch self {
+        case .listOrder:
+            return "List"
+        case .nameAscending:
+            return "A-Z"
+        case .nameDescending:
+            return "Z-A"
+        case .mostUsed:
+            return "Used"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .listOrder:
+            return "List order"
+        case .nameAscending:
+            return "A-Z"
+        case .nameDescending:
+            return "Z-A"
+        case .mostUsed:
+            return "Most used"
+        }
     }
 }
 

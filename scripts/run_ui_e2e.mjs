@@ -5,6 +5,7 @@ import { chromium, devices } from "playwright";
 
 const baseUrl = process.env.PREVIEW_BASE_URL ?? "http://127.0.0.1:8000";
 const artifactDir = process.env.PREVIEW_ARTIFACT_DIR ?? "e2e-artifacts/ui-e2e";
+const backupDir = process.env.PREVIEW_BACKUP_DIR ?? "e2e-artifacts/backups";
 const videoDir = path.join(artifactDir, "videos");
 const seedPath = process.env.E2E_SEED_PATH ?? "app/fixtures/review_seed_e2e.json";
 const deviceName = process.env.E2E_DEVICE ?? "desktop";
@@ -170,6 +171,37 @@ async function expectInViewport(locator, message) {
     return isFullyVisible();
   });
   assert(isInViewport, message);
+}
+
+async function assertSuggestionPlusButtonInline(suggestion, message) {
+  const layout = await suggestion.evaluate((node) => {
+    const button = node.querySelector("button[data-item-reuse]");
+    const copy = node.querySelector(".item-suggestion-copy");
+    const inertCheck = node.querySelector(".item-suggestion-check");
+    if (!(button instanceof HTMLElement) || !(copy instanceof HTMLElement)) {
+      return { hasButton: Boolean(button), hasCopy: Boolean(copy), hasInertCheck: Boolean(inertCheck) };
+    }
+    const buttonRect = button.getBoundingClientRect();
+    const copyRect = copy.getBoundingClientRect();
+    return {
+      hasButton: true,
+      hasCopy: true,
+      hasInertCheck: Boolean(inertCheck),
+      buttonBeforeCopy: buttonRect.right <= copyRect.left,
+      verticallyOverlapsCopy: buttonRect.top < copyRect.bottom && buttonRect.bottom > copyRect.top,
+    };
+  });
+  assert.deepEqual(
+    layout,
+    {
+      hasButton: true,
+      hasCopy: true,
+      hasInertCheck: false,
+      buttonBeforeCopy: true,
+      verticallyOverlapsCopy: true,
+    },
+    message,
+  );
 }
 
 async function assertBrownWhiteAccentChrome(page) {
@@ -375,6 +407,37 @@ async function assertFaviconAsset(page, requestContext) {
   assert(
     response.headers()["content-type"]?.startsWith("image/png"),
     "Expected favicon asset to be served as image/png",
+  );
+}
+
+async function assertLinkPreviewMetadata(page, requestContext) {
+  logStep("Checking social link preview metadata uses PNG banner asset");
+  const ogImage = page.locator('head meta[property="og:image"]').first();
+  await ogImage.waitFor({ state: "attached" });
+  const ogImageUrl = await ogImage.getAttribute("content");
+  const expectedImageUrl = new URL("/static/img/link-preview.png", baseUrl).toString();
+  assert.equal(ogImageUrl, expectedImageUrl);
+  assert.equal(
+    await page.locator('head meta[name="twitter:card"]').getAttribute("content"),
+    "summary_large_image",
+  );
+  assert.equal(
+    await page.locator('head meta[property="og:image:type"]').getAttribute("content"),
+    "image/png",
+  );
+  assert.equal(
+    await page.locator('head meta[property="og:image:width"]').getAttribute("content"),
+    "1200",
+  );
+  assert.equal(
+    await page.locator('head meta[property="og:image:height"]').getAttribute("content"),
+    "630",
+  );
+  const response = await requestContext.fetch(ogImageUrl);
+  assert(response.ok(), `Expected link preview image to load, got ${response.status()}`);
+  assert(
+    response.headers()["content-type"]?.startsWith("image/png"),
+    "Expected link preview image to be served as image/png",
   );
 }
 
@@ -670,7 +733,7 @@ async function registerAccountFromLogin(page, { displayName, email }, expectedUr
   await page.locator('[data-passkey-register] input[name="email"]').fill(email);
   await Promise.all([
     page.waitForURL(expectedUrlPattern, { waitUntil: "commit", timeout: 10_000 }),
-    page.locator("[data-passkey-register-button]").click(),
+    page.locator('[data-passkey-register] input[name="email"]').press("Enter"),
   ]);
 }
 
@@ -705,6 +768,24 @@ async function runAdminTableControlsFlow(page) {
   assert(!page.url().includes("?"), `Expected reset to clear admin table params, got ${page.url()}`);
 }
 
+async function runAdminBackupFlow(page) {
+  logStep("Creating database backup from admin frontend");
+  await page.locator('a.btn[href$="/admin/backups"]').click();
+  await page.waitForURL(/\/admin\/backups$/);
+  await expectVisible(
+    page.getByRole("heading", { name: "Database backups" }),
+    "Expected database backups admin page",
+  );
+  await page.getByRole("button", { name: "Create backup" }).click();
+  const result = page.locator("[data-backup-result]");
+  await expectVisible(result, "Expected admin backup success message");
+  const fileName = (await page.locator("[data-backup-file-name]").innerText()).trim();
+  assert.match(fileName, /^planini-sqlite-.+\.sql$/u);
+  const stat = await fs.stat(path.join(backupDir, fileName));
+  assert(stat.size > 0, `Expected backup file ${fileName} to be non-empty`);
+  await screenshot(page, "admin-backup-created");
+}
+
 async function runAdminPasskeyAddLinkFlow(page, seed, rpId) {
   const adminUser = fixtureUser(seed, "planini_admin@schaedler.rocks");
   const targetUser = fixtureAccount(seed, "review-neighbor@example.com");
@@ -734,6 +815,7 @@ async function runAdminPasskeyAddLinkFlow(page, seed, rpId) {
 
     logStep("Signing in as admin and generating an add-passkey link from the user edit page");
     await loginAsAdmin(adminPage, adminUser);
+    await runAdminBackupFlow(adminPage);
     await runAdminTableControlsFlow(adminPage);
     await adminPage.goto(new URL("/admin/user/list", baseUrl).toString(), { waitUntil: "networkidle" });
     const targetUserRow = adminPage.locator("tr", { hasText: targetUser.email }).first();
@@ -1346,6 +1428,7 @@ async function main() {
     await loginFromRoot(page, owner, "Households and Lists");
     await screenshot(page, "promotion-list-of-lists");
     await assertFaviconAsset(page, context.request);
+    await assertLinkPreviewMetadata(page, context.request);
     await assertHeaderActionsFitTranslatedLabels(page);
     await runAdminPasskeyAddLinkFlow(page, seed, rpId);
     await runPasskeyManagementFlow(page, context, owner, rpId, authenticator);
@@ -1397,6 +1480,7 @@ async function main() {
     await addForm.getByLabel("Item name").fill("Spaghetty");
     const activeSuggestion = addForm.locator(".item-suggestion", { hasText: "Spaghetti" });
     await expectVisible(activeSuggestion, "Expected fuzzy duplicate suggestion for active item");
+    await assertSuggestionPlusButtonInline(activeSuggestion, "Suggestion plus should replace checkbox circle inline");
     await activeSuggestion.locator("button").click();
     await expectHidden(page.locator("[data-item-panel]"), "Suggestion reuse should close add modal");
     await page.waitForSelector('[data-item-card].is-highlighted', { timeout: 3000 });
@@ -1446,6 +1530,7 @@ async function main() {
     await addForm.getByLabel("Item name").fill("Broz");
     const checkedSuggestion = addForm.locator(".item-suggestion", { hasText: "Brot" });
     await expectVisible(checkedSuggestion, "Expected fuzzy suggestion for checked duplicate item");
+    await assertSuggestionPlusButtonInline(checkedSuggestion, "Checked suggestion plus should replace checkbox circle inline");
     await checkedSuggestion.locator("button").click();
     await expectVisible(
       page.locator("[data-list-toast]", { hasText: "Brot added back to the list." }),
