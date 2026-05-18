@@ -294,13 +294,26 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(moveNameField.waitForExistence(timeout: 3))
         moveNameField.typeText("\(moveItemName)\n")
         XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 8))
-        XCTAssertTrue(app.staticTexts[moveItemName].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            waitForItem(
+                named: moveItemName,
+                inListNamed: initialListName,
+                accessToken: session.accessToken,
+                timeout: 20
+            )
+        )
         let moveItemID = try itemID(
             named: moveItemName,
             inListNamed: initialListName,
             accessToken: session.accessToken
         )
-        app.staticTexts[moveItemName].tap()
+        XCTAssertTrue(
+            waitForItemRow(itemID: moveItemID, named: moveItemName, in: app, timeout: 20),
+            "Expected move test item row to be visible before opening edit sheet."
+        )
+        let moveItemLabel = app.staticTexts[moveItemName]
+        scrollToElement(moveItemLabel, in: app)
+        tapElement(moveItemLabel)
         XCTAssertTrue(app.otherElements["edit-item-sheet"].waitForExistence(timeout: 3))
         let movePicker = firstExistingElement(
             [
