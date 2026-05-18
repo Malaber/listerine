@@ -404,6 +404,12 @@ private struct SettingsTab: View {
                 if let favoriteList = viewModel.favoriteList {
                     LabeledContent("Favorite list", value: favoriteList.name)
                 }
+                NavigationLink {
+                    HouseholdManagementScreen()
+                } label: {
+                    Label("Households and lists", systemImage: "house")
+                }
+                .accessibilityIdentifier("settings-household-management-link")
                 Button("Sign out", role: .destructive) {
                     viewModel.signOut()
                 }
@@ -418,6 +424,312 @@ private struct SettingsTab: View {
         }
         .navigationTitle("Settings")
         .accessibilityIdentifier("settings-screen")
+    }
+}
+
+private struct HouseholdManagementScreen: View {
+    @EnvironmentObject private var viewModel: MobileAppViewModel
+    @State private var showingNewHousehold = false
+
+    var body: some View {
+        List {
+            Section("Households") {
+                if viewModel.sortedHouseholdsForManagement.isEmpty {
+                    EmptyStateView(
+                        title: "No households yet",
+                        systemImage: "house",
+                        message: "Create a household before adding lists or invite links."
+                    )
+                } else {
+                    ForEach(viewModel.sortedHouseholdsForManagement) { household in
+                        NavigationLink {
+                            HouseholdDetailManagementScreen(householdID: household.id)
+                        } label: {
+                            HouseholdManagementRow(
+                                household: household,
+                                listCount: viewModel.lists.filter { $0.householdID == household.id }.count
+                            )
+                        }
+                        .accessibilityIdentifier("household-row-\(household.name)")
+                    }
+                }
+            }
+
+            Section {
+                Button {
+                    showingNewHousehold = true
+                } label: {
+                    Label("New household", systemImage: "house.badge.plus")
+                }
+                .accessibilityIdentifier("new-household-button")
+            }
+        }
+        .navigationTitle("Households")
+        .refreshable {
+            try? await viewModel.reloadAllData()
+        }
+        .task {
+            try? await viewModel.reloadAllData()
+        }
+        .sheet(isPresented: $showingNewHousehold) {
+            CreateNamedResourceSheet(
+                title: "New household",
+                placeholder: "Household name",
+                saveTitle: "Create",
+                fieldIdentifier: "new-household-name-field",
+                saveIdentifier: "new-household-save-button"
+            ) { name in
+                await viewModel.createHousehold(name: name) != nil
+            }
+        }
+        .accessibilityIdentifier("household-management-screen")
+    }
+}
+
+private struct HouseholdManagementRow: View {
+    let household: HouseholdSummary
+    let listCount: Int
+
+    private var listCountText: String {
+        listCount == 1 ? "1 list" : "\(listCount) lists"
+    }
+
+    var body: some View {
+        Label {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(household.name)
+                Text(listCountText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        } icon: {
+            Image(systemName: "house")
+        }
+    }
+}
+
+private struct HouseholdDetailManagementScreen: View {
+    @EnvironmentObject private var viewModel: MobileAppViewModel
+    let householdID: UUID
+
+    @State private var showingNewList = false
+    @State private var invite: HouseholdInviteLink?
+    @State private var isCreatingInvite = false
+
+    private var household: HouseholdSummary? {
+        viewModel.households.first { $0.id == householdID }
+    }
+
+    private var householdLists: [GroceryListSummary] {
+        viewModel.lists
+            .filter { $0.householdID == householdID }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    var body: some View {
+        List {
+            Section("Lists") {
+                if householdLists.isEmpty {
+                    EmptyStateView(
+                        title: "No lists yet",
+                        systemImage: "list.bullet.rectangle",
+                        message: "Create a list for shared shopping or household tasks."
+                    )
+                } else {
+                    ForEach(householdLists) { list in
+                        NavigationLink {
+                            ListDetailScreen(listID: list.id, showsFavoriteButton: true)
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "list.bullet.rectangle")
+                                    .foregroundStyle(.secondary)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(list.name)
+                                    if list.id == viewModel.favoriteListID {
+                                        Label("Favorite list", systemImage: "star.fill")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                        }
+                        .accessibilityIdentifier("managed-list-row-\(list.name)")
+                    }
+                }
+
+                Button {
+                    showingNewList = true
+                } label: {
+                    Label("New list", systemImage: "plus")
+                }
+                .accessibilityIdentifier("new-household-list-button")
+            }
+
+            Section("Invites") {
+                Button {
+                    Task { await createInvite() }
+                } label: {
+                    if isCreatingInvite {
+                        HStack {
+                            ProgressView()
+                            Text("Creating invite…")
+                        }
+                    } else {
+                        Label("Create invite link", systemImage: "link.badge.plus")
+                    }
+                }
+                .disabled(isCreatingInvite)
+                .accessibilityIdentifier("create-household-invite-button")
+
+                if let invite {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(invite.inviteURL)
+                            .font(.footnote.monospaced())
+                            .textSelection(.enabled)
+                            .accessibilityIdentifier("household-invite-url-value")
+
+                        if let expiresAtText = formattedExpiration(for: invite) {
+                            Text("Expires \(expiresAtText)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .accessibilityIdentifier("household-invite-expiration")
+                        }
+
+                        HStack {
+                            Button {
+                                copyInvite(invite.inviteURL)
+                            } label: {
+                                Label("Copy", systemImage: "doc.on.doc")
+                            }
+                            .accessibilityIdentifier("copy-household-invite-button")
+
+                            ShareLink(item: invite.inviteURL) {
+                                Label("Share", systemImage: "square.and.arrow.up")
+                            }
+                            .accessibilityIdentifier("share-household-invite-button")
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
+        .navigationTitle(household?.name ?? "Household")
+        .sheet(isPresented: $showingNewList) {
+            CreateNamedResourceSheet(
+                title: "New list",
+                placeholder: "List name",
+                saveTitle: "Create",
+                fieldIdentifier: "new-household-list-name-field",
+                saveIdentifier: "new-household-list-save-button"
+            ) { name in
+                await viewModel.createList(householdID: householdID, name: name) != nil
+            }
+        }
+        .accessibilityIdentifier("household-detail-management-screen")
+    }
+
+    @MainActor
+    private func createInvite() async {
+        guard isCreatingInvite == false else { return }
+        isCreatingInvite = true
+        defer { isCreatingInvite = false }
+
+        if let createdInvite = await viewModel.createInvite(householdID: householdID) {
+            invite = createdInvite
+            AppHaptics.confirmation()
+        }
+    }
+
+    private func formattedExpiration(for invite: HouseholdInviteLink) -> String? {
+        guard let expiresAt = invite.expiresAt else { return nil }
+        return inviteExpirationFormatter.string(from: expiresAt)
+    }
+
+    private func copyInvite(_ inviteURL: String) {
+        #if canImport(UIKit)
+        UIPasteboard.general.string = inviteURL
+        AppHaptics.confirmation()
+        #endif
+    }
+}
+
+private let inviteExpirationFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.dateStyle = .medium
+    formatter.timeStyle = .short
+    return formatter
+}()
+
+private struct CreateNamedResourceSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let title: String
+    let placeholder: String
+    let saveTitle: String
+    let fieldIdentifier: String
+    let saveIdentifier: String
+    let onSave: (String) async -> Bool
+
+    @State private var name = ""
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+    @FocusState private var isNameFocused: Bool
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField(placeholder, text: $name)
+                        .focused($isNameFocused)
+                        .submitLabel(.done)
+                        .onSubmit(save)
+                        .accessibilityIdentifier(fieldIdentifier)
+
+                    if let errorMessage {
+                        Label(errorMessage, systemImage: "exclamationmark.triangle")
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(saveTitle) { save() }
+                        .disabled(canSave == false)
+                        .accessibilityIdentifier(saveIdentifier)
+                }
+            }
+        }
+        .task {
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            isNameFocused = true
+        }
+    }
+
+    private var canSave: Bool {
+        isSaving == false && name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
+
+    private func save() {
+        guard canSave else { return }
+        isSaving = true
+        errorMessage = nil
+
+        Task {
+            let saved = await onSave(name)
+            if saved {
+                AppHaptics.confirmation()
+                dismiss()
+            } else {
+                isSaving = false
+                errorMessage = "Could not save."
+            }
+        }
     }
 }
 

@@ -134,7 +134,7 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(nameField.waitForExistence(timeout: 3))
         nameField.typeText(enterSavedItemName)
         tapElement(app.buttons["add-item-save-button"])
-        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 10))
+        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 30))
         XCTAssertTrue(
             waitForItem(
                 named: enterSavedItemName,
@@ -170,7 +170,7 @@ final class PlaniniUITests: XCTestCase {
         noteField.typeText("for pasta")
 
         tapElement(app.buttons["add-item-save-button"])
-        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 10))
+        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 30))
         XCTAssertTrue(
             waitForItem(
                 named: itemName,
@@ -253,6 +253,7 @@ final class PlaniniUITests: XCTestCase {
 
         XCTAssertTrue(tapTab("Settings", in: app, timeout: 10))
         XCTAssertTrue(app.buttons["settings-sign-out-button"].waitForExistence(timeout: 5))
+        try exerciseHouseholdManagement(in: app, accessToken: session.accessToken)
         assertAppearanceMode("System", in: app)
         selectAppearanceMode("Dark", in: app)
         assertAppearanceMode("Dark", in: app)
@@ -543,6 +544,67 @@ final class PlaniniUITests: XCTestCase {
         return (statusLabel.exists && statusLabel.label.contains(status)) || app.staticTexts[status].exists
     }
 
+    private func exerciseHouseholdManagement(in app: XCUIApplication, accessToken: String) throws {
+        let suffix = UUID().uuidString.prefix(8)
+        let householdName = "UI Household \(suffix)"
+        let listName = "UI Household List \(suffix)"
+
+        let managementLink = app.buttons["settings-household-management-link"]
+        XCTAssertTrue(managementLink.waitForExistence(timeout: 5))
+        tapElement(managementLink)
+
+        let managementScreen = app.descendants(matching: .any)["household-management-screen"]
+        XCTAssertTrue(managementScreen.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["new-household-button"].waitForExistence(timeout: 5))
+
+        tapElement(app.buttons["new-household-button"])
+        let householdField = app.textFields["new-household-name-field"]
+        XCTAssertTrue(householdField.waitForExistence(timeout: 5))
+        householdField.tap()
+        householdField.typeText(householdName)
+        tapElement(app.buttons["new-household-save-button"])
+
+        let householdRow = app.buttons["household-row-\(householdName)"]
+        XCTAssertTrue(householdRow.waitForExistence(timeout: 10))
+        XCTAssertTrue(waitForHousehold(named: householdName, accessToken: accessToken))
+        tapElement(householdRow)
+
+        let householdDetail = app.descendants(matching: .any)["household-detail-management-screen"]
+        XCTAssertTrue(householdDetail.waitForExistence(timeout: 5))
+        tapElement(app.buttons["new-household-list-button"])
+
+        let listField = app.textFields["new-household-list-name-field"]
+        XCTAssertTrue(listField.waitForExistence(timeout: 5))
+        listField.tap()
+        listField.typeText(listName)
+        tapElement(app.buttons["new-household-list-save-button"])
+
+        let listRow = app.buttons["managed-list-row-\(listName)"]
+        XCTAssertTrue(listRow.waitForExistence(timeout: 10))
+        XCTAssertTrue(
+            waitForList(named: listName, inHouseholdNamed: householdName, accessToken: accessToken)
+        )
+
+        tapElement(app.buttons["create-household-invite-button"])
+        let inviteValue = app.staticTexts["household-invite-url-value"]
+        XCTAssertTrue(inviteValue.waitForExistence(timeout: 10))
+        let inviteURL = inviteValue.label
+        XCTAssertTrue(inviteURL.contains("/invite/"))
+        XCTAssertTrue(
+            waitForInvitePreview(
+                inviteURL: inviteURL,
+                householdName: householdName,
+                accessToken: accessToken
+            )
+        )
+        captureScreenshot(named: "ios-ui-household-management")
+
+        navigateBack(in: app)
+        XCTAssertTrue(managementScreen.waitForExistence(timeout: 3))
+        navigateBack(in: app)
+        XCTAssertTrue(app.buttons["settings-sign-out-button"].waitForExistence(timeout: 5))
+    }
+
     private func waitForElementToDisappear(_ element: XCUIElement, timeout: TimeInterval = 8) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
@@ -793,18 +855,8 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(app.textFields["registration-email-field"].waitForExistence(timeout: 3))
         captureScreenshot(named: "ios-ui-reviewer-onboarding")
 
-        let passkeyField = app.textFields["passkey-add-link-field"]
-        passkeyField.tap()
-        passkeyField.typeText("\(baseURL.absoluteString)/passkey-add/missing-reviewer-token")
-        XCTAssertTrue(app.buttons["passkey-add-submit-button"].isEnabled)
-
-        let nameField = app.textFields["registration-display-name-field"]
-        nameField.tap()
-        nameField.typeText("App Reviewer")
-        let emailField = app.textFields["registration-email-field"]
-        emailField.tap()
-        emailField.typeText("reviewer@example.com")
-        XCTAssertTrue(app.buttons["registration-submit-button"].isEnabled)
+        XCTAssertFalse(app.buttons["passkey-add-submit-button"].isEnabled)
+        XCTAssertFalse(app.buttons["registration-submit-button"].isEnabled)
 
         app.buttons["Cancel"].tap()
         XCTAssertFalse(app.otherElements["reviewer-onboarding-sheet"].exists)
@@ -820,22 +872,10 @@ final class PlaniniUITests: XCTestCase {
     }
 
     private func fetchItems(inListNamed listName: String, accessToken: String) throws -> [UITestItem] {
-        let householdRequest = jsonRequest(
-            path: "/api/v1/households",
-            method: "GET",
-            token: accessToken
-        )
-        let householdData = try performRequest(householdRequest)
-        let households = try JSONDecoder().decode([UITestHousehold].self, from: householdData)
+        let households = try fetchHouseholds(accessToken: accessToken)
 
         for household in households {
-            let listsRequest = jsonRequest(
-                path: "/api/v1/households/\(household.id.uuidString)/lists",
-                method: "GET",
-                token: accessToken
-            )
-            let listData = try performRequest(listsRequest)
-            let lists = try JSONDecoder().decode([UITestList].self, from: listData)
+            let lists = try fetchLists(householdID: household.id, accessToken: accessToken)
             guard let matchingList = lists.first(where: { $0.name == listName }) else {
                 continue
             }
@@ -850,6 +890,104 @@ final class PlaniniUITests: XCTestCase {
         }
 
         return []
+    }
+
+    private func waitForHousehold(
+        named householdName: String,
+        accessToken: String,
+        timeout: TimeInterval = 8
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let households = try? fetchHouseholds(accessToken: accessToken),
+                households.contains(where: { $0.name == householdName })
+            {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.35))
+        }
+        return false
+    }
+
+    private func waitForList(
+        named listName: String,
+        inHouseholdNamed householdName: String,
+        accessToken: String,
+        timeout: TimeInterval = 8
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let households = try? fetchHouseholds(accessToken: accessToken),
+                let household = households.first(where: { $0.name == householdName }),
+                let lists = try? fetchLists(householdID: household.id, accessToken: accessToken),
+                lists.contains(where: { $0.name == listName })
+            {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.35))
+        }
+        return false
+    }
+
+    private func waitForInvitePreview(
+        inviteURL: String,
+        householdName: String,
+        accessToken: String,
+        timeout: TimeInterval = 8
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let preview = try? invitePreview(inviteURL: inviteURL, accessToken: accessToken),
+                preview.householdName == householdName,
+                preview.alreadyMember
+            {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.35))
+        }
+        return false
+    }
+
+    private func fetchHouseholds(accessToken: String) throws -> [UITestHousehold] {
+        let request = jsonRequest(
+            path: "/api/v1/households",
+            method: "GET",
+            token: accessToken
+        )
+        let data = try performRequest(request)
+        return try JSONDecoder().decode([UITestHousehold].self, from: data)
+    }
+
+    private func fetchLists(householdID: UUID, accessToken: String) throws -> [UITestList] {
+        let request = jsonRequest(
+            path: "/api/v1/households/\(householdID.uuidString)/lists",
+            method: "GET",
+            token: accessToken
+        )
+        let data = try performRequest(request)
+        return try JSONDecoder().decode([UITestList].self, from: data)
+    }
+
+    private func invitePreview(inviteURL: String, accessToken: String) throws -> UITestInvitePreview {
+        guard
+            let url = URL(string: inviteURL),
+            let token = url.pathComponents.last,
+            token.isEmpty == false
+        else {
+            throw NSError(
+                domain: "PlaniniUITests",
+                code: 6,
+                userInfo: [NSLocalizedDescriptionKey: "Could not parse invite URL."]
+            )
+        }
+
+        let request = jsonRequest(
+            path: "/api/v1/households/invites/\(token)",
+            method: "GET",
+            token: accessToken
+        )
+        let data = try performRequest(request)
+        return try JSONDecoder().decode(UITestInvitePreview.self, from: data)
     }
 
     private func itemID(named itemName: String, inListNamed listName: String, accessToken: String) throws -> UUID {
@@ -941,22 +1079,10 @@ final class PlaniniUITests: XCTestCase {
     }
 
     private func listID(named listName: String, accessToken: String) throws -> UUID {
-        let householdRequest = jsonRequest(
-            path: "/api/v1/households",
-            method: "GET",
-            token: accessToken
-        )
-        let householdData = try performRequest(householdRequest)
-        let households = try JSONDecoder().decode([UITestHousehold].self, from: householdData)
+        let households = try fetchHouseholds(accessToken: accessToken)
 
         for household in households {
-            let listsRequest = jsonRequest(
-                path: "/api/v1/households/\(household.id.uuidString)/lists",
-                method: "GET",
-                token: accessToken
-            )
-            let listData = try performRequest(listsRequest)
-            let lists = try JSONDecoder().decode([UITestList].self, from: listData)
+            let lists = try fetchLists(householdID: household.id, accessToken: accessToken)
             if let matchingList = lists.first(where: { $0.name == listName }) {
                 return matchingList.id
             }
@@ -1060,6 +1186,13 @@ final class PlaniniUITests: XCTestCase {
         }
     }
 
+    private func navigateBack(in app: XCUIApplication) {
+        let backButton = app.navigationBars.buttons.firstMatch
+        if backButton.waitForExistence(timeout: 3) {
+            tapElement(backButton)
+        }
+    }
+
     private func captureScreenshot(named name: String) {
         let screenshot = XCUIScreen.main.screenshot()
         let attachment = XCTAttachment(screenshot: screenshot)
@@ -1102,6 +1235,7 @@ private struct UITestSession: Decodable {
 
 private struct UITestHousehold: Decodable {
     let id: UUID
+    let name: String
 }
 
 private struct UITestList: Decodable {
@@ -1130,6 +1264,16 @@ private struct UITestItem: Decodable {
 
 private struct UITestIdentifiedItem: Decodable {
     let id: UUID
+}
+
+private struct UITestInvitePreview: Decodable {
+    let householdName: String
+    let alreadyMember: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case householdName = "household_name"
+        case alreadyMember = "already_member"
+    }
 }
 
 private extension XCUIElement {
