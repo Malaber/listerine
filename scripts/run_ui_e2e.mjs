@@ -739,7 +739,7 @@ async function runAdminTableControlsFlow(page) {
 
 async function runAdminBackupFlow(page) {
   logStep("Creating database backup from admin frontend");
-  await page.getByRole("link", { name: "Backups", exact: true }).click();
+  await page.locator('a.btn[href$="/admin/backups"]').click();
   await page.waitForURL(/\/admin\/backups$/);
   await expectVisible(
     page.getByRole("heading", { name: "Database backups" }),
