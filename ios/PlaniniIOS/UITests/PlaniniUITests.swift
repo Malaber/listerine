@@ -294,6 +294,11 @@ final class PlaniniUITests: XCTestCase {
 
         let hostingListName = "Hosting errands"
         let hostingListID = try listID(named: hostingListName, accessToken: session.accessToken)
+        let haushaltCategoryID = try categoryID(
+            named: "Haushalt",
+            inListNamed: hostingListName,
+            accessToken: session.accessToken
+        )
         let backwarenCategoryID = try categoryID(
             named: "Backwaren",
             inListNamed: hostingListName,
@@ -361,14 +366,18 @@ final class PlaniniUITests: XCTestCase {
                 accessToken: session.accessToken
             )
         )
+        dismissKeyboard(in: app)
 
+        let haushaltRow = app.descendants(matching: .any)["category-settings-row-\(haushaltCategoryID.uuidString)"]
         let backwarenRow = app.descendants(matching: .any)["category-settings-row-\(backwarenCategoryID.uuidString)"]
         let konservenRow = app.descendants(matching: .any)["category-settings-row-\(konservenCategoryID.uuidString)"]
+        scrollToHittable(haushaltRow, in: app)
         scrollToHittable(backwarenRow, in: app)
+        XCTAssertTrue(haushaltRow.waitForExistence(timeout: 5))
         XCTAssertTrue(backwarenRow.waitForExistence(timeout: 5))
         XCTAssertTrue(konservenRow.waitForExistence(timeout: 5))
         let backwarenGrabber = backwarenRow.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5))
-        let firstCategoryTarget = konservenRow.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.2))
+        let firstCategoryTarget = haushaltRow.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.2))
         backwarenGrabber.press(forDuration: 0.6, thenDragTo: firstCategoryTarget)
         XCTAssertTrue(
             waitForFirstCategoryOrder(
@@ -934,6 +943,19 @@ final class PlaniniUITests: XCTestCase {
         } else {
             element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         }
+    }
+
+    private func dismissKeyboard(in app: XCUIApplication) {
+        let keyboard = app.keyboards.firstMatch
+        guard keyboard.exists else { return }
+        if keyboard.buttons["done"].exists {
+            keyboard.buttons["done"].tap()
+        } else if keyboard.buttons["Done"].exists {
+            keyboard.buttons["Done"].tap()
+        } else {
+            app.swipeDown()
+        }
+        XCTAssertTrue(waitForElementToDisappear(keyboard, timeout: 3))
     }
 
     private func replaceText(in element: XCUIElement, with value: String) {
