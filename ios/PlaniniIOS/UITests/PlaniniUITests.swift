@@ -709,6 +709,8 @@ final class PlaniniUITests: XCTestCase {
     ) -> Bool {
         let sheet = app.otherElements["add-item-sheet"]
         let deadline = Date().addingTimeInterval(timeout)
+        let tapOffsets = [0.12, 0.5, 0.88]
+        var tapAttempt = 0
 
         while Date() < deadline {
             if waitForElementToDisappear(sheet, timeout: 1) {
@@ -716,7 +718,14 @@ final class PlaniniUITests: XCTestCase {
             }
             if suggestion.exists {
                 scrollToHittable(suggestion, in: app, maxSwipes: 2)
-                suggestion.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+                let coordinate = suggestion.coordinate(
+                    withNormalizedOffset: CGVector(
+                        dx: tapOffsets[tapAttempt % tapOffsets.count],
+                        dy: 0.5
+                    )
+                )
+                coordinate.tap()
+                tapAttempt += 1
             }
             if waitForElementToDisappear(sheet, timeout: 2) {
                 return true
