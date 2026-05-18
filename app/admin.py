@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
@@ -6,7 +7,7 @@ from uuid import UUID
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse, Response
 from markupsafe import Markup
-from sqladmin import Admin, ModelView, expose
+from sqladmin import Admin, BaseView, ModelView, expose
 from sqladmin.authentication import AuthenticationBackend
 from sqladmin.authentication import login_required
 from sqlalchemy import select
@@ -15,6 +16,16 @@ from sqlalchemy.orm import selectinload
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, engine
 from app.models import Category, PasskeyAddLink, User
+from app.services.backups import (
+    BackupError,
+    BackupResult,
+    configured_backup_slots,
+    create_database_backup,
+    delete_database_backup,
+    list_database_backups,
+    restore_database_backup,
+    run_backup_slot,
+)
 from app.services.passkey_reset import build_passkey_add_link, issue_passkey_reset
 from app.web.routes import _get_session_user
 
@@ -225,6 +236,68 @@ class CategoryAdmin(ModelView, model=Category):
     }
 
 
+class BackupAdmin(BaseView):
+    name = "Backups"
+    icon = "fa-solid fa-database"
+
+    @expose("/backups", methods=["GET", "POST"], identity="backups", include_in_schema=False)
+    async def backups(self, request: Request) -> Response:
+        result: BackupResult | None = None
+        error: str | None = None
+        notice: str | None = None
+        if request.method == "POST":
+            form = await request.form()
+            action = str(form.get("action") or "create")
+            try:
+                if action == "delete":
+                    result = await asyncio.to_thread(
+                        delete_database_backup,
+                        str(form.get("file_name") or ""),
+                        str(form.get("confirmation_filename") or ""),
+                    )
+                    notice = f"Deleted backup {result.file_name}."
+                elif action == "restore":
+                    result = await asyncio.to_thread(
+                        restore_database_backup,
+                        str(form.get("file_name") or ""),
+                        str(form.get("confirmation_filename") or ""),
+                    )
+                    await engine.dispose()
+                    notice = f"Restored backup {result.file_name}."
+                elif action == "run-slot":
+                    result = await asyncio.to_thread(
+                        run_backup_slot, str(form.get("slot_name") or "")
+                    )
+                    notice = f"Created new backup in {result.slot_name}."
+                else:
+                    result = await asyncio.to_thread(create_database_backup)
+                    notice = "Backup created."
+            except BackupError as exc:
+                error = str(exc)
+
+        backups: list[BackupResult] = []
+        slots = []
+        try:
+            backups = await asyncio.to_thread(list_database_backups)
+            slots = configured_backup_slots()
+        except BackupError as exc:
+            if error is None:
+                error = str(exc)
+
+        return await self.templates.TemplateResponse(
+            request,
+            "planini_admin/backups.html",
+            {
+                "backup_directory": settings.backup_directory,
+                "backup_slots": slots,
+                "backups": backups,
+                "backup_result": result,
+                "backup_error": error,
+                "backup_notice": notice,
+            },
+        )
+
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 VERSION_FILE = PROJECT_ROOT / "VERSION"
 
@@ -257,4 +330,5 @@ def configure_admin(app: FastAPI) -> Admin:
     )
     admin.add_view(UserAdmin)
     admin.add_view(CategoryAdmin)
+    admin.add_base_view(BackupAdmin)
     return admin
