@@ -382,10 +382,23 @@ private struct ListsTab: View {
 }
 
 private struct SettingsTab: View {
+    @EnvironmentObject private var appearanceSettings: AppearanceSettings
     @EnvironmentObject private var viewModel: MobileAppViewModel
 
     var body: some View {
         Form {
+            Section("Appearance") {
+                Picker("Appearance", selection: $appearanceSettings.mode) {
+                    ForEach(AppearanceMode.allCases) { mode in
+                        Text(mode.settingsLabel)
+                            .tag(mode)
+                            .accessibilityIdentifier("settings-appearance-\(mode.rawValue)-option")
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("settings-appearance-picker")
+            }
+
             Section("Account") {
                 LabeledContent("Signed in as", value: viewModel.displayName ?? "Unknown")
                 if let favoriteList = viewModel.favoriteList {
