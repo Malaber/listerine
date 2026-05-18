@@ -5,12 +5,20 @@ public struct GroceryItemEditPayload: Codable, Equatable, Sendable {
     public var quantityText: String?
     public var note: String?
     public var categoryID: UUID?
+    public var listID: UUID?
 
-    public init(name: String, quantityText: String?, note: String?, categoryID: UUID?) {
+    public init(
+        name: String,
+        quantityText: String?,
+        note: String?,
+        categoryID: UUID?,
+        listID: UUID? = nil
+    ) {
         self.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         self.quantityText = Self.normalizedOptionalText(quantityText)
         self.note = Self.normalizedOptionalText(note)
         self.categoryID = categoryID
+        self.listID = listID
     }
 
     public init(item: GroceryItemRecord) {
@@ -18,7 +26,8 @@ public struct GroceryItemEditPayload: Codable, Equatable, Sendable {
             name: item.name,
             quantityText: item.quantityText,
             note: item.note,
-            categoryID: item.categoryID
+            categoryID: item.categoryID,
+            listID: item.listID
         )
     }
 
@@ -32,6 +41,7 @@ public struct GroceryItemEditPayload: Codable, Equatable, Sendable {
             "quantity_text": quantityText ?? NSNull(),
             "note": note ?? NSNull(),
             "category_id": categoryID?.uuidString ?? NSNull(),
+            "list_id": listID?.uuidString ?? NSNull(),
         ]
     }
 
@@ -96,7 +106,7 @@ public extension GroceryItemRecord {
     func applyingEditPayload(_ payload: GroceryItemEditPayload) -> GroceryItemRecord {
         GroceryItemRecord(
             id: id,
-            listID: listID,
+            listID: payload.listID ?? listID,
             name: payload.name,
             quantityText: payload.quantityText,
             note: payload.note,

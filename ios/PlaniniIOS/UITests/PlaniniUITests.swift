@@ -204,6 +204,33 @@ final class PlaniniUITests: XCTestCase {
             )
         )
 
+        let moveItemName = "UI Test Move \(uniqueSuffix)"
+        app.buttons["add-item-button"].tap()
+        XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
+        let moveNameField = app.textFields["add-item-name-field"]
+        XCTAssertTrue(moveNameField.waitForExistence(timeout: 3))
+        moveNameField.typeText(moveItemName)
+        app.buttons["add-item-save-button"].tap()
+        XCTAssertTrue(app.staticTexts[moveItemName].waitForExistence(timeout: 5))
+        let moveItemID = try itemID(
+            named: moveItemName,
+            inListNamed: initialListName,
+            accessToken: session.accessToken
+        )
+        app.staticTexts[moveItemName].tap()
+        XCTAssertTrue(app.otherElements["edit-item-sheet"].waitForExistence(timeout: 3))
+        selectMoveTargetList("Hosting errands", in: app)
+        XCTAssertTrue(waitForElementToDisappear(app.otherElements["edit-item-sheet"], timeout: 8))
+        XCTAssertTrue(waitForElementToDisappear(app.staticTexts[moveItemName], timeout: 8))
+        XCTAssertTrue(
+            waitForItem(
+                named: moveItemName,
+                inListNamed: "Hosting errands",
+                accessToken: session.accessToken
+            )
+        )
+        captureScreenshot(named: "ios-ui-moved-item-source-list")
+
         XCTAssertTrue(tapTab("Lists", in: app))
         returnToListsRootIfNeeded(app)
         let hostingListRow = app.buttons["list-row-Hosting errands"]
@@ -211,6 +238,7 @@ final class PlaniniUITests: XCTestCase {
         hostingListRow.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)).tap()
         XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
         XCTAssertEqual(listTitle.label, "Hosting errands")
+        XCTAssertTrue(waitForItemRow(itemID: moveItemID, named: moveItemName, in: app, timeout: 10))
         captureScreenshot(named: "ios-ui-list-switcher")
 
         XCTAssertTrue(tapTab("Settings", in: app))
@@ -570,6 +598,30 @@ final class PlaniniUITests: XCTestCase {
             }
             app.swipeUp()
         }
+    }
+
+    private func selectMoveTargetList(_ listName: String, in app: XCUIApplication) {
+        let picker = firstExistingElement(
+            [
+                app.buttons["edit-item-list-picker"],
+                app.otherElements["edit-item-list-picker"],
+                app.staticTexts["Move to list"],
+            ],
+            timeout: 3
+        )
+        XCTAssertTrue(picker.waitForExistence(timeout: 3))
+        tapElement(picker)
+
+        let option = firstExistingElement(
+            [
+                app.buttons[listName],
+                app.menuItems[listName],
+                app.staticTexts[listName],
+            ],
+            timeout: 3
+        )
+        XCTAssertTrue(option.waitForExistence(timeout: 3))
+        tapElement(option)
     }
 
     private func assertReviewerOnboardingAvailable(in app: XCUIApplication) {

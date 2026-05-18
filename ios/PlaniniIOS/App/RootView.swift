@@ -812,17 +812,21 @@ private struct EditItemSheet: View {
     @State private var quantity: String
     @State private var note: String
     @State private var categoryID: UUID?
+    @State private var targetListID: UUID
     @State private var history: GroceryItemEditHistory
     @State private var lastSavedPayload: GroceryItemEditPayload
     @State private var saveTask: Task<Void, Never>?
     @State private var saveStatus: SaveStatus = .saved
     @State private var suppressHistoryRecording = false
+    @State private var didMoveItem = false
 
     private enum SaveStatus: Equatable {
         case saved
         case saving
+        case moving
         case offline
         case invalid
+        case error(String)
 
         var label: String {
             switch self {
@@ -830,10 +834,14 @@ private struct EditItemSheet: View {
                 return "Saved"
             case .saving:
                 return "Saving..."
+            case .moving:
+                return "Moving..."
             case .offline:
                 return "Saved offline"
             case .invalid:
                 return "Name required"
+            case let .error(message):
+                return message
             }
         }
 
@@ -843,10 +851,21 @@ private struct EditItemSheet: View {
                 return "checkmark.circle"
             case .saving:
                 return "arrow.triangle.2.circlepath"
+            case .moving:
+                return "arrow.right.circle"
             case .offline:
                 return "icloud.slash"
-            case .invalid:
+            case .invalid, .error:
                 return "exclamationmark.triangle"
+            }
+        }
+
+        var isError: Bool {
+            switch self {
+            case .invalid, .error:
+                return true
+            case .saved, .saving, .moving, .offline:
+                return false
             }
         }
     }
@@ -858,6 +877,7 @@ private struct EditItemSheet: View {
         _quantity = State(initialValue: item.quantityText ?? "")
         _note = State(initialValue: item.note ?? "")
         _categoryID = State(initialValue: item.categoryID)
+        _targetListID = State(initialValue: item.listID)
         _history = State(initialValue: Self.loadHistory(itemID: item.id))
         _lastSavedPayload = State(initialValue: payload)
     }
@@ -882,6 +902,18 @@ private struct EditItemSheet: View {
                     .accessibilityIdentifier("edit-item-category-picker")
                 }
 
+                if moveTargetLists.count > 1 {
+                    Section("List") {
+                        Picker("Move to list", selection: $targetListID) {
+                            ForEach(moveTargetLists) { list in
+                                Text(list.name).tag(list.id)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .accessibilityIdentifier("edit-item-list-picker")
+                    }
+                }
+
                 Section("Notes") {
                     TextField("Note", text: $note, axis: .vertical)
                         .accessibilityIdentifier("edit-item-note-field")
@@ -890,7 +922,7 @@ private struct EditItemSheet: View {
                 Section {
                     Label(saveStatus.label, systemImage: saveStatus.systemImage)
                         .font(.footnote)
-                        .foregroundStyle(saveStatus == .invalid ? .red : .secondary)
+                        .foregroundStyle(saveStatus.isError ? .red : .secondary)
                         .accessibilityIdentifier("edit-item-save-status")
                 }
             }
@@ -926,11 +958,24 @@ private struct EditItemSheet: View {
         .onChange(of: quantity) { _ in scheduleAutosave() }
         .onChange(of: note) { _ in scheduleAutosave() }
         .onChange(of: categoryID) { _ in scheduleAutosave() }
+        .onChange(of: targetListID) { newValue in moveToList(newValue) }
         .onDisappear {
             persistHistory()
-            flushCurrentEdit()
+            if didMoveItem == false {
+                flushCurrentEdit()
+            }
         }
         .accessibilityIdentifier("edit-item-sheet")
+    }
+
+    private var moveTargetLists: [GroceryListSummary] {
+        let activeLists = viewModel.lists.filter { $0.archived == false }
+        guard
+            let sourceHouseholdID = activeLists.first(where: { $0.id == item.listID })?.householdID
+        else {
+            return activeLists
+        }
+        return activeLists.filter { $0.householdID == sourceHouseholdID }
     }
 
     private var currentPayload: GroceryItemEditPayload {
@@ -938,7 +983,8 @@ private struct EditItemSheet: View {
             name: name,
             quantityText: quantity,
             note: note,
-            categoryID: categoryID
+            categoryID: categoryID,
+            listID: targetListID
         )
     }
 
@@ -999,6 +1045,7 @@ private struct EditItemSheet: View {
         quantity = payload.quantityText ?? ""
         note = payload.note ?? ""
         categoryID = payload.categoryID
+        targetListID = payload.listID ?? item.listID
         persistHistory()
         scheduleAutosave(recordHistory: false)
         DispatchQueue.main.async {
@@ -1016,9 +1063,40 @@ private struct EditItemSheet: View {
         apply(payload)
     }
 
+    private func moveToList(_ listID: UUID) {
+        guard listID != item.listID else { return }
+        let pendingSaveTask = saveTask
+        pendingSaveTask?.cancel()
+        saveTask = nil
+
+        let payload = currentPayload
+        guard payload.isValid else {
+            saveStatus = .invalid
+            targetListID = item.listID
+            return
+        }
+
+        saveStatus = .moving
+        Task {
+            await pendingSaveTask?.value
+            let moved = await viewModel.moveItem(item: item, payload: payload)
+            await MainActor.run {
+                if moved {
+                    didMoveItem = true
+                    AppHaptics.confirmation()
+                    dismiss()
+                } else {
+                    targetListID = item.listID
+                    saveStatus = .error(viewModel.errorMessage ?? "Could not move item.")
+                }
+            }
+        }
+    }
+
     private func flushCurrentEdit() {
         saveTask?.cancel()
         let payload = currentPayload
+        guard targetListID == item.listID else { return }
         guard payload.isValid, payload != lastSavedPayload else { return }
         Task {
             _ = await viewModel.saveEdit(item: item, payload: payload)
