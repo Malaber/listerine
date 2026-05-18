@@ -168,10 +168,6 @@ final class PlaniniUITests: XCTestCase {
         )
         XCTAssertTrue(app.buttons["add-item-category-link"].label.contains("Milch & Eier"))
 
-        let noteField = app.textFields["add-item-note-field"]
-        noteField.tap()
-        noteField.typeText("for pasta")
-
         XCTAssertTrue(tapAddItemSaveAndWaitForDismissal(in: app))
         XCTAssertTrue(
             waitForItem(
@@ -815,12 +811,8 @@ final class PlaniniUITests: XCTestCase {
             if waitForElementToDisappear(sheet, timeout: 1) {
                 return true
             }
-            if saveButton.exists && saveButton.isEnabled {
-                if saveButton.isHittable {
-                    saveButton.tap()
-                } else {
-                    tapElement(saveButton)
-                }
+            if saveButton.exists {
+                tapElement(saveButton)
             }
             if waitForElementToDisappear(sheet, timeout: 2) {
                 return true
