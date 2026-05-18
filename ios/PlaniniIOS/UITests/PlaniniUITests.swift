@@ -205,9 +205,9 @@ final class PlaniniUITests: XCTestCase {
             waitForItemRow(itemID: updatedItemID, named: updatedName, in: app, timeout: 20),
             "Expected updated item row to be visible after closing edit sheet."
         )
-        let updatedItemLabel = app.staticTexts[updatedName]
+        let updatedItemRow = itemRow(itemID: updatedItemID, in: app)
         let updatedCheckButton = app.buttons["toggle-item-\(updatedItemID.uuidString)"]
-        scrollToElement(updatedItemLabel, in: app)
+        scrollToElement(updatedItemRow, in: app)
         scrollToElement(updatedCheckButton, in: app)
         XCTAssertTrue(updatedCheckButton.waitForExistence(timeout: 3))
         tapElement(updatedCheckButton)
@@ -219,7 +219,7 @@ final class PlaniniUITests: XCTestCase {
                 timeout: 20
             )
         )
-        scrollToElement(updatedItemLabel, in: app)
+        scrollToElement(updatedItemRow, in: app)
         captureScreenshot(named: "ios-ui-checked-item")
         captureScreenshot(named: "promotion-filled-list")
 
