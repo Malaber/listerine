@@ -29,6 +29,7 @@ router = APIRouter(tags=["web"])
 templates = Jinja2Templates(directory="app/web/templates")
 static_root = Path("app/web/static")
 MUTABLE_STATIC_ASSETS = ("app.css", "app.js")
+LINK_PREVIEW_IMAGE_PATH = "/static/img/link-preview.png"
 
 
 @lru_cache(maxsize=1)
@@ -53,6 +54,7 @@ def _template_context(request: Request, user: User | None, **extra: object) -> d
         **_template_auth_context(user),
         "locale": locale,
         "canonical_url": canonical_url,
+        "link_preview_image_url": _absolute_url(request, LINK_PREVIEW_IMAGE_PATH),
         "i18n_catalog_b64": encode_catalog(locale),
         "static_asset_version": _static_asset_version(),
         "t": translator_for(locale),
