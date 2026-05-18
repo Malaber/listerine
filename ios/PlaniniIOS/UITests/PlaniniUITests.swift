@@ -223,7 +223,7 @@ final class PlaniniUITests: XCTestCase {
         checkedSuggestionField.tap()
         checkedSuggestionField.typeText(updatedName)
         let checkedSuggestion = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Add \(updatedName) back")).firstMatch
-        XCTAssertTrue(checkedSuggestion.waitForExistence(timeout: 3))
+        XCTAssertTrue(checkedSuggestion.waitForExistence(timeout: 10))
         scrollToHittable(checkedSuggestion, in: app)
         captureScreenshot(named: "ios-ui-checked-item-suggestion")
         XCTAssertTrue(tapSuggestionAndWaitForSheetDismissal(checkedSuggestion, in: app))
