@@ -239,7 +239,6 @@ final class PlaniniUITests: XCTestCase {
             )
         )
 
-        scrollToElement(app.staticTexts[updatedName], in: app)
         captureScreenshot(named: "promotion-filled-list")
 
         XCTAssertTrue(tapTab("Lists", in: app))
@@ -729,21 +728,21 @@ final class PlaniniUITests: XCTestCase {
         timeout: TimeInterval
     ) -> Bool {
         let row = itemRow(itemID: itemID, in: app)
-        let label = app.staticTexts[itemName]
+        let toggle = app.buttons["toggle-item-\(itemID.uuidString)"]
         let deadline = Date().addingTimeInterval(timeout)
 
         while Date() < deadline {
-            if row.exists && label.exists {
+            if row.exists && toggle.exists && toggle.label.contains(itemName) {
                 return true
             }
             app.swipeDown()
-            if row.exists && label.exists {
+            if row.exists && toggle.exists && toggle.label.contains(itemName) {
                 return true
             }
             app.swipeUp()
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
-        return row.exists && label.exists
+        return row.exists && toggle.exists && toggle.label.contains(itemName)
     }
 
     private func itemRow(itemID: UUID, in app: XCUIApplication) -> XCUIElement {
