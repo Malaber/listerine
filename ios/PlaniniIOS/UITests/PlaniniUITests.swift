@@ -317,10 +317,11 @@ final class PlaniniUITests: XCTestCase {
             accessToken: session.accessToken
         )
         XCTAssertTrue(waitForItemRow(itemID: moveItemID, named: moveItemName, in: app, timeout: 10))
-        tapElement(itemRow(itemID: moveItemID, in: app))
-        XCTAssertTrue(app.otherElements["edit-item-sheet"].waitForExistence(timeout: 3))
+        openItemEditor(itemID: moveItemID, named: moveItemName, in: app)
+        let editItemSheet = app.otherElements["edit-item-sheet"]
+        XCTAssertTrue(editItemSheet.waitForExistence(timeout: 3))
         selectMoveTargetList("Hosting errands", in: app)
-        XCTAssertTrue(waitForElementToDisappear(app.otherElements["edit-item-sheet"], timeout: 8))
+        XCTAssertTrue(waitForElementToDisappear(editItemSheet, timeout: 8))
         XCTAssertTrue(waitForElementToDisappear(staticText(labeled: moveItemName, in: app), timeout: 8))
         XCTAssertTrue(
             waitForItem(
@@ -814,6 +815,36 @@ final class PlaniniUITests: XCTestCase {
         return waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 10)
     }
 
+    private func openItemEditor(itemID: UUID, named itemName: String, in app: XCUIApplication) {
+        let row = itemRow(itemID: itemID, in: app)
+        let label = staticText(labeled: itemName, in: app)
+        let editSheet = app.otherElements["edit-item-sheet"]
+
+        for _ in 0..<2 {
+            scrollToElement(label, in: app)
+            tapElement(label)
+            if editSheet.waitForExistence(timeout: 2) {
+                return
+            }
+
+            scrollToElement(row, in: app)
+            tapElement(row)
+            if editSheet.waitForExistence(timeout: 2) {
+                return
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+
+        scrollToElement(row, in: app)
+        row.swipeLeft()
+
+        let editAction = app.buttons["Edit"]
+        if editAction.waitForExistence(timeout: 2) {
+            tapElement(editAction)
+            return
+        }
+    }
+
     private func waitForItemRow(
         itemID: UUID,
         named itemName: String,
@@ -822,24 +853,29 @@ final class PlaniniUITests: XCTestCase {
     ) -> Bool {
         let row = itemRow(itemID: itemID, in: app)
         let label = staticText(labeled: itemName, in: app)
+        let toggle = app.buttons["toggle-item-\(itemID.uuidString)"]
         let deadline = Date().addingTimeInterval(timeout)
 
         while Date() < deadline {
-            if row.exists && label.exists {
+            if row.exists && itemRowContentExists(label: label, toggle: toggle, itemName: itemName) {
                 return true
             }
             app.swipeDown()
-            if row.exists && label.exists {
+            if row.exists && itemRowContentExists(label: label, toggle: toggle, itemName: itemName) {
                 return true
             }
             app.swipeUp()
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
-        return row.exists && label.exists
+        return row.exists && itemRowContentExists(label: label, toggle: toggle, itemName: itemName)
     }
 
     private func itemRow(itemID: UUID, in app: XCUIApplication) -> XCUIElement {
         app.descendants(matching: .any)["item-row-\(itemID.uuidString)"]
+    }
+
+    private func itemRowContentExists(label: XCUIElement, toggle: XCUIElement, itemName: String) -> Bool {
+        label.exists || (toggle.exists && toggle.label.contains(itemName))
     }
 
     private func staticText(labeled label: String, in app: XCUIApplication) -> XCUIElement {

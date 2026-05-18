@@ -12,6 +12,7 @@ from app.admin import configure_admin
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.database import run_migrations
+from app.services.backup_scheduler import start_backup_scheduler, stop_backup_scheduler
 from app.services.fixture_seed import ensure_seed_data
 from app.web.routes import router as web_router
 
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    backup_scheduler = None
     try:
         logger.info("Running database migrations")
         await run_migrations()
@@ -31,10 +33,14 @@ async def lifespan(_: FastAPI):
             async with AsyncSessionLocal() as session:
                 await ensure_seed_data(session, settings.seed_data_path)
             logger.info("Startup fixture seeding completed")
+        backup_scheduler = start_backup_scheduler()
     except Exception:
         logger.exception("Application startup failed")
         raise
-    yield
+    try:
+        yield
+    finally:
+        await stop_backup_scheduler(backup_scheduler)
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)

@@ -43,6 +43,7 @@ DEFAULT_HEALTH_URL = f"http://{DEFAULT_HOST}:{DEFAULT_PORT}/health"
 DEFAULT_PREVIEW_BASE_URL = "http://localhost:8000"
 DEFAULT_BROWSER_SEED_PATH = "app/fixtures/review_seed_e2e.json"
 DEFAULT_BROWSER_DATABASE_URL = "sqlite+aiosqlite:///./tmp-ui-e2e-invoke.db"
+DEFAULT_BROWSER_BACKUP_DIRECTORY = "e2e-artifacts/backups"
 DEFAULT_APP_LOG_PATH = "ui-e2e-server.log"
 DEFAULT_APP_PID_PATH = "ui-e2e-server.pid"
 DEFAULT_IOS_E2E_PORT = 8017
@@ -194,10 +195,12 @@ def _app_env(
     ui_test_bootstrap_enabled: bool = False,
     app_base_url: str | None = None,
     webcredentials_apps: str | None = None,
+    backup_directory: str | None = DEFAULT_BROWSER_BACKUP_DIRECTORY,
 ) -> dict[str, str]:
     return _python_env(
         SEED_DATA_PATH=seed_path,
         DATABASE_URL=database_url,
+        BACKUP_DIRECTORY=backup_directory,
         APP_BASE_URL=app_base_url,
         WEBAUTHN_RP_ID=webauthn_rp_id,
         WEBCREDENTIALS_APPS=webcredentials_apps,
@@ -1129,6 +1132,7 @@ def start_app(
     log_path=DEFAULT_APP_LOG_PATH,
     pid_path=DEFAULT_APP_PID_PATH,
     ui_test_bootstrap_enabled=False,
+    backup_directory=DEFAULT_BROWSER_BACKUP_DIRECTORY,
 ) -> None:
     pid_file = ROOT / pid_path
     existing_pid = _read_pid(pid_file)
@@ -1146,6 +1150,7 @@ def start_app(
         ui_test_bootstrap_enabled=str(ui_test_bootstrap_enabled).lower() in {"1", "true", "yes"},
         app_base_url=f"http://localhost:{port}" if ui_test_bootstrap_enabled else None,
         webcredentials_apps="[]" if ui_test_bootstrap_enabled else None,
+        backup_directory=backup_directory,
     )
     with log_file.open("w", encoding="utf-8") as log_handle:
         process = subprocess.Popen(
@@ -1222,6 +1227,7 @@ def run_browser_e2e(
             "E2E_SEED_PATH": e2e_seed_path,
             "WEBAUTHN_RP_ID": webauthn_rp_id,
             "PREVIEW_ARTIFACT_DIR": artifact_dir,
+            "PREVIEW_BACKUP_DIR": DEFAULT_BROWSER_BACKUP_DIRECTORY,
         }
     )
     if device != "desktop":
