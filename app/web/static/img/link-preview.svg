@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">Planini link preview</title>
+  <desc id="desc">Planini logo beside a shared shopping list preview message.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f8f0df"/>
+      <stop offset="0.54" stop-color="#f1dcaf"/>
+      <stop offset="1" stop-color="#d39a54"/>
+    </linearGradient>
+    <filter id="soft-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#5c311e" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <path d="M0 475 C150 420 282 548 450 506 C642 458 675 360 883 404 C1022 434 1086 524 1200 479 L1200 630 L0 630 Z" fill="#6f8f3f" opacity="0.24"/>
+  <path d="M0 560 C163 495 255 612 421 570 C623 519 751 527 922 572 C1044 604 1122 575 1200 536 L1200 630 L0 630 Z" fill="#3f6b54" opacity="0.23"/>
+  <rect x="70" y="78" width="1060" height="474" rx="34" fill="#fffaf0" opacity="0.9" filter="url(#soft-shadow)"/>
+  <image href="planini.svg" x="102" y="126" width="250" height="250" preserveAspectRatio="xMidYMid meet"/>
+  <g transform="translate(410 132)">
+    <text x="0" y="82" font-family="Inter, Avenir, Helvetica, Arial, sans-serif" font-size="86" font-weight="800" fill="#3f2a1f">Planini</text>
+    <text x="0" y="155" font-family="Inter, Avenir, Helvetica, Arial, sans-serif" font-size="38" font-weight="700" fill="#4d6637">Shared shopping lists</text>
+    <text x="0" y="211" font-family="Inter, Avenir, Helvetica, Arial, sans-serif" font-size="34" font-weight="500" fill="#5f5142">Keep households in sync from shelf</text>
+    <text x="0" y="255" font-family="Inter, Avenir, Helvetica, Arial, sans-serif" font-size="34" font-weight="500" fill="#5f5142">to checkout.</text>
+  </g>
+  <g transform="translate(410 430)">
+    <rect x="0" y="0" width="116" height="44" rx="22" fill="#fdbb4d"/>
+    <rect x="134" y="0" width="132" height="44" rx="22" fill="#85ab43"/>
+    <rect x="284" y="0" width="142" height="44" rx="22" fill="#eb5b33"/>
+    <text x="28" y="30" font-family="Inter, Avenir, Helvetica, Arial, sans-serif" font-size="20" font-weight="800" fill="#3f2a1f">lists</text>
+    <text x="160" y="30" font-family="Inter, Avenir, Helvetica, Arial, sans-serif" font-size="20" font-weight="800" fill="#20351f">sync</text>
+    <text x="312" y="30" font-family="Inter, Avenir, Helvetica, Arial, sans-serif" font-size="20" font-weight="800" fill="#fffaf0">done</text>
+  </g>
+</svg>
