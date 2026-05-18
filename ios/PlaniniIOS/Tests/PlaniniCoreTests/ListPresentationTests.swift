@@ -30,8 +30,41 @@ struct ListPresentationTests {
                 "id": categoryID.uuidString,
                 "name": "Produce",
                 "color": "#00ff00",
+                "aliases": ["Veg", "Greens"],
             ]
         )
+
+        #expect(
+            category == GroceryCategorySummary(
+                id: categoryID,
+                name: "Produce",
+                colorHex: "#00ff00",
+                aliases: ["Veg", "Greens"]
+            )
+        )
+
+        let categoryWithoutAliases = GroceryCategorySummary(
+            json: [
+                "id": categoryID.uuidString,
+                "name": "Produce",
+                "color": "#00ff00",
+            ]
+        )
+
+        #expect(categoryWithoutAliases?.aliases == [])
+    }
+
+    @Test func groceryCategorySummaryDecodesLegacyPayloadWithoutAliases() throws {
+        let categoryID = UUID()
+        let payload = """
+        {
+          "id": "\(categoryID.uuidString)",
+          "name": "Produce",
+          "colorHex": "#00ff00"
+        }
+        """
+
+        let category = try JSONDecoder().decode(GroceryCategorySummary.self, from: Data(payload.utf8))
 
         #expect(category == GroceryCategorySummary(id: categoryID, name: "Produce", colorHex: "#00ff00"))
     }
@@ -203,12 +236,29 @@ struct ListPresentationTests {
         let checked = makeItem(name: "Tofu", listID: listID, checked: true)
         let active = makeItem(name: "tofu", listID: listID, checked: false)
 
+        let rankSuggestions = GroceryItemSuggestionMatcher.suggestions(
+            for: "tof",
+            items: [
+                makeItem(name: "Soft tofu", listID: listID, checked: false),
+                makeItem(name: "Tofu", listID: listID, checked: false),
+            ],
+            categories: []
+        )
+        #expect(rankSuggestions.map(\.item.name) == ["Tofu", "Soft tofu"])
+
         let checkedTieSuggestions = GroceryItemSuggestionMatcher.suggestions(
             for: "tofu",
             items: [checked, active],
             categories: []
         )
         #expect(checkedTieSuggestions.map(\.item.checked) == [false, true])
+
+        let reversedCheckedTieSuggestions = GroceryItemSuggestionMatcher.suggestions(
+            for: "tofu",
+            items: [active, checked],
+            categories: []
+        )
+        #expect(reversedCheckedTieSuggestions.map(\.item.checked) == [false, true])
 
         let distanceSuggestions = GroceryItemSuggestionMatcher.suggestions(
             for: "abcde",
