@@ -98,7 +98,7 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 3))
 
         XCTAssertTrue(openAddItemSheet(in: app))
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        XCTAssertTrue(prepareKeyboardForTyping(in: app, timeout: 3))
         captureScreenshot(named: "ios-ui-add-item-sheet")
 
         let suggestionProbeField = app.textFields["add-item-name-field"]
@@ -144,7 +144,7 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts[enterSavedItemName].waitForExistence(timeout: 15))
 
         XCTAssertTrue(openAddItemSheet(in: app))
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        XCTAssertTrue(prepareKeyboardForTyping(in: app, timeout: 3))
         XCTAssertTrue(nameField.waitForExistence(timeout: 3))
         nameField.typeText(itemName)
 
@@ -203,7 +203,7 @@ final class PlaniniUITests: XCTestCase {
 
         let editNameField = app.textFields["edit-item-name-field"]
         editNameField.tap()
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(prepareKeyboardForTyping(in: app, timeout: 5))
         editNameField.typeText(" Updated")
         XCTAssertTrue(waitForFieldValue(editNameField, contains: updatedName))
         XCTAssertTrue(waitForEditStatus("Saved", app: app))
@@ -738,6 +738,28 @@ final class PlaniniUITests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
         return field.valueText.contains(expectedText)
+    }
+
+    private func prepareKeyboardForTyping(in app: XCUIApplication, timeout: TimeInterval = 3) -> Bool {
+        guard app.keyboards.firstMatch.waitForExistence(timeout: timeout) else {
+            return false
+        }
+        dismissKeyboardTipsIfPresent(in: app)
+        return true
+    }
+
+    private func dismissKeyboardTipsIfPresent(in app: XCUIApplication) {
+        let continueButton = app.buttons["Continue"]
+        let deadline = Date().addingTimeInterval(2)
+
+        while Date() < deadline {
+            if continueButton.exists {
+                tapElement(continueButton)
+                _ = waitForElementToDisappear(continueButton, timeout: 2)
+                return
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
     }
 
     private func waitForElementToDisappear(_ element: XCUIElement, timeout: TimeInterval = 8) -> Bool {
