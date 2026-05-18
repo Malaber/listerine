@@ -505,10 +505,15 @@ private struct ListDetailScreen: View {
 
     @State private var editingItem: GroceryItemRecord?
     @State private var addItemPresentation: AddItemPresentation?
-    @State private var highlightedItemID: UUID?
 
     private var currentList: GroceryListSummary? {
         viewModel.lists.first { $0.id == listID }
+    }
+
+    private var visibleItemIDs: [UUID] {
+        viewModel.sections.flatMap { section in
+            section.items.map(\.id)
+        }
     }
 
     var body: some View {
@@ -553,7 +558,6 @@ private struct ListDetailScreen: View {
                             ItemRow(item: item) {
                                 editingItem = item
                             }
-                            .background(rowHighlight(for: item))
                         }
                     } header: {
                         SectionHeader(section: section, title: localizedTitle(for: section)) { categoryID in
@@ -598,17 +602,10 @@ private struct ListDetailScreen: View {
             EditItemSheet(item: item)
         }
         .sheet(item: $addItemPresentation) { presentation in
-            AddItemSheet(initialCategoryID: presentation.categoryID) { itemID in
-                highlightedItemID = itemID
-            }
+            AddItemSheet(initialCategoryID: presentation.categoryID)
         }
-        .animation(.easeInOut(duration: 0.22), value: viewModel.sections.map(\.id))
-        .animation(.easeInOut(duration: 0.22), value: highlightedItemID)
+        .animation(.spring(response: 0.34, dampingFraction: 0.86), value: visibleItemIDs)
         .accessibilityIdentifier("list-detail-screen")
-    }
-
-    private func rowHighlight(for item: GroceryItemRecord) -> Color {
-        item.id == highlightedItemID ? Color.accentColor.opacity(0.16) : Color.clear
     }
 
     private func localizedTitle(for section: GroceryItemSection) -> String {
@@ -782,7 +779,6 @@ private struct AddItemSheet: View {
     @EnvironmentObject private var viewModel: MobileAppViewModel
     @EnvironmentObject private var l10n: AppLocalization
     let initialCategoryID: UUID?
-    let onSuggestionFocused: (UUID) -> Void
 
     private enum FocusedField {
         case name
@@ -795,9 +791,8 @@ private struct AddItemSheet: View {
     @State private var isSaving = false
     @FocusState private var focusedField: FocusedField?
 
-    init(initialCategoryID: UUID? = nil, onSuggestionFocused: @escaping (UUID) -> Void = { _ in }) {
+    init(initialCategoryID: UUID? = nil) {
         self.initialCategoryID = initialCategoryID
-        self.onSuggestionFocused = onSuggestionFocused
         _categoryID = State(initialValue: initialCategoryID)
     }
 
@@ -832,11 +827,12 @@ private struct AddItemSheet: View {
                             }
                             .buttonStyle(.plain)
                             .contentShape(Rectangle())
+                            .disabled(isSaving)
                             .accessibilityIdentifier("add-item-suggestion-\(suggestion.item.id.uuidString)")
                             .accessibilityLabel(
                                 suggestion.item.checked
                                     ? l10n.t("ios.item.add_back_to_list", ["name": suggestion.item.name])
-                                    : l10n.t("ios.item.jump_to_item", ["name": suggestion.item.name])
+                                    : l10n.t("ios.item.add_to_list", ["name": suggestion.item.name])
                             )
                         }
                     }
@@ -926,17 +922,29 @@ private struct AddItemSheet: View {
 
     @MainActor
     private func useSuggestion(_ suggestion: GroceryItemSuggestion) async {
+        guard isSaving == false else { return }
+        isSaving = true
+
+        let saved: Bool
         if suggestion.item.checked {
-            let toggled = await viewModel.toggle(suggestion.item)
-            guard toggled else { return }
+            saved = await viewModel.toggle(suggestion.item)
+        } else {
+            saved = await viewModel.addItem(
+                name: suggestion.item.name,
+                quantity: suggestion.item.quantityText ?? "",
+                note: suggestion.item.note ?? "",
+                categoryID: suggestion.item.categoryID
+            )
+        }
+
+        if saved {
             AppHaptics.confirmation()
             dismiss()
-            onSuggestionFocused(suggestion.item.id)
-            return
+        } else {
+            isSaving = false
         }
-        onSuggestionFocused(suggestion.item.id)
-        dismiss()
     }
+
 }
 
 private struct ItemSuggestionRow: View {
@@ -945,30 +953,41 @@ private struct ItemSuggestionRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            RoundedRectangle(cornerRadius: 2)
-                .fill(Color(hex: suggestion.category?.colorHex) ?? Color.secondary.opacity(0.4))
-                .frame(width: 4, height: 36)
-            Image(systemName: "plus")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 3) {
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(Color(hex: suggestion.category?.colorHex) ?? Color.secondary.opacity(0.35))
+                .frame(width: 4, height: 48)
+
+            VStack(alignment: .leading, spacing: 4) {
                 Text(suggestion.item.name)
-                    .foregroundStyle(.primary)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(suggestion.item.checked ? .secondary : .primary)
+                    .strikethrough(suggestion.item.checked)
                 Text(metaText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            Image(systemName: "plus")
+                .font(.system(size: 34, weight: .regular))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 44, height: 44)
+                .accessibilityHidden(true)
         }
-        .padding(.vertical, 2)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
     }
 
     private var metaText: String {
+        var parts: [String] = []
+        if let quantity = suggestion.item.quantityText, quantity.isEmpty == false {
+            parts.append(l10n.t("ios.item.quantity_value", ["quantity": quantity]))
+        }
         let categoryName = suggestion.category?.name ?? l10n.t("ios.list.uncategorized")
-        return suggestion.item.checked
-            ? l10n.t("ios.item.suggestion_checked_off", ["category": categoryName])
-            : categoryName
+        parts.append(categoryName)
+        if suggestion.item.checked {
+            parts.append(l10n.t("ios.list.checked_off"))
+        }
+        return parts.joined(separator: " · ")
     }
 }
 

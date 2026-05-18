@@ -433,6 +433,7 @@
       "add_title": "Artikel hinzufügen",
       "edit_title": "Artikel bearbeiten",
       "add_back_to_list": "{name} wieder zur Liste hinzufügen",
+      "add_to_list": "{name} zur Liste hinzufügen",
       "jump_to_item": "Zu {name} in der Liste springen",
       "suggestion_checked_off": "{category} - abgehakt",
       "check": "{name} abhaken",

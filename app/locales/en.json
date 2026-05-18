@@ -433,6 +433,7 @@
       "add_title": "Add item",
       "edit_title": "Edit item",
       "add_back_to_list": "Add {name} back to the list",
+      "add_to_list": "Add {name} to the list",
       "jump_to_item": "Jump to {name} in the list",
       "suggestion_checked_off": "{category} - checked off",
       "check": "Check {name}",
