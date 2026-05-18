@@ -897,28 +897,37 @@ private struct EditItemSheet: View {
             .navigationTitle("Edit item")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") {
+                ToolbarItem(placement: .topBarLeading) {
+                    ControlGroup {
+                        Button {
+                            applyUndo()
+                        } label: {
+                            Label("Undo", systemImage: "arrow.uturn.backward")
+                                .labelStyle(.iconOnly)
+                        }
+                        .disabled(history.canUndo == false)
+                        .accessibilityIdentifier("edit-item-undo-button")
+
+                        Button {
+                            applyRedo()
+                        } label: {
+                            Label("Redo", systemImage: "arrow.uturn.forward")
+                                .labelStyle(.iconOnly)
+                        }
+                        .disabled(history.canRedo == false)
+                        .accessibilityIdentifier("edit-item-redo-button")
+                    }
+                    .accessibilityIdentifier("edit-item-history-button-group")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
                         flushCurrentEdit()
                         dismiss()
-                    }
-                }
-                ToolbarItemGroup(placement: .confirmationAction) {
-                    Button {
-                        applyUndo()
                     } label: {
-                        Label("Undo", systemImage: "arrow.uturn.backward")
+                        Label("Done", systemImage: "xmark")
+                            .labelStyle(.iconOnly)
                     }
-                    .disabled(history.canUndo == false)
-                    .accessibilityIdentifier("edit-item-undo-button")
-
-                    Button {
-                        applyRedo()
-                    } label: {
-                        Label("Redo", systemImage: "arrow.uturn.forward")
-                    }
-                    .disabled(history.canRedo == false)
-                    .accessibilityIdentifier("edit-item-redo-button")
+                    .accessibilityIdentifier("edit-item-close-button")
                 }
             }
         }
