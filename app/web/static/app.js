@@ -5541,7 +5541,8 @@ function initPasskeyAuth() {
     });
   });
 
-  root.querySelector("[data-passkey-register-button]")?.addEventListener("click", async () => {
+  registerForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
     toggleButtons(root, true);
     try {
       await registerWithPasskey(root, registerForm);
