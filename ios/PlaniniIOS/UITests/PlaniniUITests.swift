@@ -876,23 +876,37 @@ final class PlaniniUITests: XCTestCase {
     }
 
     private func scrollToElement(_ element: XCUIElement, in app: XCUIApplication, maxSwipes: Int = 10) {
+        if element.waitForExistence(timeout: 0.25) {
+            return
+        }
         for _ in 0..<maxSwipes {
-            if elementIsVisible(element, in: app) {
+            app.swipeUp()
+            if element.waitForExistence(timeout: 0.25) {
                 return
             }
-            app.swipeUp()
+        }
+        for _ in 0..<maxSwipes {
+            app.swipeDown()
+            if element.waitForExistence(timeout: 0.25) {
+                return
+            }
         }
     }
 
     private func scrollToHittable(_ element: XCUIElement, in app: XCUIApplication, maxSwipes: Int = 6) {
         scrollToElement(element, in: app, maxSwipes: maxSwipes)
-    }
-
-    private func elementIsVisible(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
-        guard element.exists else { return false }
-        let frame = element.frame
-        guard frame.width > 1, frame.height > 1 else { return false }
-        return app.frame.intersects(frame)
+        for _ in 0..<maxSwipes {
+            if element.exists && element.isHittable {
+                return
+            }
+            app.swipeUp()
+        }
+        for _ in 0..<maxSwipes {
+            if element.exists && element.isHittable {
+                return
+            }
+            app.swipeDown()
+        }
     }
 
     private func assertReviewerOnboardingAvailable(in app: XCUIApplication) {
