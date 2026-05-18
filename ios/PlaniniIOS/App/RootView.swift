@@ -391,11 +391,24 @@ private struct ListsTab: View {
 }
 
 private struct SettingsTab: View {
+    @EnvironmentObject private var appearanceSettings: AppearanceSettings
     @EnvironmentObject private var viewModel: MobileAppViewModel
     @EnvironmentObject private var l10n: AppLocalization
 
     var body: some View {
         Form {
+            Section(l10n.t("ios.settings.appearance")) {
+                Picker(l10n.t("ios.settings.appearance"), selection: $appearanceSettings.mode) {
+                    ForEach(AppearanceMode.allCases) { mode in
+                        Text(appearanceModeTitle(mode))
+                            .tag(mode)
+                            .accessibilityIdentifier("settings-appearance-\(mode.rawValue)-option")
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("settings-appearance-picker")
+            }
+
             Section(l10n.t("ios.settings.account")) {
                 LabeledContent(l10n.t("settings.signed_in_as"), value: viewModel.displayName ?? l10n.t("ios.settings.unknown"))
                 if let favoriteList = viewModel.favoriteList {
@@ -426,6 +439,17 @@ private struct SettingsTab: View {
         }
         .navigationTitle(l10n.t("common.settings"))
         .accessibilityIdentifier("settings-screen")
+    }
+
+    private func appearanceModeTitle(_ mode: AppearanceMode) -> String {
+        switch mode {
+        case .system:
+            return l10n.t("ios.settings.appearance_system")
+        case .light:
+            return l10n.t("ios.settings.appearance_light")
+        case .dark:
+            return l10n.t("ios.settings.appearance_dark")
+        }
     }
 
     private func languageOption(id: String) -> some View {
@@ -835,9 +859,12 @@ private struct AddItemSheet: View {
     @MainActor
     private func useSuggestion(_ suggestion: GroceryItemSuggestion) async {
         if suggestion.item.checked {
+            dismiss()
             let toggled = await viewModel.toggle(suggestion.item)
             guard toggled else { return }
             AppHaptics.confirmation()
+            onSuggestionFocused(suggestion.item.id)
+            return
         }
         onSuggestionFocused(suggestion.item.id)
         dismiss()
@@ -853,7 +880,8 @@ private struct ItemSuggestionRow: View {
             RoundedRectangle(cornerRadius: 2)
                 .fill(Color(hex: suggestion.category?.colorHex) ?? Color.secondary.opacity(0.4))
                 .frame(width: 4, height: 36)
-            Image(systemName: suggestion.item.checked ? "arrow.uturn.backward.circle" : "scope")
+            Image(systemName: "plus")
+                .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 3) {
                 Text(suggestion.item.name)
@@ -863,9 +891,6 @@ private struct ItemSuggestionRow: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Image(systemName: "plus")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.secondary)
         }
         .padding(.vertical, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
