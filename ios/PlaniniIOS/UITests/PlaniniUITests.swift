@@ -199,9 +199,7 @@ final class PlaniniUITests: XCTestCase {
             waitForItemRow(itemID: updatedItemID, named: updatedName, in: app, timeout: 20),
             "Expected updated item row to be visible after closing edit sheet."
         )
-        let updatedItemLabel = app.staticTexts[updatedName]
         let updatedCheckButton = app.buttons["toggle-item-\(updatedItemID.uuidString)"]
-        scrollToElement(updatedItemLabel, in: app)
         scrollToElement(updatedCheckButton, in: app)
         XCTAssertTrue(updatedCheckButton.waitForExistence(timeout: 3))
         XCTAssertTrue(
@@ -216,7 +214,7 @@ final class PlaniniUITests: XCTestCase {
             ),
             "Expected tapping the item check button to mark the item checked."
         )
-        scrollToElement(updatedItemLabel, in: app)
+        scrollToElement(updatedCheckButton, in: app)
         captureScreenshot(named: "ios-ui-checked-item")
         captureScreenshot(named: "promotion-filled-list")
 
@@ -518,7 +516,6 @@ final class PlaniniUITests: XCTestCase {
         timeout: TimeInterval = 20
     ) -> Bool {
         let button = app.buttons["toggle-item-\(itemID.uuidString)"]
-        let label = app.staticTexts[itemName]
         let editSheet = app.otherElements["edit-item-sheet"]
         let deadline = Date().addingTimeInterval(timeout)
 
@@ -539,7 +536,6 @@ final class PlaniniUITests: XCTestCase {
             }
 
             if button.exists {
-                scrollToElement(label, in: app)
                 scrollToHittable(button, in: app, maxSwipes: 2)
                 if button.isHittable {
                     button.tap()
