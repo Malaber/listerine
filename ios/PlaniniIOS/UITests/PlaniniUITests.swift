@@ -246,9 +246,6 @@ final class PlaniniUITests: XCTestCase {
             waitForItemRow(itemID: updatedItemID, named: updatedName, in: app, timeout: 20),
             "Expected updated item row to be visible after closing edit sheet."
         )
-        let updatedCheckButton = app.buttons["toggle-item-\(updatedItemID.uuidString)"]
-        scrollToElement(updatedCheckButton, in: app)
-        XCTAssertTrue(updatedCheckButton.waitForExistence(timeout: 3))
         XCTAssertTrue(
             tapItemToggleButton(
                 itemID: updatedItemID,
@@ -261,7 +258,6 @@ final class PlaniniUITests: XCTestCase {
             ),
             "Expected tapping the item check button to mark the item checked."
         )
-        scrollToElement(updatedCheckButton, in: app)
         captureScreenshot(named: "ios-ui-checked-item")
         captureScreenshot(named: "promotion-filled-list")
 
@@ -938,10 +934,7 @@ final class PlaniniUITests: XCTestCase {
     }
 
     private func elementIsVisible(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
-        guard element.exists else { return false }
-        let frame = element.frame
-        guard frame.width > 1, frame.height > 1 else { return false }
-        return app.frame.intersects(frame)
+        element.exists && element.isHittable
     }
 
     private func assertReviewerOnboardingAvailable(in app: XCUIApplication) {
