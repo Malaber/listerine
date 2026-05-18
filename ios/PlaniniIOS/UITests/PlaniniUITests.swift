@@ -811,7 +811,7 @@ final class PlaniniUITests: XCTestCase {
             if waitForElementToDisappear(sheet, timeout: 1) {
                 return true
             }
-            if saveButton.exists {
+            if saveButton.exists && saveButton.isEnabled {
                 tapElement(saveButton)
             }
             if waitForElementToDisappear(sheet, timeout: 2) {
