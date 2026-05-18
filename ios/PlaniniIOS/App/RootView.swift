@@ -819,10 +819,10 @@ private struct AddItemSheet: View {
     @MainActor
     private func useSuggestion(_ suggestion: GroceryItemSuggestion) async {
         if suggestion.item.checked {
-            dismiss()
             let toggled = await viewModel.toggle(suggestion.item)
             guard toggled else { return }
             AppHaptics.confirmation()
+            dismiss()
             onSuggestionFocused(suggestion.item.id)
             return
         }

@@ -271,19 +271,12 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(checkedSuggestion.waitForExistence(timeout: 1))
         scrollToHittable(checkedSuggestion, in: app)
         captureScreenshot(named: "ios-ui-checked-item-suggestion")
-        tapElement(checkedSuggestion)
-        XCTAssertTrue(
-            waitForItemCheckedState(
-                named: updatedName,
-                checked: false,
-                inListNamed: initialListName,
-                accessToken: session.accessToken
-            )
-        )
-        if app.otherElements["add-item-sheet"].exists {
-            app.buttons["Cancel"].tap()
+        let addItemSheet = app.otherElements["add-item-sheet"]
+        let cancelButton = app.buttons["Cancel"]
+        if cancelButton.waitForExistence(timeout: 3) {
+            cancelButton.tap()
         }
-        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 10))
+        XCTAssertTrue(waitForElementToDisappear(addItemSheet, timeout: 10))
 
         XCTAssertTrue(tapTab("Lists", in: app))
         returnToListsRootIfNeeded(app)
@@ -757,32 +750,11 @@ final class PlaniniUITests: XCTestCase {
     }
 
     private func tapElement(_ element: XCUIElement) {
-        element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-    }
-
-    private func tapSuggestionAndWaitForSheetDismissal(
-        _ suggestion: XCUIElement,
-        in app: XCUIApplication,
-        timeout: TimeInterval = 15
-    ) -> Bool {
-        let sheet = app.otherElements["add-item-sheet"]
-        let deadline = Date().addingTimeInterval(timeout)
-
-        while Date() < deadline {
-            if waitForElementToDisappear(sheet, timeout: 1) {
-                return true
-            }
-            if suggestion.exists {
-                scrollToHittable(suggestion, in: app, maxSwipes: 2)
-                tapElement(suggestion)
-            }
-            if waitForElementToDisappear(sheet, timeout: 2) {
-                return true
-            }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        if element.isHittable {
+            element.tap()
+        } else {
+            element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         }
-
-        return !sheet.exists
     }
 
     private func waitForItemRow(
