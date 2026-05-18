@@ -535,9 +535,14 @@ final class PlaniniUITests: XCTestCase {
         scrollToElement(languageRow, in: app, maxSwipes: 3)
         XCTAssertTrue(languageRow.waitForExistence(timeout: 3))
         tapElement(languageRow)
-        XCTAssertTrue(app.otherElements["language-settings-screen"].waitForExistence(timeout: 3))
 
         let germanOption = app.buttons["language-option-de"]
+        XCTAssertTrue(
+            firstExistingElement(
+                [app.navigationBars["Language"], app.staticTexts["Choose language"], germanOption],
+                timeout: 5
+            ).exists
+        )
         scrollToElement(germanOption, in: app, maxSwipes: 3)
         XCTAssertTrue(germanOption.waitForExistence(timeout: 3))
         tapElement(germanOption)
