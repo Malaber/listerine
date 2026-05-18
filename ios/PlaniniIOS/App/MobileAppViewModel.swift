@@ -845,7 +845,10 @@ final class MobileAppViewModel: ObservableObject {
     }
 
     private func makeSharedAppState() -> SharedAppState {
-        let syncedItems = selectedListID == favoriteListID ? items : []
+        let syncsFavoriteList = selectedListID == favoriteListID
+        let syncedItems = syncsFavoriteList ? items : []
+        let syncedCategories = syncsFavoriteList ? categories : []
+        let syncedCategoryOrder = syncsFavoriteList ? categoryOrder : []
         return SharedAppState(
             backendURL: backendURL,
             authToken: authToken,
@@ -853,7 +856,9 @@ final class MobileAppViewModel: ObservableObject {
             favoriteListID: favoriteListID,
             quickAddItemName: quickAddItemName,
             lists: lists,
-            items: syncedItems
+            items: syncedItems,
+            categories: syncedCategories,
+            categoryOrder: syncedCategoryOrder
         )
     }
 
