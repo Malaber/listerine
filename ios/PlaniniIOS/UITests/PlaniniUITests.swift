@@ -227,13 +227,21 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(moveNameField.waitForExistence(timeout: 3))
         moveNameField.typeText(moveItemName)
         app.buttons["add-item-save-button"].tap()
-        XCTAssertTrue(app.staticTexts[moveItemName].waitForExistence(timeout: 5))
+        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 8))
+        XCTAssertTrue(
+            waitForItem(
+                named: moveItemName,
+                inListNamed: initialListName,
+                accessToken: session.accessToken
+            )
+        )
         let moveItemID = try itemID(
             named: moveItemName,
             inListNamed: initialListName,
             accessToken: session.accessToken
         )
-        app.staticTexts[moveItemName].tap()
+        XCTAssertTrue(waitForItemRow(itemID: moveItemID, named: moveItemName, in: app, timeout: 10))
+        tapElement(itemRow(itemID: moveItemID, in: app))
         XCTAssertTrue(app.otherElements["edit-item-sheet"].waitForExistence(timeout: 3))
         selectMoveTargetList("Hosting errands", in: app)
         XCTAssertTrue(waitForElementToDisappear(app.otherElements["edit-item-sheet"], timeout: 8))
