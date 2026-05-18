@@ -141,44 +141,65 @@ private struct WatchListDetailView: View {
     }
 
     private var itemsSection: some View {
-        Section("Items") {
-            if viewModel.items(for: list).isEmpty {
+        Group {
+            if viewModel.sections(for: list).isEmpty {
                 Text("Nothing on this list right now.")
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(viewModel.items(for: list)) { item in
-                    Button {
-                        Task { await viewModel.toggle(item, in: list) }
-                    } label: {
-                        HStack(spacing: 8) {
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(
-                                    Color(hex: viewModel.categoryColorHex(for: item))
-                                        ?? Color.secondary.opacity(0.25)
-                                )
-                                .frame(width: 4)
-                                .frame(maxHeight: .infinity)
-                            Image(systemName: item.checked ? "checkmark.circle.fill" : "circle")
-                                .foregroundStyle(item.checked ? .green : .secondary)
-                            Text(item.name)
-                                .strikethrough(item.checked)
-                            Spacer()
+                ForEach(viewModel.sections(for: list)) { section in
+                    Section {
+                        ForEach(section.items) { item in
+                            Button {
+                                Task { await viewModel.toggle(item, in: list) }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    RoundedRectangle(cornerRadius: 2)
+                                        .fill(
+                                            Color(hex: viewModel.categoryColorHex(for: item))
+                                                ?? Color.secondary.opacity(0.25)
+                                        )
+                                        .frame(width: 4)
+                                        .frame(maxHeight: .infinity)
+                                    Image(systemName: item.checked ? "checkmark.circle.fill" : "circle")
+                                        .foregroundStyle(item.checked ? .green : .secondary)
+                                    Text(item.name)
+                                        .strikethrough(item.checked)
+                                    Spacer()
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(viewModel.isWorking)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button {
+                                    editingItem = item
+                                } label: {
+                                    Label("Edit", systemImage: "pencil")
+                                }
+                                .tint(.blue)
+                            }
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(viewModel.isWorking)
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button {
-                            editingItem = item
-                        } label: {
-                            Label("Edit", systemImage: "pencil")
-                        }
-                        .tint(.blue)
+                    } header: {
+                        WatchSectionHeader(section: section)
                     }
                 }
             }
+        }
+    }
+}
+
+private struct WatchSectionHeader: View {
+    let section: GroceryItemSection
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(Color(hex: section.colorHex) ?? Color.secondary.opacity(0.4))
+                .frame(width: 6, height: 6)
+            Text(section.title)
+            Text("\(section.itemCount)")
+                .foregroundStyle(.secondary)
         }
     }
 }
