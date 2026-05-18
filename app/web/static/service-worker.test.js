@@ -31,7 +31,7 @@ function createServiceWorkerHarness(options = {}) {
     URL,
     caches: {
       open: async (name) => {
-        assert.equal(name, "planini-shell-v5");
+        assert.equal(name, "planini-shell-v7");
         return openedCache;
       },
       match: async (request) => {
@@ -123,6 +123,7 @@ test("service worker precaches shell assets and skips waiting", async () => {
         "/static/app.css",
         "/static/app.js",
         "/static/img/planini.svg",
+        "/static/img/link-preview.png",
         "/static/img/Favicon.png",
         "/static/img/apple-touch-icon.png",
         "/static/img/pwa-192.png",
@@ -143,7 +144,7 @@ test("service worker tolerates precache failures during install", async () => {
 
 test("service worker clears old caches and claims clients on activate", async () => {
   const harness = createServiceWorkerHarness({
-    cacheKeys: ["planini-shell-v2", "planini-shell-v3", "planini-shell-v5"],
+    cacheKeys: ["planini-shell-v2", "planini-shell-v3", "planini-shell-v7"],
   });
 
   await dispatchExtendableEvent(harness.listeners.get("activate"));
