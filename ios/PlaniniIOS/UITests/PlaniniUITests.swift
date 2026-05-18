@@ -123,7 +123,7 @@ final class PlaniniUITests: XCTestCase {
         let nameField = app.textFields["add-item-name-field"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 3))
         nameField.typeText("\(enterSavedItemName)\n")
-        XCTAssertTrue(app.staticTexts[enterSavedItemName].waitForExistence(timeout: 5))
+        XCTAssertTrue(staticText(labeled: enterSavedItemName, in: app).waitForExistence(timeout: 5))
         XCTAssertTrue(
             waitForItem(
                 named: enterSavedItemName,
@@ -156,10 +156,10 @@ final class PlaniniUITests: XCTestCase {
                 timeout: 20
             )
         )
-        XCTAssertTrue(app.staticTexts[itemName].waitForExistence(timeout: 15))
+        XCTAssertTrue(staticText(labeled: itemName, in: app).waitForExistence(timeout: 15))
         captureScreenshot(named: "ios-ui-added-item")
 
-        let createdItemLabel = app.staticTexts[itemName]
+        let createdItemLabel = staticText(labeled: itemName, in: app)
         scrollToElement(createdItemLabel, in: app)
         tapElement(createdItemLabel)
         XCTAssertTrue(app.otherElements["edit-item-sheet"].waitForExistence(timeout: 3))
@@ -199,7 +199,7 @@ final class PlaniniUITests: XCTestCase {
             waitForItemRow(itemID: updatedItemID, named: updatedName, in: app, timeout: 20),
             "Expected updated item row to be visible after closing edit sheet."
         )
-        let updatedItemLabel = app.staticTexts[updatedName]
+        let updatedItemLabel = staticText(labeled: updatedName, in: app)
         let updatedCheckButton = app.buttons["toggle-item-\(updatedItemID.uuidString)"]
         scrollToElement(updatedItemLabel, in: app)
         scrollToElement(updatedCheckButton, in: app)
@@ -261,7 +261,7 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["edit-item-sheet"].waitForExistence(timeout: 3))
         selectMoveTargetList("Hosting errands", in: app)
         XCTAssertTrue(waitForElementToDisappear(app.otherElements["edit-item-sheet"], timeout: 8))
-        XCTAssertTrue(waitForElementToDisappear(app.staticTexts[moveItemName], timeout: 8))
+        XCTAssertTrue(waitForElementToDisappear(staticText(labeled: moveItemName, in: app), timeout: 8))
         XCTAssertTrue(
             waitForItem(
                 named: moveItemName,
@@ -400,7 +400,7 @@ final class PlaniniUITests: XCTestCase {
 
         try deleteItem(itemID: itemID, accessToken: session.accessToken)
         XCTAssertTrue(
-            waitForElementToDisappear(app.staticTexts[updatedName], timeout: 20),
+            waitForElementToDisappear(staticText(labeled: updatedName, in: app), timeout: 20),
             "Expected live-deleted item to disappear without manual refresh."
         )
     }
@@ -546,17 +546,18 @@ final class PlaniniUITests: XCTestCase {
         timeout: TimeInterval = 20
     ) -> Bool {
         let statusLabel = app.staticTexts["edit-item-save-status"]
+        let statusText = staticText(labeled: status, in: app)
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if statusLabel.exists && statusLabel.label.contains(status) {
                 return true
             }
-            if app.staticTexts[status].exists {
+            if statusText.exists {
                 return true
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
-        return (statusLabel.exists && statusLabel.label.contains(status)) || app.staticTexts[status].exists
+        return (statusLabel.exists && statusLabel.label.contains(status)) || statusText.exists
     }
 
     private func waitForElementToDisappear(_ element: XCUIElement, timeout: TimeInterval = 8) -> Bool {
@@ -705,7 +706,7 @@ final class PlaniniUITests: XCTestCase {
         timeout: TimeInterval
     ) -> Bool {
         let row = itemRow(itemID: itemID, in: app)
-        let label = app.staticTexts[itemName]
+        let label = staticText(labeled: itemName, in: app)
         let deadline = Date().addingTimeInterval(timeout)
 
         while Date() < deadline {
@@ -724,6 +725,10 @@ final class PlaniniUITests: XCTestCase {
 
     private func itemRow(itemID: UUID, in app: XCUIApplication) -> XCUIElement {
         app.descendants(matching: .any)["item-row-\(itemID.uuidString)"]
+    }
+
+    private func staticText(labeled label: String, in app: XCUIApplication) -> XCUIElement {
+        app.staticTexts.matching(NSPredicate(format: "label == %@", label)).firstMatch
     }
 
     private func scrollToElement(_ element: XCUIElement, in app: XCUIApplication, maxSwipes: Int = 10) {
@@ -757,7 +762,7 @@ final class PlaniniUITests: XCTestCase {
             [
                 app.buttons["edit-item-list-picker"],
                 app.otherElements["edit-item-list-picker"],
-                app.staticTexts["Move to list"],
+                staticText(labeled: "Move to list", in: app),
             ],
             timeout: 3
         )
@@ -768,7 +773,7 @@ final class PlaniniUITests: XCTestCase {
             [
                 app.buttons[listName],
                 app.menuItems[listName],
-                app.staticTexts[listName],
+                staticText(labeled: listName, in: app),
             ],
             timeout: 3
         )
