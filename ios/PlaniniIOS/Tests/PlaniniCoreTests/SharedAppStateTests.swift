@@ -7,8 +7,17 @@ struct SharedAppStateTests {
         let state = SharedAppState()
 
         #expect(state.quickAddItemName == "Milk")
+        #expect(state.favoriteList == nil)
+        #expect(state.favoriteListName == nil)
         #expect(state.hasAuthenticatedSession == false)
         #expect(state.canQuickAdd == false)
+        #expect(PlaniniSharedConstants.watchAppGroupID == "group.de.malaber.planini.watch")
+        #expect(PlaniniSharedConstants.sharedAppStateKey == "planini.shared-app-state")
+        #expect(PlaniniSharedConstants.watchContextPayloadKey == "state")
+
+        let missingTokenState = SharedAppState(backendURL: URL(string: "https://api.example.com"))
+
+        #expect(missingTokenState.hasAuthenticatedSession == false)
     }
 
     @Test func favoriteListResolvesFromLists() {
@@ -63,6 +72,14 @@ struct SharedAppStateTests {
         #expect(state.favoriteListID == listID)
         #expect(state.categories == [])
         #expect(state.categoryOrder == [])
+    }
+
+    @Test func decodesEmptyLegacyStateWithDefaults() throws {
+        let state = try JSONDecoder().decode(SharedAppState.self, from: Data("{}".utf8))
+
+        #expect(state.quickAddItemName == SharedAppState.defaultQuickAddItemName)
+        #expect(state.lists == [])
+        #expect(state.items == [])
     }
 
     @Test func quickAddRequiresTrimmedNameFavoriteListAndSession() {

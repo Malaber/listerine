@@ -179,4 +179,140 @@ struct ItemEditingTests {
         #expect(redoHistory.redo(current: third) == second)
         #expect(redoHistory.undoStack == [third])
     }
+
+    @Test func categorySelectionUsesListOrderAndSearch() {
+        let pantry = GroceryCategorySummary(id: UUID(), name: "Konserven", colorHex: "#94a3b8")
+        let dairy = GroceryCategorySummary(
+            id: UUID(),
+            name: "Milch & Eier",
+            colorHex: "#d8b4e2",
+            aliases: ["Molkerei"]
+        )
+        let produce = GroceryCategorySummary(id: UUID(), name: "Gemuese", colorHex: "#7ed957")
+        let bakery = GroceryCategorySummary(id: UUID(), name: "Backwaren", colorHex: "#fb923c")
+        let items = [
+            makeItem(name: "Beans", categoryID: pantry.id),
+            makeItem(name: "Milk", categoryID: dairy.id),
+            makeItem(name: "Loose", categoryID: nil),
+        ]
+
+        let options = GroceryCategorySelectionBuilder.options(
+            categories: [produce, dairy, bakery, pantry],
+            items: items,
+            categoryOrder: [
+                ListCategoryOrderEntry(categoryID: dairy.id, sortOrder: 1),
+                ListCategoryOrderEntry(categoryID: pantry.id, sortOrder: 0),
+            ],
+            query: "",
+            sort: .listOrder
+        )
+        let filteredOptions = GroceryCategorySelectionBuilder.options(
+            categories: [produce, dairy, pantry],
+            items: items,
+            categoryOrder: [],
+            query: "mil",
+            sort: .nameAscending
+        )
+
+        #expect(options.map(\.category.name) == ["Konserven", "Milch & Eier", "Backwaren", "Gemuese"])
+        #expect(options.map(\.itemCount) == [1, 1, 0, 0])
+        #expect(filteredOptions.map(\.category.name) == ["Milch & Eier"])
+        #expect(GroceryCategorySelectionBuilder.uncategorizedItemCount(items: items) == 1)
+    }
+
+    @Test func categorySelectionSearchesAliasesAndToleratesTypos() {
+        let dairy = GroceryCategorySummary(
+            id: UUID(),
+            name: "Milch & Eier",
+            colorHex: "#d8b4e2",
+            aliases: ["Molkerei"]
+        )
+        let pantry = GroceryCategorySummary(
+            id: UUID(),
+            name: "Konserven",
+            colorHex: "#94a3b8",
+            aliases: ["Dose"]
+        )
+
+        let aliasOptions = GroceryCategorySelectionBuilder.options(
+            categories: [pantry, dairy],
+            items: [],
+            categoryOrder: [],
+            query: "molkrei",
+            sort: .nameAscending
+        )
+        let typoOptions = GroceryCategorySelectionBuilder.options(
+            categories: [pantry, dairy],
+            items: [],
+            categoryOrder: [],
+            query: "konserveb",
+            sort: .nameAscending
+        )
+
+        #expect(aliasOptions.map(\.category.name) == ["Milch & Eier"])
+        #expect(typoOptions.map(\.category.name) == ["Konserven"])
+    }
+
+    @Test func categorySelectionSortsByNameAndMostUsed() {
+        let bakery = GroceryCategorySummary(id: UUID(), name: "Backwaren", colorHex: "#fb923c")
+        let pantry = GroceryCategorySummary(id: UUID(), name: "Konserven", colorHex: "#94a3b8")
+        let dairy = GroceryCategorySummary(id: UUID(), name: "Milch & Eier", colorHex: "#d8b4e2")
+        let lowercaseDairy = GroceryCategorySummary(id: UUID(), name: "milch & eier", colorHex: "#d8b4e2")
+        let items = [
+            makeItem(name: "Bread", categoryID: bakery.id),
+            makeItem(name: "Beans", categoryID: pantry.id),
+            makeItem(name: "Tomatoes", categoryID: pantry.id, checked: true),
+            makeItem(name: "Milk", categoryID: dairy.id),
+            makeItem(name: "Eggs", categoryID: dairy.id),
+        ]
+
+        let ascending = GroceryCategorySelectionBuilder.options(
+            categories: [pantry, dairy, bakery],
+            items: items,
+            categoryOrder: [],
+            query: "",
+            sort: .nameAscending
+        )
+        let descending = GroceryCategorySelectionBuilder.options(
+            categories: [pantry, dairy, bakery],
+            items: items,
+            categoryOrder: [],
+            query: "",
+            sort: .nameDescending
+        )
+        let mostUsed = GroceryCategorySelectionBuilder.options(
+            categories: [bakery, dairy, pantry],
+            items: items,
+            categoryOrder: [],
+            query: "",
+            sort: .mostUsed
+        )
+        let equalNames = GroceryCategorySelectionBuilder.options(
+            categories: [lowercaseDairy, dairy],
+            items: items,
+            categoryOrder: [],
+            query: "",
+            sort: .nameAscending
+        )
+
+        #expect(ascending.map(\.category.name) == ["Backwaren", "Konserven", "Milch & Eier"])
+        #expect(descending.map(\.category.name) == ["Milch & Eier", "Konserven", "Backwaren"])
+        #expect(mostUsed.map(\.category.name) == ["Konserven", "Milch & Eier", "Backwaren"])
+        #expect(mostUsed.map(\.itemCount) == [2, 2, 1])
+        #expect(Set(equalNames.map(\.id)) == Set([lowercaseDairy.id, dairy.id]))
+    }
+
+    private func makeItem(name: String, categoryID: UUID?, checked: Bool = false) -> GroceryItemRecord {
+        GroceryItemRecord(
+            id: UUID(),
+            listID: UUID(),
+            name: name,
+            quantityText: nil,
+            note: nil,
+            categoryID: categoryID,
+            checked: checked,
+            checkedAt: checked ? Date(timeIntervalSince1970: 10) : nil,
+            sortOrder: 0
+        )
+    }
 }
