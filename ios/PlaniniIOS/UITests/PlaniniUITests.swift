@@ -169,8 +169,7 @@ final class PlaniniUITests: XCTestCase {
         noteField.tap()
         noteField.typeText("for pasta")
 
-        tapElement(app.buttons["add-item-save-button"])
-        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 10))
+        XCTAssertTrue(saveAddItemSheet(in: app))
         XCTAssertTrue(
             waitForItem(
                 named: itemName,
@@ -244,6 +243,12 @@ final class PlaniniUITests: XCTestCase {
             inListNamed: initialListName,
             accessToken: session.accessToken
         )
+        let hostingListID = try listID(named: "Hosting errands", accessToken: session.accessToken)
+        let konservenCategoryID = try categoryID(
+            named: "Konserven",
+            inListNamed: initialListName,
+            accessToken: session.accessToken
+        )
 
         captureScreenshot(named: "promotion-filled-list")
 
@@ -254,14 +259,8 @@ final class PlaniniUITests: XCTestCase {
         checkedSuggestionField.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
         checkedSuggestionField.typeText(updatedName)
-        let checkedSuggestion = firstExistingElement(
-            [
-                app.buttons["add-item-suggestion-\(updatedItemID.uuidString)"],
-                app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Add \(updatedName) back")).firstMatch,
-            ],
-            timeout: 10
-        )
-        XCTAssertTrue(checkedSuggestion.waitForExistence(timeout: 1))
+        let checkedSuggestion = app.buttons["add-item-suggestion-\(updatedItemID.uuidString)"]
+        XCTAssertTrue(checkedSuggestion.waitForExistence(timeout: 10))
         scrollToHittable(checkedSuggestion, in: app)
         captureScreenshot(named: "ios-ui-checked-item-suggestion")
         let addItemSheet = app.otherElements["add-item-sheet"]
@@ -271,84 +270,108 @@ final class PlaniniUITests: XCTestCase {
         }
         XCTAssertTrue(waitForElementToDisappear(addItemSheet, timeout: 10))
 
-        let moveItemName = "UI Test Move \(uniqueSuffix)"
-        app.buttons["add-item-button"].tap()
-        XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
-        let moveNameField = app.textFields["add-item-name-field"]
-        XCTAssertTrue(moveNameField.waitForExistence(timeout: 3))
-        moveNameField.typeText("\(moveItemName)\n")
-        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 8))
+        try checkItem(itemID: seededItemID, accessToken: session.accessToken)
         XCTAssertTrue(
-            waitForItem(
-                named: moveItemName,
+            waitForItemCheckedState(
+                named: "Brot",
+                checked: true,
                 inListNamed: initialListName,
                 accessToken: session.accessToken,
                 timeout: 20
             )
         )
-        let moveItemID = try itemID(
-            named: moveItemName,
-            inListNamed: initialListName,
-            accessToken: session.accessToken
-        )
         XCTAssertTrue(
-            waitForItemRow(itemID: moveItemID, named: moveItemName, in: app, timeout: 20),
-            "Expected move test item row to be visible before opening edit sheet."
+            waitForItemRow(itemID: seededItemID, named: "Brot", in: app, timeout: 20),
+            "Expected checked seeded item row to be visible before opening edit sheet."
         )
-        let moveItemLabel = app.staticTexts[moveItemName]
-        scrollToElement(moveItemLabel, in: app)
-        tapElement(moveItemLabel)
+        let seededMoveRow = itemRow(itemID: seededItemID, in: app)
+        scrollToHittable(seededMoveRow, in: app)
+        tapElement(seededMoveRow)
         XCTAssertTrue(app.otherElements["edit-item-sheet"].waitForExistence(timeout: 3))
-        let movePicker = firstExistingElement(
-            [
-                app.buttons["edit-item-list-picker"],
-                app.pickers["edit-item-list-picker"],
-                app.otherElements["edit-item-list-picker"],
-                app.buttons["Move to list"],
-            ],
-            timeout: 3
-        )
-        tapElement(movePicker)
-        let hostingChoice = firstExistingElement(
-            [
-                app.buttons["Hosting errands"],
-                app.staticTexts["Hosting errands"],
-                app.cells["Hosting errands"],
-            ],
-            timeout: 3
-        )
-        tapElement(hostingChoice)
+        let hostingMoveButton = app.buttons["edit-item-move-list-\(hostingListID.uuidString)"]
+        XCTAssertTrue(hostingMoveButton.waitForExistence(timeout: 3))
+        scrollToHittable(hostingMoveButton, in: app)
+        tapElement(hostingMoveButton)
         XCTAssertTrue(waitForElementToDisappear(app.otherElements["edit-item-sheet"], timeout: 8))
         XCTAssertTrue(
             waitForItem(
-                named: moveItemName,
+                named: "Brot",
                 inListNamed: "Hosting errands",
                 accessToken: session.accessToken
             )
         )
-        let moveNotice = app.otherElements["item-move-notice-\(moveItemID.uuidString)"]
+        let moveNotice = app.otherElements["item-move-notice-\(seededItemID.uuidString)"]
         XCTAssertTrue(moveNotice.waitForExistence(timeout: 5))
-        let moveNoticeMessage = app.staticTexts["item-move-notice-message-\(moveItemID.uuidString)"]
+        let moveNoticeMessage = app.staticTexts["item-move-notice-message-\(seededItemID.uuidString)"]
         XCTAssertTrue(moveNoticeMessage.waitForExistence(timeout: 3))
-        XCTAssertTrue(moveNoticeMessage.label.contains(moveItemName))
+        XCTAssertTrue(moveNoticeMessage.label.contains("Brot"))
         XCTAssertTrue(moveNoticeMessage.label.contains("Hosting errands"))
+        let checkedCountBadge = app.staticTexts["section-count-badge-checked"]
+        XCTAssertTrue(waitForElementLabel(checkedCountBadge, equals: "Checked off count, 0 items"))
         captureScreenshot(named: "ios-ui-moved-item-notice")
-        app.buttons["move-item-undo-button-\(moveItemID.uuidString)"].tap()
+        app.buttons["move-item-undo-button-\(seededItemID.uuidString)"].tap()
         XCTAssertTrue(
             waitForItem(
-                named: moveItemName,
+                named: "Brot",
+                inListNamed: initialListName,
+                accessToken: session.accessToken
+            )
+        )
+        XCTAssertTrue(
+            waitForItemCheckedState(
+                named: "Brot",
+                checked: true,
+                inListNamed: initialListName,
+                accessToken: session.accessToken
+            )
+        )
+        XCTAssertTrue(
+            waitForItemCategory(
+                named: "Brot",
+                categoryNamed: "Backwaren",
                 inListNamed: initialListName,
                 accessToken: session.accessToken
             )
         )
         XCTAssertTrue(
             waitForItemAbsent(
-                named: moveItemName,
+                named: "Brot",
                 inListNamed: "Hosting errands",
                 accessToken: session.accessToken
             )
         )
-        try deleteItem(itemID: moveItemID, accessToken: session.accessToken)
+        XCTAssertTrue(waitForItemRow(itemID: seededItemID, named: "Brot", in: app, timeout: 20))
+        XCTAssertTrue(waitForElementLabel(checkedCountBadge, equals: "Checked off count, 1 item"))
+
+        XCTAssertTrue(
+            waitForItemRow(itemID: updatedItemID, named: updatedName, in: app, timeout: 20),
+            "Expected categorized updated item row to be visible before failed undo coverage."
+        )
+        let updatedMoveRow = itemRow(itemID: updatedItemID, in: app)
+        scrollToHittable(updatedMoveRow, in: app)
+        tapElement(updatedMoveRow)
+        XCTAssertTrue(app.otherElements["edit-item-sheet"].waitForExistence(timeout: 3))
+        let failedUndoMoveButton = app.buttons["edit-item-move-list-\(hostingListID.uuidString)"]
+        XCTAssertTrue(failedUndoMoveButton.waitForExistence(timeout: 3))
+        scrollToHittable(failedUndoMoveButton, in: app)
+        tapElement(failedUndoMoveButton)
+        XCTAssertTrue(waitForElementToDisappear(app.otherElements["edit-item-sheet"], timeout: 8))
+        XCTAssertTrue(
+            waitForItem(
+                named: updatedName,
+                inListNamed: "Hosting errands",
+                accessToken: session.accessToken
+            )
+        )
+        let failedUndoNotice = app.otherElements["item-move-notice-\(updatedItemID.uuidString)"]
+        XCTAssertTrue(failedUndoNotice.waitForExistence(timeout: 5))
+        let konservenCountBadge = app.staticTexts["section-count-badge-category-\(konservenCategoryID.uuidString)"]
+        XCTAssertTrue(waitForElementLabel(konservenCountBadge, equals: "Konserven count, 1 item"))
+        try deleteItem(itemID: updatedItemID, accessToken: session.accessToken)
+        app.buttons["move-item-undo-button-\(updatedItemID.uuidString)"].tap()
+        let failedUndoError = app.staticTexts["item-move-notice-error-\(updatedItemID.uuidString)"]
+        XCTAssertTrue(failedUndoError.waitForExistence(timeout: 5))
+        XCTAssertTrue(failedUndoNotice.exists)
 
         XCTAssertTrue(tapTab("Lists", in: app))
         returnToListsRootIfNeeded(app)
@@ -678,6 +701,39 @@ final class PlaniniUITests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
         return element.exists == false
+    }
+
+    private func waitForElementLabel(
+        _ element: XCUIElement,
+        equals expectedLabel: String,
+        timeout: TimeInterval = 5
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if element.exists && element.label == expectedLabel {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        return element.exists && element.label == expectedLabel
+    }
+
+    private func saveAddItemSheet(in app: XCUIApplication, timeout: TimeInterval = 10) -> Bool {
+        let sheet = app.otherElements["add-item-sheet"]
+        let saveButton = app.buttons["add-item-save-button"]
+        let deadline = Date().addingTimeInterval(timeout)
+
+        while Date() < deadline {
+            if saveButton.exists && saveButton.isEnabled {
+                tapElement(saveButton)
+                if waitForElementToDisappear(sheet, timeout: 2) {
+                    return true
+                }
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+
+        return waitForElementToDisappear(sheet, timeout: 1)
     }
 
     private func waitForLiveUpdatesConnection(
@@ -1051,6 +1107,15 @@ final class PlaniniUITests: XCTestCase {
                 "name": name,
                 "note": note,
             ]
+        )
+        _ = try performRequest(request)
+    }
+
+    private func checkItem(itemID: UUID, accessToken: String) throws {
+        let request = jsonRequest(
+            path: "/api/v1/items/\(itemID.uuidString)/check",
+            method: "POST",
+            token: accessToken
         )
         _ = try performRequest(request)
     }

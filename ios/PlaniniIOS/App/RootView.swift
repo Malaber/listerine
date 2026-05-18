@@ -28,6 +28,7 @@ private struct ItemMoveNotice: Identifiable, Equatable {
     let sourceItem: GroceryItemRecord
     let movedItem: GroceryItemRecord
     var isExpiring = false
+    var restoreErrorMessage: String?
 
     var itemName: String {
         movedItem.name
@@ -74,7 +75,12 @@ private struct ListDisplaySection: Identifiable, Equatable {
     var rows: [ListRowContent]
 
     var itemCount: Int {
-        rows.count
+        rows.reduce(0) { count, row in
+            if case .item = row {
+                return count + 1
+            }
+            return count
+        }
     }
 
     init(
@@ -737,9 +743,16 @@ private struct ListDetailScreen: View {
                 to: notice.sourceListID,
                 payload: GroceryItemEditPayload(item: notice.movedItem)
             )
-            guard let restoredItem else { return }
-            AppHaptics.confirmation()
             await MainActor.run {
+                guard let restoredItem else {
+                    var failedNotice = notice
+                    failedNotice.isExpiring = false
+                    failedNotice.restoreErrorMessage = "Could not undo the move. Try again."
+                    moveNotice = failedNotice
+                    return
+                }
+
+                AppHaptics.confirmation()
                 moveNotice = nil
                 highlightedItemID = restoredItem.id
             }
@@ -904,11 +917,20 @@ private struct ItemMoveNoticeRow: View {
                 .font(.title3)
                 .foregroundStyle(Color.accentColor)
 
-            Text("\(notice.itemName) moved to \(notice.targetListName).")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
-                .lineLimit(2)
-                .accessibilityIdentifier("item-move-notice-message-\(notice.id.uuidString)")
+            VStack(alignment: .leading, spacing: 4) {
+                Text("\(notice.itemName) moved to \(notice.targetListName).")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                    .accessibilityIdentifier("item-move-notice-message-\(notice.id.uuidString)")
+
+                if let restoreErrorMessage = notice.restoreErrorMessage {
+                    Text(restoreErrorMessage)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .accessibilityIdentifier("item-move-notice-error-\(notice.id.uuidString)")
+                }
+            }
 
             Spacer(minLength: 8)
 
@@ -1290,7 +1312,6 @@ private struct EditItemSheet: View {
     @State private var quantity: String
     @State private var note: String
     @State private var categoryID: UUID?
-    @State private var selectedMoveListID: UUID
     @State private var history: GroceryItemEditHistory
     @State private var lastSavedPayload: GroceryItemEditPayload
     @State private var saveTask: Task<Void, Never>?
@@ -1340,7 +1361,6 @@ private struct EditItemSheet: View {
         _quantity = State(initialValue: item.quantityText ?? "")
         _note = State(initialValue: item.note ?? "")
         _categoryID = State(initialValue: item.categoryID)
-        _selectedMoveListID = State(initialValue: item.listID)
         _history = State(initialValue: Self.loadHistory(itemID: item.id))
         _lastSavedPayload = State(initialValue: payload)
     }
@@ -1374,13 +1394,37 @@ private struct EditItemSheet: View {
 
                 if moveTargets.count > 1 {
                     Section("Move") {
-                        Picker("Move to list", selection: $selectedMoveListID) {
-                            ForEach(moveTargets) { list in
-                                Text(list.name).tag(list.id)
+                        ForEach(moveTargets) { list in
+                            if list.id == item.listID {
+                                Label {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(list.name)
+                                        Text("Current list")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                } icon: {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(.green)
+                                }
+                                .accessibilityIdentifier("edit-item-current-list-\(list.id.uuidString)")
+                            } else {
+                                Button {
+                                    move(to: list.id)
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        Text(list.name)
+                                        Spacer()
+                                        Image(systemName: "arrow.right")
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .contentShape(Rectangle())
+                                }
+                                .disabled(isMoving)
+                                .accessibilityIdentifier("edit-item-move-list-\(list.id.uuidString)")
+                                .accessibilityLabel("Move to \(list.name)")
                             }
                         }
-                        .disabled(isMoving)
-                        .accessibilityIdentifier("edit-item-list-picker")
 
                         if isMoving {
                             Label("Moving...", systemImage: "arrow.right")
@@ -1442,9 +1486,6 @@ private struct EditItemSheet: View {
         .onChange(of: quantity) { _ in scheduleAutosave() }
         .onChange(of: note) { _ in scheduleAutosave() }
         .onChange(of: categoryID) { _ in scheduleAutosave() }
-        .onChange(of: selectedMoveListID) { newValue in
-            move(to: newValue)
-        }
         .onDisappear {
             persistHistory()
             if didMoveItem == false {
@@ -1556,7 +1597,6 @@ private struct EditItemSheet: View {
     private func move(to targetListID: UUID) {
         guard targetListID != item.listID, isMoving == false else { return }
         guard let targetList = moveTargets.first(where: { $0.id == targetListID }) else {
-            selectedMoveListID = item.listID
             return
         }
 
@@ -1564,7 +1604,6 @@ private struct EditItemSheet: View {
         let payload = currentPayload
         guard payload.isValid else {
             saveStatus = .invalid
-            selectedMoveListID = item.listID
             return
         }
 
@@ -1575,7 +1614,6 @@ private struct EditItemSheet: View {
             await MainActor.run {
                 isMoving = false
                 guard let movedItem else {
-                    selectedMoveListID = item.listID
                     saveStatus = .saved
                     return
                 }
