@@ -321,7 +321,10 @@ final class PlaniniUITests: XCTestCase {
             openInitialListDetail(in: offlineApp, listTitle: offlineListTitle, timeout: 15),
             "Expected cached list to open while the backend is offline."
         )
-        XCTAssertTrue(offlineApp.otherElements["offline-status-banner"].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            waitForOfflineStatus(in: offlineApp),
+            "Expected visible offline status banner instead of a blocking alert."
+        )
         XCTAssertFalse(
             offlineApp.alerts["Error"].waitForExistence(timeout: 2),
             "Expected offline cache fallback to avoid the generic error popup."
@@ -522,6 +525,27 @@ final class PlaniniUITests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         }
         return false
+    }
+
+    private func waitForOfflineStatus(in app: XCUIApplication, timeout: TimeInterval = 5) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if app.descendants(matching: .any)["offline-status-banner"].exists {
+                return true
+            }
+            if app.staticTexts["Offline. Showing saved list."].exists {
+                return true
+            }
+            let matchingStatusText = app.staticTexts.containing(
+                NSPredicate(format: "label CONTAINS %@", "Offline. Showing saved list.")
+            ).firstMatch
+            if matchingStatusText.exists {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        return app.descendants(matching: .any)["offline-status-banner"].exists
+            || app.staticTexts["Offline. Showing saved list."].exists
     }
 
     private func openInitialListDetail(

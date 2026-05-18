@@ -168,6 +168,7 @@ private struct OfflineStatusBanner: View {
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.yellow.opacity(0.22))
+        .accessibilityElement(children: .combine)
         .accessibilityIdentifier("offline-status-banner")
     }
 }
