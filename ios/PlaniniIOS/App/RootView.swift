@@ -941,15 +941,19 @@ private struct EditItemSheet: View {
                     .accessibilityIdentifier("edit-item-category-picker")
                 }
 
-                if moveTargetLists.count > 1 {
+                if moveDestinationLists.isEmpty == false {
                     Section("List") {
-                        Picker("Move to list", selection: $targetListID) {
-                            ForEach(moveTargetLists) { list in
-                                Text(list.name).tag(list.id)
+                        LabeledContent("Current list", value: currentListName)
+
+                        ForEach(moveDestinationLists) { list in
+                            Button {
+                                targetListID = list.id
+                            } label: {
+                                Label(list.name, systemImage: "arrow.right")
                             }
+                            .disabled(saveStatus == .moving)
+                            .accessibilityIdentifier("edit-item-list-option-\(list.name)")
                         }
-                        .pickerStyle(.menu)
-                        .accessibilityIdentifier("edit-item-list-picker")
                     }
                 }
 
@@ -1015,6 +1019,14 @@ private struct EditItemSheet: View {
             return activeLists
         }
         return activeLists.filter { $0.householdID == sourceHouseholdID }
+    }
+
+    private var moveDestinationLists: [GroceryListSummary] {
+        moveTargetLists.filter { $0.id != item.listID }
+    }
+
+    private var currentListName: String {
+        moveTargetLists.first(where: { $0.id == item.listID })?.name ?? "Current list"
     }
 
     private var currentPayload: GroceryItemEditPayload {

@@ -747,6 +747,12 @@ final class PlaniniUITests: XCTestCase {
     }
 
     private func selectMoveTargetList(_ listName: String, in app: XCUIApplication) {
+        let listOption = app.buttons["edit-item-list-option-\(listName)"]
+        if listOption.waitForExistence(timeout: 3) {
+            tapElement(listOption)
+            return
+        }
+
         let picker = firstExistingElement(
             [
                 app.buttons["edit-item-list-picker"],
