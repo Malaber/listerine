@@ -172,6 +172,37 @@ async function expectInViewport(locator, message) {
   assert(isInViewport, message);
 }
 
+async function assertSuggestionPlusButtonInline(suggestion, message) {
+  const layout = await suggestion.evaluate((node) => {
+    const button = node.querySelector("button[data-item-reuse]");
+    const copy = node.querySelector(".item-suggestion-copy");
+    const inertCheck = node.querySelector(".item-suggestion-check");
+    if (!(button instanceof HTMLElement) || !(copy instanceof HTMLElement)) {
+      return { hasButton: Boolean(button), hasCopy: Boolean(copy), hasInertCheck: Boolean(inertCheck) };
+    }
+    const buttonRect = button.getBoundingClientRect();
+    const copyRect = copy.getBoundingClientRect();
+    return {
+      hasButton: true,
+      hasCopy: true,
+      hasInertCheck: Boolean(inertCheck),
+      buttonBeforeCopy: buttonRect.right <= copyRect.left,
+      verticallyOverlapsCopy: buttonRect.top < copyRect.bottom && buttonRect.bottom > copyRect.top,
+    };
+  });
+  assert.deepEqual(
+    layout,
+    {
+      hasButton: true,
+      hasCopy: true,
+      hasInertCheck: false,
+      buttonBeforeCopy: true,
+      verticallyOverlapsCopy: true,
+    },
+    message,
+  );
+}
+
 async function assertBrownWhiteAccentChrome(page) {
   logStep("Checking brown-white accent chrome");
   const matches = await page.evaluate((tokens) => {
@@ -1412,6 +1443,7 @@ async function main() {
     await addForm.getByLabel("Item name").fill("Spaghetty");
     const activeSuggestion = addForm.locator(".item-suggestion", { hasText: "Spaghetti" });
     await expectVisible(activeSuggestion, "Expected fuzzy duplicate suggestion for active item");
+    await assertSuggestionPlusButtonInline(activeSuggestion, "Suggestion plus should replace checkbox circle inline");
     await activeSuggestion.locator("button").click();
     await expectHidden(page.locator("[data-item-panel]"), "Suggestion reuse should close add modal");
     await page.waitForSelector('[data-item-card].is-highlighted', { timeout: 3000 });
@@ -1461,6 +1493,7 @@ async function main() {
     await addForm.getByLabel("Item name").fill("Broz");
     const checkedSuggestion = addForm.locator(".item-suggestion", { hasText: "Brot" });
     await expectVisible(checkedSuggestion, "Expected fuzzy suggestion for checked duplicate item");
+    await assertSuggestionPlusButtonInline(checkedSuggestion, "Checked suggestion plus should replace checkbox circle inline");
     await checkedSuggestion.locator("button").click();
     await expectVisible(
       page.locator("[data-list-toast]", { hasText: "Brot added back to the list." }),

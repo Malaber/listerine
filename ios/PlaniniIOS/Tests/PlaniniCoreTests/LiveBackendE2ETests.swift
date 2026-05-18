@@ -118,6 +118,24 @@ struct LiveBackendE2ETests {
             #expect((enabledPayload["category_ids"] as? [String] ?? []).isEmpty)
         }
 
+        let sharedState = SharedAppState(
+            authToken: accessToken,
+            favoriteListID: UUID(uuidString: listID),
+            items: initialItems,
+            categories: categories,
+            categoryOrder: categoryOrder
+        )
+        let restoredState = try JSONDecoder().decode(
+            SharedAppState.self,
+            from: JSONEncoder().encode(sharedState)
+        )
+        let restoredSections = GroceryItemSectionBuilder.build(
+            items: restoredState.items,
+            categories: restoredState.categories,
+            categoryOrder: restoredState.categoryOrder
+        )
+        #expect(restoredSections.map(\.title).prefix(4).elementsEqual(["Uncategorized", "Konserven", "Milch & Eier", "Nudeln"]))
+
         let konservenID = try #require(categories.first { $0.name == "Konserven" }?.id)
         let gemueseID = try #require(categories.first { $0.name == "Gemuese" }?.id)
 
