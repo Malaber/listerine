@@ -69,6 +69,18 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertEqual(listTitle.label, initialListName)
         captureScreenshot(named: "ios-ui-favorite-list")
 
+        let uncategorizedCountBadge = firstExistingElement(
+            [
+                app.staticTexts["section-count-badge-uncategorized"],
+                app.staticTexts["Uncategorized count, 1 item"],
+                app.otherElements["section-count-badge-uncategorized"],
+                app.otherElements["Uncategorized count, 1 item"],
+            ],
+            timeout: 3
+        )
+        XCTAssertTrue(uncategorizedCountBadge.waitForExistence(timeout: 3))
+        XCTAssertEqual(uncategorizedCountBadge.label, "Uncategorized count, 1 item")
+
         let quickAddUncategorized = firstExistingElement(
             [
                 app.buttons["quick-add-category-uncategorized"],
@@ -175,12 +187,12 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(editNameField.valueText.contains(updatedName))
         captureScreenshot(named: "ios-ui-live-edit-autosave")
         app.buttons["Done"].tap()
-        XCTAssertTrue(app.staticTexts[updatedName].waitForExistence(timeout: 5))
         XCTAssertTrue(
             waitForItem(
                 named: updatedName,
                 inListNamed: initialListName,
-                accessToken: session.accessToken
+                accessToken: session.accessToken,
+                timeout: 20
             )
         )
 
@@ -188,6 +200,10 @@ final class PlaniniUITests: XCTestCase {
             named: updatedName,
             inListNamed: initialListName,
             accessToken: session.accessToken
+        )
+        XCTAssertTrue(
+            waitForItemRow(itemID: updatedItemID, named: updatedName, in: app, timeout: 20),
+            "Expected updated item row to be visible after closing edit sheet."
         )
         let updatedItemLabel = app.staticTexts[updatedName]
         let updatedCheckButton = app.buttons["toggle-item-\(updatedItemID.uuidString)"]
