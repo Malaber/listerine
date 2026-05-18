@@ -2092,6 +2092,42 @@ test("renderItemSuggestions adds category color strips for categorized matches",
   }
 });
 
+test("renderItemSuggestions puts the plus action inline before the suggestion copy", () => {
+  const { document, root, window } = createSuggestionRoot();
+  const originalHTMLElement = globalThis.HTMLElement;
+  const originalHTMLInputElement = globalThis.HTMLInputElement;
+  setGlobalProperty("HTMLElement", window.HTMLElement);
+  setGlobalProperty("HTMLInputElement", window.HTMLInputElement);
+  const state = createState([
+    {
+      id: "item-1",
+      name: "Milch",
+      checked: true,
+      category_id: null,
+      note: null,
+      quantity_text: null,
+    },
+  ]);
+
+  try {
+    renderItemSuggestions(root, state);
+
+    const suggestion = document.querySelector(".item-suggestion");
+    const main = suggestion.querySelector(".item-main");
+    const button = suggestion.querySelector("button[data-item-reuse]");
+    assert.equal(suggestion.querySelector(".item-suggestion-check"), null);
+    assert.equal(suggestion.children.length, 1);
+    assert.equal(main.firstElementChild, button);
+    assert.equal(button.dataset.itemReuse, "item-1");
+    assert.equal(button.textContent, "+");
+    assert.equal(button.getAttribute("aria-label"), "Add Milch back to the list");
+    assert.equal(button.nextElementSibling.className, "item-copy item-suggestion-copy");
+  } finally {
+    setGlobalProperty("HTMLElement", originalHTMLElement);
+    setGlobalProperty("HTMLInputElement", originalHTMLInputElement);
+  }
+});
+
 test("item suggestion fuzzy matching tolerates short typos", () => {
   assert.equal(boundedEditDistance("milch", "milvh", 1), 1);
   assert.equal(boundedEditDistance("milch", "tomate", 1), 2);
