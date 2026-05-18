@@ -16,7 +16,16 @@ from sqlalchemy.orm import selectinload
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, engine
 from app.models import Category, PasskeyAddLink, User
-from app.services.backups import BackupError, BackupResult, create_database_backup
+from app.services.backups import (
+    BackupError,
+    BackupResult,
+    configured_backup_slots,
+    create_database_backup,
+    delete_database_backup,
+    list_database_backups,
+    restore_database_backup,
+    run_backup_slot,
+)
 from app.services.passkey_reset import build_passkey_add_link, issue_passkey_reset
 from app.web.routes import _get_session_user
 
@@ -235,10 +244,44 @@ class BackupAdmin(BaseView):
     async def backups(self, request: Request) -> Response:
         result: BackupResult | None = None
         error: str | None = None
+        notice: str | None = None
         if request.method == "POST":
+            form = await request.form()
+            action = str(form.get("action") or "create")
             try:
-                result = await asyncio.to_thread(create_database_backup)
+                if action == "delete":
+                    result = await asyncio.to_thread(
+                        delete_database_backup,
+                        str(form.get("file_name") or ""),
+                        str(form.get("confirmation_filename") or ""),
+                    )
+                    notice = f"Deleted backup {result.file_name}."
+                elif action == "restore":
+                    result = await asyncio.to_thread(
+                        restore_database_backup,
+                        str(form.get("file_name") or ""),
+                        str(form.get("confirmation_filename") or ""),
+                    )
+                    await engine.dispose()
+                    notice = f"Restored backup {result.file_name}."
+                elif action == "run-slot":
+                    result = await asyncio.to_thread(
+                        run_backup_slot, str(form.get("slot_name") or "")
+                    )
+                    notice = f"Created new backup in {result.slot_name}."
+                else:
+                    result = await asyncio.to_thread(create_database_backup)
+                    notice = "Backup created."
             except BackupError as exc:
+                error = str(exc)
+
+        backups: list[BackupResult] = []
+        slots = []
+        try:
+            backups = await asyncio.to_thread(list_database_backups)
+            slots = configured_backup_slots()
+        except BackupError as exc:
+            if error is None:
                 error = str(exc)
 
         return await self.templates.TemplateResponse(
@@ -246,8 +289,11 @@ class BackupAdmin(BaseView):
             "planini_admin/backups.html",
             {
                 "backup_directory": settings.backup_directory,
+                "backup_slots": slots,
+                "backups": backups,
                 "backup_result": result,
                 "backup_error": error,
+                "backup_notice": notice,
             },
         )
 

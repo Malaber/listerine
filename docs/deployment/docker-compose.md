@@ -26,6 +26,7 @@ SECURE_COOKIES=true
 UVICORN_FORWARDED_ALLOW_IPS=127.0.0.1
 BOOTSTRAP_ADMIN_EMAIL=admin@example.com
 BACKUP_DIRECTORY=/backups
+BACKUP_SLOTS=["slot-1@01:00"]
 ```
 
 ## Example `docker-compose.yml`
@@ -39,6 +40,7 @@ services:
       SECRET_KEY: ${SECRET_KEY}
       DATABASE_URL: sqlite+aiosqlite:////data/planini.db
       BACKUP_DIRECTORY: ${BACKUP_DIRECTORY}
+      BACKUP_SLOTS: ${BACKUP_SLOTS}
       APP_BASE_URL: ${APP_BASE_URL}
       WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID}
       WEBCREDENTIALS_APPS: ${WEBCREDENTIALS_APPS}
@@ -103,6 +105,7 @@ Notes:
 - set `WEBCREDENTIALS_APPS` to a JSON array of Apple app IDs allowed to use native passkeys
 - make the mounted data directory writable by the container user before first start, for example `sudo chown -R 100:101 data`
 - make the mounted backup directory writable too, for example `sudo chown -R 100:101 backups`
+- set `BACKUP_SLOTS` to a JSON array like `["slot-1@01:00"]` for rotating automatic slot backups
 - verify `https://YOUR_HOST/.well-known/apple-app-site-association` returns the expected `webcredentials.apps` payload
 - set `UVICORN_FORWARDED_ALLOW_IPS` to the IP or CIDR of your trusted proxy network
 - keep `./data` on persistent storage so `./data/planini.db` survives container replacement

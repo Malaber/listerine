@@ -54,7 +54,9 @@ class Settings(BaseSettings):
     bootstrap_admin_email: EmailStr | None = None
     ui_test_bootstrap_enabled: bool = False
     backup_directory: str | None = None
+    backup_slots: list[str] = []
     pg_dump_command: str = "pg_dump"
+    pg_restore_command: str = "pg_restore"
 
     @field_validator("app_base_url", mode="before")
     @classmethod

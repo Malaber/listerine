@@ -10,6 +10,7 @@
           <p class="text-muted mb-0">Create a dump of the configured database into the backup directory.</p>
         </div>
         <form method="post" action="{{ url_for('admin:backups') }}">
+          <input type="hidden" name="action" value="create">
           <button class="btn btn-primary" type="submit">Create backup</button>
         </form>
       </div>
@@ -25,15 +26,54 @@
         </dd>
       </dl>
 
+      {% if backup_slots %}
+      <div class="mt-4">
+        <h4 class="h5">Automatic backup slots</h4>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle">
+            <thead>
+              <tr>
+                <th>Slot</th>
+                <th>Time</th>
+                <th>Status</th>
+                <th class="text-end">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for slot in backup_slots %}
+              <tr>
+                <td>{{ slot.display_name }}</td>
+                <td><code>{{ slot.time }}</code></td>
+                <td>{% if slot.enabled %}Enabled{% else %}Disabled{% endif %}</td>
+                <td class="text-end">
+                  <form method="post" action="{{ url_for('admin:backups') }}">
+                    <input type="hidden" name="action" value="run-slot">
+                    <input type="hidden" name="slot_name" value="{{ slot.name }}">
+                    <button class="btn btn-outline-primary btn-sm" type="submit">New backup in {{ slot.display_name }} now</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
+
       {% if backup_error %}
       <div class="alert alert-danger mt-4 mb-0" role="alert" data-backup-error>
         {{ backup_error }}
       </div>
       {% endif %}
 
+      {% if backup_notice and not backup_error %}
+      <div class="alert alert-success mt-4 mb-0" role="status" data-backup-notice>
+        {{ backup_notice }}
+      </div>
+      {% endif %}
+
       {% if backup_result %}
       <div class="alert alert-success mt-4 mb-0" role="status" data-backup-result>
-        <strong>Backup created.</strong>
         <dl class="row mt-3 mb-0">
           <dt class="col-sm-3">File</dt>
           <dd class="col-sm-9"><code data-backup-file-name>{{ backup_result.file_name }}</code></dd>
@@ -44,6 +84,58 @@
         </dl>
       </div>
       {% endif %}
+
+      <div class="mt-4">
+        <h4 class="h5">Available backups</h4>
+        {% if backups %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle" data-backup-list>
+            <thead>
+              <tr>
+                <th>File</th>
+                <th>Database</th>
+                <th>Slot</th>
+                <th>Size</th>
+                <th>Created</th>
+                <th>Restore</th>
+                <th>Delete</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for backup in backups %}
+              <tr>
+                <td><code>{{ backup.file_name }}</code></td>
+                <td>{{ backup.database }}</td>
+                <td>{% if backup.slot_name %}{{ backup.slot_name }}{% else %}-{% endif %}</td>
+                <td>{{ backup.size_bytes }} bytes</td>
+                <td>{{ backup.created_at.isoformat() }}</td>
+                <td>
+                  <form class="d-flex flex-column gap-2" method="post" action="{{ url_for('admin:backups') }}">
+                    <input type="hidden" name="action" value="restore">
+                    <input type="hidden" name="file_name" value="{{ backup.file_name }}">
+                    <label class="form-label mb-0" for="restore-{{ loop.index }}">Type exact filename</label>
+                    <input id="restore-{{ loop.index }}" class="form-control form-control-sm" name="confirmation_filename" autocomplete="off">
+                    <button class="btn btn-warning btn-sm" type="submit">Restore</button>
+                  </form>
+                </td>
+                <td>
+                  <form class="d-flex flex-column gap-2" method="post" action="{{ url_for('admin:backups') }}">
+                    <input type="hidden" name="action" value="delete">
+                    <input type="hidden" name="file_name" value="{{ backup.file_name }}">
+                    <label class="form-label mb-0" for="delete-{{ loop.index }}">Type exact filename</label>
+                    <input id="delete-{{ loop.index }}" class="form-control form-control-sm" name="confirmation_filename" autocomplete="off">
+                    <button class="btn btn-danger btn-sm" type="submit">Delete</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="text-muted mb-0" data-backup-empty>No backups found.</p>
+        {% endif %}
+      </div>
     </div>
   </div>
 </div>
