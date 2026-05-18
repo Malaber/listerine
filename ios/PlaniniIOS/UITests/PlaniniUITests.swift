@@ -204,14 +204,17 @@ final class PlaniniUITests: XCTestCase {
         scrollToElement(updatedItemLabel, in: app)
         scrollToElement(updatedCheckButton, in: app)
         XCTAssertTrue(updatedCheckButton.waitForExistence(timeout: 3))
-        tapElement(updatedCheckButton)
         XCTAssertTrue(
-            waitForCheckedItem(
+            tapItemToggleButton(
+                itemID: updatedItemID,
                 named: updatedName,
+                checked: true,
+                in: app,
                 inListNamed: initialListName,
                 accessToken: session.accessToken,
                 timeout: 20
-            )
+            ),
+            "Expected tapping the item check button to mark the item checked."
         )
         scrollToElement(updatedItemLabel, in: app)
         captureScreenshot(named: "ios-ui-checked-item")
@@ -505,18 +508,65 @@ final class PlaniniUITests: XCTestCase {
         return app
     }
 
-    private func waitForCheckedItem(
+    private func tapItemToggleButton(
+        itemID: UUID,
         named itemName: String,
+        checked: Bool,
+        in app: XCUIApplication,
         inListNamed listName: String,
         accessToken: String,
-        timeout: TimeInterval = 8
+        timeout: TimeInterval = 20
     ) -> Bool {
-        waitForItemCheckedState(
+        let button = app.buttons["toggle-item-\(itemID.uuidString)"]
+        let label = app.staticTexts[itemName]
+        let editSheet = app.otherElements["edit-item-sheet"]
+        let deadline = Date().addingTimeInterval(timeout)
+
+        while Date() < deadline {
+            if waitForItemCheckedState(
+                named: itemName,
+                checked: checked,
+                inListNamed: listName,
+                accessToken: accessToken,
+                timeout: 0.5
+            ) {
+                return true
+            }
+
+            if editSheet.exists {
+                app.buttons["Done"].tap()
+                _ = waitForElementToDisappear(editSheet, timeout: 3)
+            }
+
+            if button.exists {
+                scrollToElement(label, in: app)
+                scrollToHittable(button, in: app, maxSwipes: 2)
+                if button.isHittable {
+                    button.tap()
+                } else {
+                    tapElement(button)
+                }
+            } else {
+                _ = waitForItemRow(itemID: itemID, named: itemName, in: app, timeout: 2)
+            }
+
+            if waitForItemCheckedState(
+                named: itemName,
+                checked: checked,
+                inListNamed: listName,
+                accessToken: accessToken,
+                timeout: 2
+            ) {
+                return true
+            }
+        }
+
+        return waitForItemCheckedState(
             named: itemName,
-            checked: true,
+            checked: checked,
             inListNamed: listName,
             accessToken: accessToken,
-            timeout: timeout
+            timeout: 0.5
         )
     }
 

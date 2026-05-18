@@ -640,6 +640,8 @@ private struct ItemRow: View {
                 Image(systemName: item.checked ? "checkmark.circle.fill" : "circle")
                     .font(.title3)
                     .foregroundStyle(item.checked ? .green : .secondary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("toggle-item-\(item.id.uuidString)")
