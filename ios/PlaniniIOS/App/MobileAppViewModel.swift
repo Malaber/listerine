@@ -7,6 +7,7 @@ private let netLog = Logger(subsystem: "com.example.PlaniniIOS", category: "netw
 private enum AppBuildConfiguration {
     private static let backendURLKey = "PlaniniBackendBaseURL"
     private static let backendURLOverrideKey = "PLANINI_BACKEND_BASE_URL_OVERRIDE"
+    static let uiTestRestoreStoredSessionKey = "PLANINI_UI_TEST_RESTORE_STORED_SESSION"
 
     static var backendURL: URL? {
         if let overriddenURL = validatedURL(from: ProcessInfo.processInfo.environment[backendURLOverrideKey]) {
@@ -113,16 +114,18 @@ final class MobileAppViewModel: ObservableObject {
             isSimulatorBuild = false
         #endif
         backendURL = AppBuildConfiguration.backendURL
-        if processInfo.environment["PLANINI_UI_TEST_MODE"] == "1" {
-            favoriteListID = nil
-            authToken = nil
-            displayName = nil
-            quickAddItemName = SharedAppState.defaultQuickAddItemName
-        } else {
+        let shouldLoadStoredSession = processInfo.environment["PLANINI_UI_TEST_MODE"] != "1"
+            || processInfo.environment[AppBuildConfiguration.uiTestRestoreStoredSessionKey] == "1"
+        if shouldLoadStoredSession {
             favoriteListID = userDefaults.string(forKey: Self.favoriteListKey).flatMap(UUID.init(uuidString:))
             authToken = userDefaults.string(forKey: Self.authTokenKey)
             displayName = userDefaults.string(forKey: Self.displayNameKey)
             quickAddItemName = userDefaults.string(forKey: Self.quickAddItemKey) ?? SharedAppState.defaultQuickAddItemName
+        } else {
+            favoriteListID = nil
+            authToken = nil
+            displayName = nil
+            quickAddItemName = SharedAppState.defaultQuickAddItemName
         }
         pendingItemEdits = Self.loadPendingItemEdits(from: userDefaults)
         watchSyncCoordinator.setStateProvider { [weak self] in
@@ -407,6 +410,13 @@ final class MobileAppViewModel: ObservableObject {
                     preferredListName: environment["PLANINI_UI_TEST_INITIAL_LIST_NAME"]
                 )
                 await handleUITestOpenURLIfNeeded()
+                return
+            }
+
+            if authToken?.isEmpty == false {
+                try await reloadAllData()
+                errorMessage = nil
+                watchSyncCoordinator.publishCurrentState()
                 return
             }
 
@@ -891,7 +901,10 @@ final class MobileAppViewModel: ObservableObject {
     }
 
     private func makeSharedAppState() -> SharedAppState {
-        let syncedItems = selectedListID == favoriteListID ? items : []
+        let syncsFavoriteList = selectedListID == favoriteListID
+        let syncedItems = syncsFavoriteList ? items : []
+        let syncedCategories = syncsFavoriteList ? categories : []
+        let syncedCategoryOrder = syncsFavoriteList ? categoryOrder : []
         return SharedAppState(
             backendURL: backendURL,
             authToken: authToken,
@@ -899,7 +912,9 @@ final class MobileAppViewModel: ObservableObject {
             favoriteListID: favoriteListID,
             quickAddItemName: quickAddItemName,
             lists: lists,
-            items: syncedItems
+            items: syncedItems,
+            categories: syncedCategories,
+            categoryOrder: syncedCategoryOrder
         )
     }
 
