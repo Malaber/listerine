@@ -382,10 +382,23 @@ private struct ListsTab: View {
 }
 
 private struct SettingsTab: View {
+    @EnvironmentObject private var appearanceSettings: AppearanceSettings
     @EnvironmentObject private var viewModel: MobileAppViewModel
 
     var body: some View {
         Form {
+            Section("Appearance") {
+                Picker("Appearance", selection: $appearanceSettings.mode) {
+                    ForEach(AppearanceMode.allCases) { mode in
+                        Text(mode.settingsLabel)
+                            .tag(mode)
+                            .accessibilityIdentifier("settings-appearance-\(mode.rawValue)-option")
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("settings-appearance-picker")
+            }
+
             Section("Account") {
                 LabeledContent("Signed in as", value: viewModel.displayName ?? "Unknown")
                 if let favoriteList = viewModel.favoriteList {
@@ -762,9 +775,12 @@ private struct AddItemSheet: View {
     @MainActor
     private func useSuggestion(_ suggestion: GroceryItemSuggestion) async {
         if suggestion.item.checked {
+            dismiss()
             let toggled = await viewModel.toggle(suggestion.item)
             guard toggled else { return }
             AppHaptics.confirmation()
+            onSuggestionFocused(suggestion.item.id)
+            return
         }
         onSuggestionFocused(suggestion.item.id)
         dismiss()
@@ -779,7 +795,8 @@ private struct ItemSuggestionRow: View {
             RoundedRectangle(cornerRadius: 2)
                 .fill(Color(hex: suggestion.category?.colorHex) ?? Color.secondary.opacity(0.4))
                 .frame(width: 4, height: 36)
-            Image(systemName: suggestion.item.checked ? "arrow.uturn.backward.circle" : "scope")
+            Image(systemName: "plus")
+                .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 3) {
                 Text(suggestion.item.name)
@@ -789,9 +806,6 @@ private struct ItemSuggestionRow: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Image(systemName: "plus")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.secondary)
         }
         .padding(.vertical, 2)
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -1469,6 +1469,7 @@ main {
 
 .item-suggestion {
   position: relative;
+  padding: 0.8rem 0.95rem;
   border-top-color: rgba(217, 197, 179, 0.72);
   animation: item-suggestion-enter 180ms ease both;
   animation-delay: var(--suggestion-delay, 0ms);
@@ -1489,11 +1490,6 @@ main {
 
 .item-suggestion:first-child {
   border-top: 0;
-}
-
-.item-suggestion-check {
-  cursor: default;
-  pointer-events: none;
 }
 
 .item-suggestion-copy {
