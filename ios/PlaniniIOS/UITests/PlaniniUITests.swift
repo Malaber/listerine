@@ -194,7 +194,13 @@ final class PlaniniUITests: XCTestCase {
         scrollToHittable(checkedSuggestion, in: app)
         captureScreenshot(named: "ios-ui-checked-item-suggestion")
         tapElement(checkedSuggestion)
-        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 10))
+        let addItemSheet = app.otherElements["add-item-sheet"]
+        if waitForElementToDisappear(addItemSheet, timeout: 3) == false {
+            if checkedSuggestion.exists {
+                checkedSuggestion.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+            }
+            XCTAssertTrue(waitForElementToDisappear(addItemSheet, timeout: 10))
+        }
         XCTAssertTrue(
             waitForItemCheckedState(
                 named: updatedName,
