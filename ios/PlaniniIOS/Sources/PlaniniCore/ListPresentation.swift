@@ -20,11 +20,13 @@ public struct GroceryCategorySummary: Identifiable, Equatable, Codable, Sendable
     public let id: UUID
     public let name: String
     public let colorHex: String?
+    public let aliases: [String]
 
-    public init(id: UUID, name: String, colorHex: String?) {
+    public init(id: UUID, name: String, colorHex: String?, aliases: [String] = []) {
         self.id = id
         self.name = name
         self.colorHex = colorHex
+        self.aliases = aliases
     }
 
     public init?(json: [String: Any]) {
@@ -36,7 +38,27 @@ public struct GroceryCategorySummary: Identifiable, Equatable, Codable, Sendable
             return nil
         }
 
-        self.init(id: id, name: name, colorHex: json["color"] as? String)
+        self.init(
+            id: id,
+            name: name,
+            colorHex: json["color"] as? String,
+            aliases: json["aliases"] as? [String] ?? []
+        )
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case colorHex
+        case aliases
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        colorHex = try container.decodeIfPresent(String.self, forKey: .colorHex)
+        aliases = try container.decodeIfPresent([String].self, forKey: .aliases) ?? []
     }
 }
 

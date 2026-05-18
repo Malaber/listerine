@@ -12,9 +12,21 @@ if [[ -z "$profdata" ]]; then
   exit 1
 fi
 
-binary=$(find .build -path '*/debug/PlaniniIOSPackageTests.xctest' | head -n 1)
+binary=$(find .build -path '*/debug/PlaniniIOSPackageTests.xctest' -type f | head -n 1)
 if [[ -z "$binary" ]]; then
-  binary=$(find .build -path '*/debug/PlaniniCorePackageTests.xctest' | head -n 1)
+  bundle=$(find .build -path '*/debug/PlaniniIOSPackageTests.xctest' -type d | head -n 1)
+  if [[ -n "$bundle" && -x "$bundle/Contents/MacOS/PlaniniIOSPackageTests" ]]; then
+    binary="$bundle/Contents/MacOS/PlaniniIOSPackageTests"
+  fi
+fi
+if [[ -z "$binary" ]]; then
+  binary=$(find .build -path '*/debug/PlaniniCorePackageTests.xctest' -type f | head -n 1)
+fi
+if [[ -z "$binary" ]]; then
+  bundle=$(find .build -path '*/debug/PlaniniCorePackageTests.xctest' -type d | head -n 1)
+  if [[ -n "$bundle" && -x "$bundle/Contents/MacOS/PlaniniCorePackageTests" ]]; then
+    binary="$bundle/Contents/MacOS/PlaniniCorePackageTests"
+  fi
 fi
 if [[ -z "$binary" ]]; then
   echo "Swift test bundle not found" >&2
