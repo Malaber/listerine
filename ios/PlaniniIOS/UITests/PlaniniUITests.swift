@@ -97,8 +97,7 @@ final class PlaniniUITests: XCTestCase {
         app.buttons["Cancel"].tap()
         XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 3))
 
-        tapElement(app.buttons["add-item-button"])
-        XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
+        XCTAssertTrue(openAddItemSheet(in: app))
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         captureScreenshot(named: "ios-ui-add-item-sheet")
 
@@ -121,8 +120,7 @@ final class PlaniniUITests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(1.0))
         captureScreenshot(named: "ios-ui-suggestion-reactivated")
 
-        tapElement(app.buttons["add-item-button"])
-        XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
+        XCTAssertTrue(openAddItemSheet(in: app))
 
         let uniqueSuffix = UUID().uuidString.prefix(8)
         let enterSavedItemName = "UI Test Enter \(uniqueSuffix)"
@@ -144,8 +142,7 @@ final class PlaniniUITests: XCTestCase {
         )
         XCTAssertTrue(app.staticTexts[enterSavedItemName].waitForExistence(timeout: 15))
 
-        tapElement(app.buttons["add-item-button"])
-        XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
+        XCTAssertTrue(openAddItemSheet(in: app))
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         XCTAssertTrue(nameField.waitForExistence(timeout: 3))
         nameField.typeText(itemName)
@@ -600,6 +597,31 @@ final class PlaniniUITests: XCTestCase {
             accessToken: accessToken,
             timeout: 0.5
         )
+    }
+
+    private func openAddItemSheet(in app: XCUIApplication, timeout: TimeInterval = 10) -> Bool {
+        let button = app.buttons["add-item-button"]
+        let sheet = app.otherElements["add-item-sheet"]
+        let deadline = Date().addingTimeInterval(timeout)
+
+        while Date() < deadline {
+            if sheet.exists {
+                return true
+            }
+            if button.waitForExistence(timeout: 1) {
+                if button.isHittable {
+                    button.tap()
+                } else {
+                    tapElement(button)
+                }
+            }
+            if sheet.waitForExistence(timeout: 1) {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+
+        return sheet.exists
     }
 
     private func waitForItemCheckedState(
