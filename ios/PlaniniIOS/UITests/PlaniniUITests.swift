@@ -111,7 +111,10 @@ final class PlaniniUITests: XCTestCase {
         let nameField = app.textFields["add-item-name-field"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 3))
         nameField.tap()
-        nameField.typeText("\(enterSavedItemName)\n")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        nameField.typeText(enterSavedItemName)
+        tapElement(app.buttons["add-item-save-button"])
+        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 10))
         XCTAssertTrue(app.staticTexts[enterSavedItemName].waitForExistence(timeout: 5))
         XCTAssertTrue(
             waitForItem(
