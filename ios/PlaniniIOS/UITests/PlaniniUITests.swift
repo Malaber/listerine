@@ -178,7 +178,12 @@ final class PlaniniUITests: XCTestCase {
                 timeout: 20
             )
         )
-        XCTAssertTrue(app.staticTexts[itemName].waitForExistence(timeout: 15))
+        let createdItemID = try itemID(
+            named: itemName,
+            inListNamed: initialListName,
+            accessToken: session.accessToken
+        )
+        XCTAssertTrue(waitForItemRow(itemID: createdItemID, named: itemName, in: app, timeout: 15))
         captureScreenshot(named: "ios-ui-added-item")
         XCTAssertTrue(
             waitForItemCategory(
@@ -189,9 +194,9 @@ final class PlaniniUITests: XCTestCase {
             )
         )
 
-        let createdItemLabel = app.staticTexts[itemName]
-        scrollToElement(createdItemLabel, in: app)
-        tapElement(createdItemLabel)
+        let createdItemRow = itemRow(itemID: createdItemID, in: app)
+        scrollToHittable(createdItemRow, in: app)
+        tapElement(createdItemRow)
         XCTAssertTrue(app.otherElements["edit-item-sheet"].waitForExistence(timeout: 3))
         let undoButton = app.buttons["Undo"]
         let redoButton = app.buttons["Redo"]
@@ -221,7 +226,6 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(waitForEditStatus("Saved", app: app))
         captureScreenshot(named: "ios-ui-live-edit-autosave")
         tapElement(closeButton)
-        XCTAssertTrue(app.staticTexts[updatedName].waitForExistence(timeout: 5))
         XCTAssertTrue(
             waitForItem(
                 named: updatedName,
@@ -230,6 +234,12 @@ final class PlaniniUITests: XCTestCase {
                 timeout: 20
             )
         )
+        let updatedItemID = try itemID(
+            named: updatedName,
+            inListNamed: initialListName,
+            accessToken: session.accessToken
+        )
+        XCTAssertTrue(waitForItemRow(itemID: updatedItemID, named: updatedName, in: app, timeout: 15))
         XCTAssertTrue(
             waitForItemCategory(
                 named: updatedName,
@@ -237,11 +247,6 @@ final class PlaniniUITests: XCTestCase {
                 inListNamed: initialListName,
                 accessToken: session.accessToken
             )
-        )
-        let updatedItemID = try itemID(
-            named: updatedName,
-            inListNamed: initialListName,
-            accessToken: session.accessToken
         )
         let hostingListID = try listID(named: "Hosting errands", accessToken: session.accessToken)
         let konservenCategoryID = try categoryID(
@@ -726,9 +731,7 @@ final class PlaniniUITests: XCTestCase {
         while Date() < deadline {
             if saveButton.exists && saveButton.isEnabled {
                 tapElement(saveButton)
-                if waitForElementToDisappear(sheet, timeout: 2) {
-                    return true
-                }
+                return waitForElementToDisappear(sheet, timeout: timeout)
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
