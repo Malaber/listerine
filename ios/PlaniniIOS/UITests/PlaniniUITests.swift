@@ -238,6 +238,11 @@ final class PlaniniUITests: XCTestCase {
                 accessToken: session.accessToken
             )
         )
+        let updatedItemID = try itemID(
+            named: updatedName,
+            inListNamed: initialListName,
+            accessToken: session.accessToken
+        )
 
         scrollToElement(app.staticTexts[updatedName], in: app)
         captureScreenshot(named: "promotion-filled-list")
