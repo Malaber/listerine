@@ -44,6 +44,9 @@ struct AppearanceModeStoreTests {
     }
 
     @Test func settingsLabelsMatchPickerChoices() {
+        #expect(AppearanceMode.system.id == "system")
+        #expect(AppearanceMode.light.id == "light")
+        #expect(AppearanceMode.dark.id == "dark")
         #expect(AppearanceMode.system.settingsLabel == "System")
         #expect(AppearanceMode.light.settingsLabel == "Light")
         #expect(AppearanceMode.dark.settingsLabel == "Dark")
