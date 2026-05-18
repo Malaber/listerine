@@ -788,12 +788,24 @@ final class PlaniniUITests: XCTestCase {
     }
 
     private func tapSuggestionAndWaitForSheetDismissal(_ element: XCUIElement, app: XCUIApplication) -> Bool {
-        tapTrailingControl(in: element, app: app)
-        if waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 2) {
-            return true
+        let sheet = app.otherElements["add-item-sheet"]
+        let deadline = Date().addingTimeInterval(12)
+
+        while Date() < deadline {
+            if waitForElementToDisappear(sheet, timeout: 1) {
+                return true
+            }
+            if element.exists {
+                scrollToHittable(element, in: app, maxSwipes: 2)
+                tapElement(element)
+            }
+            if waitForElementToDisappear(sheet, timeout: 2) {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
-        tapTrailingControl(in: element, app: app)
-        return waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 10)
+
+        return !sheet.exists
     }
 
     private func waitForItemRow(
