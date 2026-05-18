@@ -556,7 +556,7 @@ private struct SectionHeader: View {
                 .frame(width: 10, height: 10)
             HStack(spacing: 6) {
                 Text(section.title)
-                SectionCountBadge(count: section.itemCount, sectionID: section.id)
+                SectionCountBadge(count: section.itemCount, sectionID: section.id, sectionTitle: section.title)
             }
             Spacer(minLength: 16)
             if allowsQuickAdd {
@@ -580,6 +580,11 @@ private struct SectionHeader: View {
 private struct SectionCountBadge: View {
     let count: Int
     let sectionID: String
+    let sectionTitle: String
+
+    private var countLabel: String {
+        count == 1 ? "1 item" : "\(count) items"
+    }
 
     var body: some View {
         Text("\(count)")
@@ -592,7 +597,7 @@ private struct SectionCountBadge: View {
                 Capsule().fill(Color.secondary.opacity(0.14))
             }
             .accessibilityIdentifier("section-count-badge-\(sectionID)")
-            .accessibilityLabel(count == 1 ? "1 item" : "\(count) items")
+            .accessibilityLabel("\(sectionTitle) count, \(countLabel)")
     }
 }
 
