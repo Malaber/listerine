@@ -512,6 +512,12 @@ final class PlaniniUITests: XCTestCase {
     }
 
     private func assertLanguageSettings(in app: XCUIApplication) {
+        let languageRow = app.buttons["settings-language-row"]
+        scrollToElement(languageRow, in: app, maxSwipes: 3)
+        XCTAssertTrue(languageRow.waitForExistence(timeout: 3))
+        tapElement(languageRow)
+        XCTAssertTrue(app.otherElements["language-settings-screen"].waitForExistence(timeout: 3))
+
         let germanOption = app.buttons["language-option-de"]
         scrollToElement(germanOption, in: app, maxSwipes: 3)
         XCTAssertTrue(germanOption.waitForExistence(timeout: 3))
@@ -519,14 +525,30 @@ final class PlaniniUITests: XCTestCase {
 
         XCTAssertTrue(
             firstExistingElement(
-                [app.navigationBars["Einstellungen"], app.staticTexts["Einstellungen"]],
+                [app.navigationBars["Sprache"], app.staticTexts["Sprache"]],
                 timeout: 3
             ).exists
         )
-        XCTAssertTrue(app.buttons["settings-sign-out-button"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.buttons["settings-sign-out-button"].label.contains("Abmelden"))
         XCTAssertTrue(waitForLanguageOptionSelected(app.buttons["language-option-de"]))
         captureScreenshot(named: "ios-ui-settings-german")
+
+        let backButton = firstExistingElement(
+            [
+                app.navigationBars.buttons["Einstellungen"],
+                app.navigationBars.buttons["Settings"],
+                app.navigationBars.buttons.element(boundBy: 0),
+            ],
+            timeout: 3
+        )
+        XCTAssertTrue(backButton.exists)
+        tapElement(backButton)
+        XCTAssertTrue(app.buttons["settings-sign-out-button"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["settings-sign-out-button"].label.contains("Abmelden"))
+
+        let localizedLanguageRow = app.buttons["settings-language-row"]
+        scrollToElement(localizedLanguageRow, in: app, maxSwipes: 3)
+        XCTAssertTrue(localizedLanguageRow.waitForExistence(timeout: 3))
+        tapElement(localizedLanguageRow)
 
         let systemOption = app.buttons["language-option-system"]
         scrollToElement(systemOption, in: app, maxSwipes: 3)

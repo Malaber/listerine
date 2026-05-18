@@ -421,14 +421,12 @@ private struct SettingsTab: View {
             }
 
             Section(l10n.t("settings.language")) {
-                LabeledContent(l10n.t("settings.current_language"), value: l10n.currentLanguageSummary())
-                Text(l10n.t("ios.settings.language_helper"))
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                languageOption(id: AppLocalization.systemPreferenceID)
-                ForEach(l10n.availableLocaleIDs, id: \.self) { locale in
-                    languageOption(id: locale)
+                NavigationLink {
+                    LanguageSettingsScreen()
+                } label: {
+                    LabeledContent(l10n.t("settings.language"), value: l10n.currentLanguageSummary())
                 }
+                .accessibilityIdentifier("settings-language-row")
             }
 
             Section(l10n.t("ios.settings.app")) {
@@ -451,6 +449,30 @@ private struct SettingsTab: View {
             return l10n.t("ios.settings.appearance_dark")
         }
     }
+}
+
+private struct LanguageSettingsScreen: View {
+    @EnvironmentObject private var l10n: AppLocalization
+
+    var body: some View {
+        Form {
+            Section(l10n.t("settings.current_language")) {
+                LabeledContent(l10n.t("settings.current_language"), value: l10n.currentLanguageSummary())
+                Text(l10n.t("ios.settings.language_helper"))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section(l10n.t("settings.choose_language")) {
+                languageOption(id: AppLocalization.systemPreferenceID)
+                ForEach(l10n.availableLocaleIDs, id: \.self) { locale in
+                    languageOption(id: locale)
+                }
+            }
+        }
+        .navigationTitle(l10n.t("settings.language"))
+        .accessibilityIdentifier("language-settings-screen")
+    }
 
     private func languageOption(id: String) -> some View {
         Button {
@@ -464,6 +486,8 @@ private struct SettingsTab: View {
                         .accessibilityLabel(l10n.t("ios.settings.language_option_selected"))
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("language-option-\(id)")
