@@ -904,6 +904,7 @@ private struct ItemMoveNoticeRow: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(2)
+                .accessibilityIdentifier("item-move-notice-message-\(notice.id.uuidString)")
 
             Spacer(minLength: 8)
 

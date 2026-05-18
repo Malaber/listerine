@@ -280,8 +280,11 @@ final class PlaniniUITests: XCTestCase {
         )
         let moveNotice = app.otherElements["item-move-notice-\(moveItemID.uuidString)"]
         XCTAssertTrue(moveNotice.waitForExistence(timeout: 5))
-        XCTAssertTrue(moveNotice.label.contains(moveItemName))
-        XCTAssertTrue(moveNotice.label.contains("Hosting errands"))
+        let moveNoticeMessage = app.staticTexts["item-move-notice-message-\(moveItemID.uuidString)"]
+        XCTAssertTrue(moveNoticeMessage.waitForExistence(timeout: 3))
+        XCTAssertTrue(moveNoticeMessage.label.contains(moveItemName))
+        XCTAssertTrue(moveNoticeMessage.label.contains("Hosting errands"))
+        captureScreenshot(named: "ios-ui-moved-item-notice")
         app.buttons["move-item-undo-button-\(moveItemID.uuidString)"].tap()
         XCTAssertTrue(
             waitForItem(
