@@ -102,6 +102,119 @@ public struct GroceryItemEditHistory: Codable, Equatable, Sendable {
     }
 }
 
+public enum GroceryCategorySelectionSort: String, CaseIterable, Hashable, Sendable {
+    case listOrder
+    case nameAscending
+    case nameDescending
+    case mostUsed
+}
+
+public struct GroceryCategorySelectionOption: Identifiable, Equatable, Sendable {
+    public let category: GroceryCategorySummary
+    public let itemCount: Int
+
+    public init(category: GroceryCategorySummary, itemCount: Int) {
+        self.category = category
+        self.itemCount = itemCount
+    }
+
+    public var id: UUID {
+        category.id
+    }
+}
+
+public enum GroceryCategorySelectionBuilder {
+    public static func options(
+        categories: [GroceryCategorySummary],
+        items: [GroceryItemRecord],
+        categoryOrder: [ListCategoryOrderEntry],
+        query: String,
+        sort: GroceryCategorySelectionSort
+    ) -> [GroceryCategorySelectionOption] {
+        let normalizedQuery = normalizedSearchText(query)
+        let itemCounts = items.reduce(into: [UUID: Int]()) { counts, item in
+            guard let categoryID = item.categoryID else { return }
+            counts[categoryID, default: 0] += 1
+        }
+        let explicitOrder = Dictionary(uniqueKeysWithValues: categoryOrder.map { ($0.categoryID, $0.sortOrder) })
+
+        return categories
+            .filter { category in
+                normalizedQuery.isEmpty || matchesSearch(category, query: normalizedQuery)
+            }
+            .map { category in
+                GroceryCategorySelectionOption(
+                    category: category,
+                    itemCount: itemCounts[category.id, default: 0]
+                )
+            }
+            .sorted { left, right in
+                compare(left, right, sort: sort, explicitOrder: explicitOrder)
+            }
+    }
+
+    public static func uncategorizedItemCount(items: [GroceryItemRecord]) -> Int {
+        items.filter { $0.categoryID == nil }.count
+    }
+
+    private static func compare(
+        _ left: GroceryCategorySelectionOption,
+        _ right: GroceryCategorySelectionOption,
+        sort: GroceryCategorySelectionSort,
+        explicitOrder: [UUID: Int]
+    ) -> Bool {
+        switch sort {
+        case .listOrder:
+            return compareByListOrder(left, right, explicitOrder: explicitOrder)
+        case .nameAscending:
+            return compareNames(left.category.name, right.category.name, ascending: true)
+        case .nameDescending:
+            return compareNames(left.category.name, right.category.name, ascending: false)
+        case .mostUsed:
+            if left.itemCount != right.itemCount {
+                return left.itemCount > right.itemCount
+            }
+            return compareNames(left.category.name, right.category.name, ascending: true)
+        }
+    }
+
+    private static func compareByListOrder(
+        _ left: GroceryCategorySelectionOption,
+        _ right: GroceryCategorySelectionOption,
+        explicitOrder: [UUID: Int]
+    ) -> Bool {
+        let leftOrder = explicitOrder[left.category.id]
+        let rightOrder = explicitOrder[right.category.id]
+        if let leftOrder, let rightOrder, leftOrder != rightOrder {
+            return leftOrder < rightOrder
+        }
+        if (leftOrder != nil) != (rightOrder != nil) {
+            return leftOrder != nil
+        }
+        return compareNames(left.category.name, right.category.name, ascending: true)
+    }
+
+    private static func compareNames(_ left: String, _ right: String, ascending: Bool) -> Bool {
+        let ordering = left.localizedCaseInsensitiveCompare(right)
+        if ordering == .orderedSame {
+            return left < right
+        }
+        return ascending ? ordering == .orderedAscending : ordering == .orderedDescending
+    }
+
+    private static func normalizedSearchText(_ value: String) -> String {
+        value
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func matchesSearch(_ category: GroceryCategorySummary, query: String) -> Bool {
+        ([category.name] + category.aliases).contains { searchText in
+            GroceryItemSuggestionMatcher.itemSuggestionMatch(itemName: searchText, query: query) != nil
+        }
+    }
+}
+
 public extension GroceryItemRecord {
     func applyingEditPayload(_ payload: GroceryItemEditPayload) -> GroceryItemRecord {
         GroceryItemRecord(
