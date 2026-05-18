@@ -134,7 +134,7 @@ final class PlaniniUITests: XCTestCase {
             named: "Milch & Eier",
             using: "add-item-category-link",
             in: app,
-            searchText: "mil",
+            searchText: "molkrei",
             sortOption: "A-Z",
             screenshotName: "ios-ui-category-picker"
         )
@@ -241,10 +241,18 @@ final class PlaniniUITests: XCTestCase {
         app.buttons["add-item-button"].tap()
         XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
         let checkedSuggestionField = app.textFields["add-item-name-field"]
+        XCTAssertTrue(checkedSuggestionField.waitForExistence(timeout: 5))
         checkedSuggestionField.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
         checkedSuggestionField.typeText(updatedName)
-        let checkedSuggestion = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Add \(updatedName) back")).firstMatch
-        XCTAssertTrue(checkedSuggestion.waitForExistence(timeout: 3))
+        let checkedSuggestion = firstExistingElement(
+            [
+                app.buttons["add-item-suggestion-\(updatedItemID.uuidString)"],
+                app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Add \(updatedName) back")).firstMatch,
+            ],
+            timeout: 10
+        )
+        XCTAssertTrue(checkedSuggestion.waitForExistence(timeout: 1))
         scrollToHittable(checkedSuggestion, in: app)
         captureScreenshot(named: "ios-ui-checked-item-suggestion")
         tapElement(checkedSuggestion)

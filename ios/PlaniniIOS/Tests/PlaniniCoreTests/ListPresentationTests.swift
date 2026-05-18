@@ -30,8 +30,41 @@ struct ListPresentationTests {
                 "id": categoryID.uuidString,
                 "name": "Produce",
                 "color": "#00ff00",
+                "aliases": ["Veg", "Greens"],
             ]
         )
+
+        #expect(
+            category == GroceryCategorySummary(
+                id: categoryID,
+                name: "Produce",
+                colorHex: "#00ff00",
+                aliases: ["Veg", "Greens"]
+            )
+        )
+
+        let categoryWithoutAliases = GroceryCategorySummary(
+            json: [
+                "id": categoryID.uuidString,
+                "name": "Produce",
+                "color": "#00ff00",
+            ]
+        )
+
+        #expect(categoryWithoutAliases?.aliases == [])
+    }
+
+    @Test func groceryCategorySummaryDecodesLegacyPayloadWithoutAliases() throws {
+        let categoryID = UUID()
+        let payload = """
+        {
+          "id": "\(categoryID.uuidString)",
+          "name": "Produce",
+          "colorHex": "#00ff00"
+        }
+        """
+
+        let category = try JSONDecoder().decode(GroceryCategorySummary.self, from: Data(payload.utf8))
 
         #expect(category == GroceryCategorySummary(id: categoryID, name: "Produce", colorHex: "#00ff00"))
     }

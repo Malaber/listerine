@@ -130,7 +130,7 @@ public enum GroceryCategorySelectionBuilder {
 
         return categories
             .filter { category in
-                normalizedQuery.isEmpty || normalizedSearchText(category.name).contains(normalizedQuery)
+                normalizedQuery.isEmpty || matchesSearch(category, query: normalizedQuery)
             }
             .map { category in
                 GroceryCategorySelectionOption(
@@ -196,6 +196,12 @@ public enum GroceryCategorySelectionBuilder {
         value
             .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func matchesSearch(_ category: GroceryCategorySummary, query: String) -> Bool {
+        ([category.name] + category.aliases).contains { searchText in
+            GroceryItemSuggestionMatcher.itemSuggestionMatch(itemName: searchText, query: query) != nil
+        }
     }
 }
 

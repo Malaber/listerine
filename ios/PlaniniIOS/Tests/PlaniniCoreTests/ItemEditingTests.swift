@@ -182,7 +182,12 @@ struct ItemEditingTests {
 
     @Test func categorySelectionUsesListOrderAndSearch() {
         let pantry = GroceryCategorySummary(id: UUID(), name: "Konserven", colorHex: "#94a3b8")
-        let dairy = GroceryCategorySummary(id: UUID(), name: "Milch & Eier", colorHex: "#d8b4e2")
+        let dairy = GroceryCategorySummary(
+            id: UUID(),
+            name: "Milch & Eier",
+            colorHex: "#d8b4e2",
+            aliases: ["Molkerei"]
+        )
         let produce = GroceryCategorySummary(id: UUID(), name: "Gemuese", colorHex: "#7ed957")
         let bakery = GroceryCategorySummary(id: UUID(), name: "Backwaren", colorHex: "#fb923c")
         let items = [
@@ -213,6 +218,39 @@ struct ItemEditingTests {
         #expect(options.map(\.itemCount) == [1, 1, 0, 0])
         #expect(filteredOptions.map(\.category.name) == ["Milch & Eier"])
         #expect(GroceryCategorySelectionBuilder.uncategorizedItemCount(items: items) == 1)
+    }
+
+    @Test func categorySelectionSearchesAliasesAndToleratesTypos() {
+        let dairy = GroceryCategorySummary(
+            id: UUID(),
+            name: "Milch & Eier",
+            colorHex: "#d8b4e2",
+            aliases: ["Molkerei"]
+        )
+        let pantry = GroceryCategorySummary(
+            id: UUID(),
+            name: "Konserven",
+            colorHex: "#94a3b8",
+            aliases: ["Dose"]
+        )
+
+        let aliasOptions = GroceryCategorySelectionBuilder.options(
+            categories: [pantry, dairy],
+            items: [],
+            categoryOrder: [],
+            query: "molkrei",
+            sort: .nameAscending
+        )
+        let typoOptions = GroceryCategorySelectionBuilder.options(
+            categories: [pantry, dairy],
+            items: [],
+            categoryOrder: [],
+            query: "konserveb",
+            sort: .nameAscending
+        )
+
+        #expect(aliasOptions.map(\.category.name) == ["Milch & Eier"])
+        #expect(typoOptions.map(\.category.name) == ["Konserven"])
     }
 
     @Test func categorySelectionSortsByNameAndMostUsed() {
