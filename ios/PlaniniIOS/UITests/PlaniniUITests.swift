@@ -118,6 +118,21 @@ final class PlaniniUITests: XCTestCase {
                 accessToken: session.accessToken
             )
         )
+        let suggestionUndoButton = app.buttons["list-undo-button"]
+        let suggestionUndoMessage = app.staticTexts["list-undo-message"]
+        XCTAssertTrue(suggestionUndoButton.waitForExistence(timeout: 5))
+        XCTAssertTrue(suggestionUndoMessage.label.contains("Brot added back to the list."))
+        captureScreenshot(named: "ios-ui-floating-undo-suggestion")
+        tapElement(suggestionUndoButton)
+        XCTAssertTrue(
+            waitForItemCheckedState(
+                named: "Brot",
+                checked: true,
+                inListNamed: initialListName,
+                accessToken: session.accessToken
+            )
+        )
+        XCTAssertTrue(waitForElementToDisappear(app.otherElements["list-undo-toast"], timeout: 10))
         RunLoop.current.run(until: Date().addingTimeInterval(1.0))
         captureScreenshot(named: "ios-ui-suggestion-reactivated")
 
@@ -144,6 +159,38 @@ final class PlaniniUITests: XCTestCase {
             )
         )
         XCTAssertTrue(app.staticTexts[enterSavedItemName].waitForExistence(timeout: 15))
+        let enterSavedItemID = try itemID(
+            named: enterSavedItemName,
+            inListNamed: initialListName,
+            accessToken: session.accessToken
+        )
+        scrollToElement(app.staticTexts[enterSavedItemName], in: app)
+        let directToggle = app.buttons["toggle-item-\(enterSavedItemID.uuidString)"]
+        XCTAssertTrue(directToggle.waitForExistence(timeout: 5))
+        tapElement(directToggle)
+        let directUndoButton = app.buttons["list-undo-button"]
+        let directUndoMessage = app.staticTexts["list-undo-message"]
+        XCTAssertTrue(directUndoButton.waitForExistence(timeout: 5))
+        XCTAssertTrue(directUndoMessage.label.contains("\(enterSavedItemName) checked."))
+        XCTAssertTrue(
+            waitForItemCheckedState(
+                named: enterSavedItemName,
+                checked: true,
+                inListNamed: initialListName,
+                accessToken: session.accessToken
+            )
+        )
+        captureScreenshot(named: "ios-ui-floating-undo-toggle")
+        tapElement(directUndoButton)
+        XCTAssertTrue(
+            waitForItemCheckedState(
+                named: enterSavedItemName,
+                checked: false,
+                inListNamed: initialListName,
+                accessToken: session.accessToken
+            )
+        )
+        XCTAssertTrue(waitForElementToDisappear(app.otherElements["list-undo-toast"], timeout: 10))
 
         tapElement(app.buttons["add-item-button"])
         XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
