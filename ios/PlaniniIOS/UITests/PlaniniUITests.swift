@@ -309,6 +309,49 @@ final class PlaniniUITests: XCTestCase {
         relaunchedApp.terminate()
     }
 
+    func testInvalidStoredSessionShowsLogin() throws {
+        try assertLocalTestBackend()
+        let session = if let injectedSession {
+            injectedSession
+        } else {
+            try bootstrapSession(email: userEmail)
+        }
+
+        let app = XCUIApplication()
+        app.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
+        app.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
+        app.launchEnvironment["PLANINI_UI_TEST_ACCESS_TOKEN"] = session.accessToken
+        app.launchEnvironment["PLANINI_UI_TEST_DISPLAY_NAME"] = session.displayName
+        app.launchEnvironment["PLANINI_UI_TEST_INITIAL_LIST_NAME"] = initialListName
+        app.launch()
+
+        let listTitle = app.staticTexts["list-detail-title"]
+        XCTAssertTrue(
+            openInitialListDetail(in: app, listTitle: listTitle),
+            "Expected bootstrapped list before invalidating the stored session."
+        )
+        XCTAssertFalse(app.buttons["login-passkey-button"].exists)
+        app.terminate()
+
+        let expiredApp = XCUIApplication()
+        expiredApp.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
+        expiredApp.launchEnvironment["PLANINI_UI_TEST_RESTORE_STORED_SESSION"] = "1"
+        expiredApp.launchEnvironment["PLANINI_UI_TEST_STORED_ACCESS_TOKEN_OVERRIDE"] = "expired-ui-test-token"
+        expiredApp.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
+        expiredApp.launch()
+
+        XCTAssertTrue(expiredApp.buttons["login-passkey-button"].waitForExistence(timeout: 15))
+        XCTAssertFalse(expiredApp.tabBars.firstMatch.exists)
+        XCTAssertTrue(expiredApp.staticTexts[session.displayName].waitForExistence(timeout: 3))
+        let alert = expiredApp.alerts["Error"]
+        if alert.waitForExistence(timeout: 3) {
+            XCTAssertTrue(alert.staticTexts["Session expired. Sign in again with your passkey."].exists)
+            alert.buttons["OK"].tap()
+        }
+        XCTAssertTrue(expiredApp.buttons["login-passkey-button"].waitForExistence(timeout: 3))
+        expiredApp.terminate()
+    }
+
     func testListReceivesLiveUpdates() throws {
         try assertLocalTestBackend()
         let session = if let injectedSession {

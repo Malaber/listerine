@@ -91,6 +91,13 @@ struct RootView: View {
                 LabeledContent("Configured host", value: viewModel.backendDisplayName)
             }
 
+            if let displayName = viewModel.displayName, displayName.isEmpty == false {
+                Section("Account") {
+                    LabeledContent("Last signed in as", value: displayName)
+                        .accessibilityIdentifier("login-last-account")
+                }
+            }
+
             Section("Sign in") {
                 Button {
                     Task { await viewModel.loginWithPasskey() }

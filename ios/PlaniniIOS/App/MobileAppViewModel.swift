@@ -8,6 +8,7 @@ private enum AppBuildConfiguration {
     private static let backendURLKey = "PlaniniBackendBaseURL"
     private static let backendURLOverrideKey = "PLANINI_BACKEND_BASE_URL_OVERRIDE"
     static let uiTestRestoreStoredSessionKey = "PLANINI_UI_TEST_RESTORE_STORED_SESSION"
+    static let uiTestStoredAccessTokenOverrideKey = "PLANINI_UI_TEST_STORED_ACCESS_TOKEN_OVERRIDE"
 
     static var backendURL: URL? {
         if let overriddenURL = validatedURL(from: ProcessInfo.processInfo.environment[backendURLOverrideKey]) {
@@ -112,6 +113,15 @@ final class MobileAppViewModel: ObservableObject {
         if shouldLoadStoredSession {
             favoriteListID = userDefaults.string(forKey: Self.favoriteListKey).flatMap(UUID.init(uuidString:))
             authToken = userDefaults.string(forKey: Self.authTokenKey)
+            if
+                processInfo.environment["PLANINI_UI_TEST_MODE"] == "1",
+                processInfo.environment[AppBuildConfiguration.uiTestRestoreStoredSessionKey] == "1",
+                let tokenOverride = processInfo.environment[AppBuildConfiguration.uiTestStoredAccessTokenOverrideKey],
+                tokenOverride.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            {
+                authToken = tokenOverride
+                userDefaults.set(tokenOverride, forKey: Self.authTokenKey)
+            }
             displayName = userDefaults.string(forKey: Self.displayNameKey)
             quickAddItemName = userDefaults.string(forKey: Self.quickAddItemKey) ?? SharedAppState.defaultQuickAddItemName
         } else {
@@ -242,7 +252,9 @@ final class MobileAppViewModel: ObservableObject {
             let nsErr = error as NSError
             netLog.error("Passkey login failed. Type=\(String(describing: type(of: error)), privacy: .public) Domain=\(nsErr.domain, privacy: .public) Code=\(nsErr.code) Desc=\(nsErr.localizedDescription, privacy: .public)")
             reviewerOnboardingMessage = nil
-            errorMessage = nsErr.localizedDescription
+            if handleSessionExpired(error) == false {
+                errorMessage = nsErr.localizedDescription
+            }
         }
     }
 
@@ -304,7 +316,9 @@ final class MobileAppViewModel: ObservableObject {
             )
             #endif
             reviewerOnboardingMessage = nil
-            errorMessage = (error as NSError).localizedDescription
+            if handleSessionExpired(error) == false {
+                errorMessage = (error as NSError).localizedDescription
+            }
             return false
         }
     }
@@ -372,7 +386,9 @@ final class MobileAppViewModel: ObservableObject {
             )
             #endif
             reviewerOnboardingMessage = nil
-            errorMessage = (error as NSError).localizedDescription
+            if handleSessionExpired(error) == false {
+                errorMessage = (error as NSError).localizedDescription
+            }
             return false
         }
     }
@@ -465,9 +481,11 @@ final class MobileAppViewModel: ObservableObject {
                 )
             }
         } catch {
-            authToken = nil
-            userDefaults.removeObject(forKey: Self.authTokenKey)
-            errorMessage = error.localizedDescription
+            if handleSessionExpired(error) == false {
+                authToken = nil
+                userDefaults.removeObject(forKey: Self.authTokenKey)
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -634,6 +652,9 @@ final class MobileAppViewModel: ObservableObject {
             lists = sortedLists(loadedLists)
             cacheLists(lists)
         } catch {
+            if handleSessionExpired(error) {
+                throw error
+            }
             if let cachedLists = cachedLists(), cachedLists.isEmpty == false {
                 lists = cachedLists
                 errorMessage = "Offline. Showing saved list."
@@ -697,6 +718,9 @@ final class MobileAppViewModel: ObservableObject {
             )
             cacheListData(listData, listID: reloadedListID)
         } catch {
+            if handleSessionExpired(error) {
+                throw error
+            }
             if let cachedListData = cachedListData(listID: reloadedListID) {
                 listData = cachedListData
                 errorMessage = "Offline. Showing saved list."
@@ -744,7 +768,9 @@ final class MobileAppViewModel: ObservableObject {
             watchSyncCoordinator.publishCurrentState()
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            if handleSessionExpired(error) == false {
+                errorMessage = error.localizedDescription
+            }
             return false
         }
     }
@@ -765,7 +791,9 @@ final class MobileAppViewModel: ObservableObject {
             watchSyncCoordinator.publishCurrentState()
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            if handleSessionExpired(error) == false {
+                errorMessage = error.localizedDescription
+            }
             return false
         }
     }
@@ -815,6 +843,11 @@ final class MobileAppViewModel: ObservableObject {
             watchSyncCoordinator.publishCurrentState()
             return true
         } catch {
+            if let appError = error as? AppError, case .sessionExpired = appError {
+                queuePendingItemEdit(listID: item.listID, itemID: item.id, payload: payload)
+                _ = handleSessionExpired(appError)
+                return false
+            }
             if itemEditSaveRevisions[item.id] == revision {
                 queuePendingItemEdit(listID: item.listID, itemID: item.id, payload: payload)
                 errorMessage = "Changes saved offline. They will sync when the backend is reachable."
@@ -839,7 +872,9 @@ final class MobileAppViewModel: ObservableObject {
             watchSyncCoordinator.publishCurrentState()
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            if handleSessionExpired(error) == false {
+                errorMessage = error.localizedDescription
+            }
             return false
         }
     }
@@ -878,6 +913,26 @@ final class MobileAppViewModel: ObservableObject {
             backendURL: backendURL,
             authToken: authToken
         )
+    }
+
+    private func handleSessionExpired(_ error: Error) -> Bool {
+        guard let appError = error as? AppError, case .sessionExpired = appError else { return false }
+        expireSession()
+        return true
+    }
+
+    private func expireSession() {
+        liveUpdates.disconnect()
+        authToken = nil
+        lists = []
+        items = []
+        categories = []
+        categoryOrder = []
+        selectedListID = nil
+        reviewerOnboardingMessage = nil
+        userDefaults.removeObject(forKey: Self.authTokenKey)
+        errorMessage = AppError.sessionExpired.errorDescription
+        watchSyncCoordinator.publishCurrentState()
     }
 
     private func handleLiveListChanged(_ listID: UUID) async {
@@ -1045,6 +1100,9 @@ final class MobileAppViewModel: ObservableObject {
                     upsertLocalItem(savedItem)
                 }
             } catch {
+                if handleSessionExpired(error) {
+                    return
+                }
                 netLog.error(
                     "Pending iPhone item edit sync failed: \(error.localizedDescription, privacy: .public)"
                 )
@@ -1194,6 +1252,9 @@ final class MobileAppViewModel: ObservableObject {
             throw AppError.invalidResponse
         }
         guard (200 ... 299).contains(http.statusCode) else {
+            if http.statusCode == 401, token != nil {
+                throw AppError.sessionExpired
+            }
             if let temporaryBackendError = backendAvailabilityError(response: http, data: data) {
                 throw temporaryBackendError
             }
@@ -1371,6 +1432,7 @@ final class MobileListLiveUpdateClient {
 enum AppError: LocalizedError {
     case invalidResponse
     case backendUnavailable(String)
+    case sessionExpired
     case server(String)
 
     var errorDescription: String? {
@@ -1379,6 +1441,8 @@ enum AppError: LocalizedError {
             return "The server returned an invalid response."
         case let .backendUnavailable(message):
             return message
+        case .sessionExpired:
+            return "Session expired. Sign in again with your passkey."
         case let .server(message):
             return message
         }
