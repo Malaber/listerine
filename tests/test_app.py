@@ -1488,6 +1488,9 @@ def test_passkey_register_and_login_flow(client, monkeypatch) -> None:
     assert register_verify.status_code == 200
     assert register_verify.json()["email"] == email
     assert register_verify.json()["is_admin"] is False
+    passkeys = client.get("/api/v1/auth/passkeys")
+    assert passkeys.status_code == 200
+    assert passkeys.json()[0]["last_used_at"] == passkeys.json()[0]["created_at"]
 
     client.post("/api/v1/auth/logout")
 
@@ -2103,6 +2106,7 @@ def test_user_can_add_multiple_passkeys_and_delete_one_after_confirming_another(
     )
     assert add_verify.status_code == 200
     assert add_verify.json()["name"] == "Laptop"
+    assert add_verify.json()["last_used_at"] == add_verify.json()["created_at"]
     added_passkey_id = add_verify.json()["id"]
 
     passkeys = client.get("/api/v1/auth/passkeys")
