@@ -116,13 +116,23 @@ private struct WatchListDetailView: View {
                 .environmentObject(viewModel)
         }
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    Task { await viewModel.showList(list) }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                if viewModel.canRedoListAction(for: list) {
+                    Button {
+                        Task { await viewModel.redoLastListAction(in: list) }
+                    } label: {
+                        Label(viewModel.redoListActionTitle(for: list), systemImage: "arrow.uturn.forward")
+                    }
+                    .accessibilityIdentifier("watch-list-redo-button")
+                    .disabled(viewModel.isWorking)
                 }
-                .disabled(viewModel.isWorking)
+                Button {
+                    Task { await viewModel.undoLastListAction(in: list) }
+                } label: {
+                    Label(viewModel.undoListActionTitle(for: list), systemImage: "arrow.uturn.backward")
+                }
+                .accessibilityIdentifier("watch-list-undo-button")
+                .disabled(viewModel.canUndoListAction(for: list) == false)
             }
         }
     }
