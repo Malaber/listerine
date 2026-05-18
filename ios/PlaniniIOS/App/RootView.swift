@@ -931,7 +931,6 @@ private struct EditItemSheet: View {
                         .disabled(history.canRedo == false)
                         .accessibilityIdentifier("edit-item-redo-button")
                     }
-                    .accessibilityIdentifier("edit-item-history-button-group")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
