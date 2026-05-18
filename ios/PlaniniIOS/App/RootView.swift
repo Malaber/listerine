@@ -944,8 +944,8 @@ private struct EditItemSheet: View {
                             Label("Undo", systemImage: "arrow.uturn.backward")
                                 .labelStyle(.iconOnly)
                         }
-                        .disabled(history.canUndo == false)
                         .accessibilityIdentifier("edit-item-undo-button")
+                        .disabled(history.canUndo == false)
 
                         Button {
                             applyRedo()
@@ -953,8 +953,8 @@ private struct EditItemSheet: View {
                             Label("Redo", systemImage: "arrow.uturn.forward")
                                 .labelStyle(.iconOnly)
                         }
-                        .disabled(history.canRedo == false)
                         .accessibilityIdentifier("edit-item-redo-button")
+                        .disabled(history.canRedo == false)
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {

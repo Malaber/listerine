@@ -163,8 +163,8 @@ final class PlaniniUITests: XCTestCase {
         scrollToElement(createdItemLabel, in: app)
         tapElement(createdItemLabel)
         XCTAssertTrue(app.otherElements["edit-item-sheet"].waitForExistence(timeout: 3))
-        let undoButton = app.buttons["edit-item-undo-button"]
-        let redoButton = app.buttons["edit-item-redo-button"]
+        let undoButton = app.buttons["Undo"]
+        let redoButton = app.buttons["Redo"]
         let closeButton = app.buttons["edit-item-close-button"]
         XCTAssertTrue(undoButton.waitForExistence(timeout: 3))
         XCTAssertTrue(redoButton.waitForExistence(timeout: 3))
