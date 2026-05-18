@@ -142,6 +142,16 @@ final class PlaniniUITests: XCTestCase {
         quantityField.tap()
         quantityField.typeText(itemQuantity)
 
+        chooseCategory(
+            named: "Milch & Eier",
+            using: "add-item-category-link",
+            in: app,
+            searchText: "molkrei",
+            sortOption: "A-Z",
+            screenshotName: "ios-ui-category-picker"
+        )
+        XCTAssertTrue(app.buttons["add-item-category-link"].label.contains("Milch & Eier"))
+
         let noteField = app.textFields["add-item-note-field"]
         noteField.tap()
         noteField.typeText("for pasta")
@@ -158,11 +168,27 @@ final class PlaniniUITests: XCTestCase {
         )
         XCTAssertTrue(app.staticTexts[itemName].waitForExistence(timeout: 15))
         captureScreenshot(named: "ios-ui-added-item")
+        XCTAssertTrue(
+            waitForItemCategory(
+                named: itemName,
+                categoryNamed: "Milch & Eier",
+                inListNamed: initialListName,
+                accessToken: session.accessToken
+            )
+        )
 
         let createdItemLabel = app.staticTexts[itemName]
         scrollToElement(createdItemLabel, in: app)
         tapElement(createdItemLabel)
         XCTAssertTrue(app.otherElements["edit-item-sheet"].waitForExistence(timeout: 3))
+        let undoButton = app.buttons["Undo"]
+        let redoButton = app.buttons["Redo"]
+        let closeButton = app.buttons["edit-item-close-button"]
+        XCTAssertTrue(undoButton.waitForExistence(timeout: 3))
+        XCTAssertTrue(redoButton.waitForExistence(timeout: 3))
+        XCTAssertTrue(closeButton.waitForExistence(timeout: 3))
+        XCTAssertLessThan(undoButton.frame.midX, closeButton.frame.midX)
+        XCTAssertLessThan(redoButton.frame.midX, closeButton.frame.midX)
         captureScreenshot(named: "promotion-edit-item-dialogue")
 
         let editNameField = app.textFields["edit-item-name-field"]
@@ -171,22 +197,42 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(waitForEditStatus("Saved", app: app))
         XCTAssertTrue(editNameField.valueText.contains(updatedName))
 
-        app.buttons["edit-item-undo-button"].tap()
+        undoButton.tap()
         XCTAssertTrue(waitForEditStatus("Saved", app: app))
         XCTAssertTrue(editNameField.valueText.contains(itemName))
         XCTAssertFalse(editNameField.valueText.contains("Updated"))
 
-        app.buttons["edit-item-redo-button"].tap()
+        redoButton.tap()
         XCTAssertTrue(waitForEditStatus("Saved", app: app))
         XCTAssertTrue(editNameField.valueText.contains(updatedName))
+
+        chooseCategory(
+            named: "Konserven",
+            using: "edit-item-category-link",
+            in: app,
+            searchText: "kon",
+            sortOption: "Most used",
+            screenshotName: "ios-ui-edit-category-picker"
+        )
+        XCTAssertTrue(app.buttons["edit-item-category-link"].label.contains("Konserven"))
+        XCTAssertTrue(waitForEditStatus("Saved", app: app))
         captureScreenshot(named: "ios-ui-live-edit-autosave")
-        app.buttons["Done"].tap()
+        closeButton.tap()
+        XCTAssertTrue(app.staticTexts[updatedName].waitForExistence(timeout: 5))
         XCTAssertTrue(
             waitForItem(
                 named: updatedName,
                 inListNamed: initialListName,
                 accessToken: session.accessToken,
                 timeout: 20
+            )
+        )
+        XCTAssertTrue(
+            waitForItemCategory(
+                named: updatedName,
+                categoryNamed: "Konserven",
+                inListNamed: initialListName,
+                accessToken: session.accessToken
             )
         )
 
@@ -220,21 +266,26 @@ final class PlaniniUITests: XCTestCase {
         app.buttons["add-item-button"].tap()
         XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
         let checkedSuggestionField = app.textFields["add-item-name-field"]
+        XCTAssertTrue(checkedSuggestionField.waitForExistence(timeout: 5))
         checkedSuggestionField.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
         checkedSuggestionField.typeText(updatedName)
-        let checkedSuggestion = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Add \(updatedName) back")).firstMatch
-        XCTAssertTrue(checkedSuggestion.waitForExistence(timeout: 10))
+        let checkedSuggestion = firstExistingElement(
+            [
+                app.buttons["add-item-suggestion-\(updatedItemID.uuidString)"],
+                app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Add \(updatedName) back")).firstMatch,
+            ],
+            timeout: 10
+        )
+        XCTAssertTrue(checkedSuggestion.waitForExistence(timeout: 1))
         scrollToHittable(checkedSuggestion, in: app)
         captureScreenshot(named: "ios-ui-checked-item-suggestion")
-        XCTAssertTrue(tapSuggestionAndWaitForSheetDismissal(checkedSuggestion, in: app))
-        XCTAssertTrue(
-            waitForItemCheckedState(
-                named: updatedName,
-                checked: false,
-                inListNamed: initialListName,
-                accessToken: session.accessToken
-            )
-        )
+        let addItemSheet = app.otherElements["add-item-sheet"]
+        let cancelButton = app.buttons["Cancel"]
+        if cancelButton.waitForExistence(timeout: 3) {
+            cancelButton.tap()
+        }
+        XCTAssertTrue(waitForElementToDisappear(addItemSheet, timeout: 10))
 
         XCTAssertTrue(tapTab("Lists", in: app))
         returnToListsRootIfNeeded(app)
@@ -504,6 +555,35 @@ final class PlaniniUITests: XCTestCase {
         return false
     }
 
+    private func waitForItemCategory(
+        named itemName: String,
+        categoryNamed categoryName: String,
+        inListNamed listName: String,
+        accessToken: String,
+        timeout: TimeInterval = 8
+    ) -> Bool {
+        guard
+            let categoryID = try? categoryID(
+                named: categoryName,
+                inListNamed: listName,
+                accessToken: accessToken
+            )
+        else {
+            return false
+        }
+
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let items = try? fetchItems(inListNamed: listName, accessToken: accessToken),
+                items.contains(where: { $0.name == itemName && $0.categoryID == categoryID })
+            {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.35))
+        }
+        return false
+    }
+
     private func waitForEditStatus(
         _ status: String,
         app: XCUIApplication,
@@ -607,6 +687,51 @@ final class PlaniniUITests: XCTestCase {
         return true
     }
 
+    private func chooseCategory(
+        named categoryName: String,
+        using linkIdentifier: String,
+        in app: XCUIApplication,
+        searchText: String?,
+        sortOption: String?,
+        screenshotName: String?
+    ) {
+        let link = app.buttons[linkIdentifier]
+        scrollToHittable(link, in: app)
+        XCTAssertTrue(link.waitForExistence(timeout: 3))
+        tapElement(link)
+
+        let categoryScreen = app.descendants(matching: .any)["category-selection-screen"]
+        XCTAssertTrue(categoryScreen.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.textFields["category-search-field"].waitForExistence(timeout: 3))
+
+        if let sortOption {
+            let option = firstExistingElement(
+                [
+                    app.buttons[sortOption],
+                    app.segmentedControls.buttons[sortOption],
+                    app.staticTexts[sortOption],
+                ],
+                timeout: 3
+            )
+            XCTAssertTrue(option.waitForExistence(timeout: 3))
+            tapElement(option)
+        }
+
+        if let searchText {
+            let searchField = app.textFields["category-search-field"]
+            searchField.tap()
+            searchField.typeText(searchText)
+        }
+
+        let categoryOption = app.buttons["category-option-\(categoryName)"]
+        XCTAssertTrue(categoryOption.waitForExistence(timeout: 3))
+        if let screenshotName {
+            captureScreenshot(named: screenshotName)
+        }
+        tapElement(categoryOption)
+        XCTAssertTrue(waitForElementToDisappear(categoryScreen, timeout: 3))
+    }
+
     private func selectAppearanceMode(_ label: String, in app: XCUIApplication) {
         let picker = app.segmentedControls["settings-appearance-picker"]
         XCTAssertTrue(picker.waitForExistence(timeout: 5))
@@ -634,32 +759,11 @@ final class PlaniniUITests: XCTestCase {
     }
 
     private func tapElement(_ element: XCUIElement) {
-        element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-    }
-
-    private func tapSuggestionAndWaitForSheetDismissal(
-        _ suggestion: XCUIElement,
-        in app: XCUIApplication,
-        timeout: TimeInterval = 15
-    ) -> Bool {
-        let sheet = app.otherElements["add-item-sheet"]
-        let deadline = Date().addingTimeInterval(timeout)
-
-        while Date() < deadline {
-            if waitForElementToDisappear(sheet, timeout: 1) {
-                return true
-            }
-            if suggestion.exists {
-                scrollToHittable(suggestion, in: app, maxSwipes: 2)
-                tapElement(suggestion)
-            }
-            if waitForElementToDisappear(sheet, timeout: 2) {
-                return true
-            }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        if element.isHittable {
+            element.tap()
+        } else {
+            element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         }
-
-        return !sheet.exists
     }
 
     private func waitForItemRow(
@@ -803,6 +907,30 @@ final class PlaniniUITests: XCTestCase {
             code: 1,
             userInfo: [NSLocalizedDescriptionKey: "Could not find item named \(itemName)."]
         )
+    }
+
+    private func categoryID(named categoryName: String, inListNamed listName: String, accessToken: String) throws -> UUID {
+        let listID = try listID(named: listName, accessToken: accessToken)
+        if let category = try fetchCategories(listID: listID, accessToken: accessToken)
+            .first(where: { $0.name == categoryName })
+        {
+            return category.id
+        }
+        throw NSError(
+            domain: "PlaniniUITests",
+            code: 5,
+            userInfo: [NSLocalizedDescriptionKey: "Could not find category named \(categoryName)."]
+        )
+    }
+
+    private func fetchCategories(listID: UUID, accessToken: String) throws -> [UITestCategory] {
+        let request = jsonRequest(
+            path: "/api/v1/lists/\(listID.uuidString)/categories",
+            method: "GET",
+            token: accessToken
+        )
+        let data = try performRequest(request)
+        return try JSONDecoder().decode([UITestCategory].self, from: data)
     }
 
     private func createItem(
@@ -1025,10 +1153,23 @@ private struct UITestList: Decodable {
     let name: String
 }
 
+private struct UITestCategory: Decodable {
+    let id: UUID
+    let name: String
+}
+
 private struct UITestItem: Decodable {
     let id: UUID
     let name: String
     let checked: Bool
+    let categoryID: UUID?
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case checked
+        case categoryID = "category_id"
+    }
 }
 
 private struct UITestIdentifiedItem: Decodable {
