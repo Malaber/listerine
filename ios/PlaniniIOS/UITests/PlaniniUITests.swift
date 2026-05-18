@@ -181,6 +181,14 @@ final class PlaniniUITests: XCTestCase {
         scrollToElement(createdItemLabel, in: app)
         tapElement(createdItemLabel)
         XCTAssertTrue(app.otherElements["edit-item-sheet"].waitForExistence(timeout: 3))
+        let undoButton = app.buttons["Undo"]
+        let redoButton = app.buttons["Redo"]
+        let closeButton = app.buttons["edit-item-close-button"]
+        XCTAssertTrue(undoButton.waitForExistence(timeout: 3))
+        XCTAssertTrue(redoButton.waitForExistence(timeout: 3))
+        XCTAssertTrue(closeButton.waitForExistence(timeout: 3))
+        XCTAssertLessThan(undoButton.frame.midX, closeButton.frame.midX)
+        XCTAssertLessThan(redoButton.frame.midX, closeButton.frame.midX)
         captureScreenshot(named: "promotion-edit-item-dialogue")
 
         let editNameField = app.textFields["edit-item-name-field"]
@@ -189,12 +197,12 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(waitForEditStatus("Saved", app: app))
         XCTAssertTrue(editNameField.valueText.contains(updatedName))
 
-        app.buttons["edit-item-undo-button"].tap()
+        undoButton.tap()
         XCTAssertTrue(waitForEditStatus("Saved", app: app))
         XCTAssertTrue(editNameField.valueText.contains(itemName))
         XCTAssertFalse(editNameField.valueText.contains("Updated"))
 
-        app.buttons["edit-item-redo-button"].tap()
+        redoButton.tap()
         XCTAssertTrue(waitForEditStatus("Saved", app: app))
         XCTAssertTrue(editNameField.valueText.contains(updatedName))
 
@@ -209,7 +217,8 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(app.buttons["edit-item-category-link"].label.contains("Konserven"))
         XCTAssertTrue(waitForEditStatus("Saved", app: app))
         captureScreenshot(named: "ios-ui-live-edit-autosave")
-        app.buttons["Done"].tap()
+        closeButton.tap()
+        XCTAssertTrue(app.staticTexts[updatedName].waitForExistence(timeout: 5))
         XCTAssertTrue(
             waitForItem(
                 named: updatedName,
