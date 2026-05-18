@@ -279,12 +279,13 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(listSettingsButton.waitForExistence(timeout: 5))
         listSettingsButton.tap()
         XCTAssertTrue(app.otherElements["list-settings-sheet"].waitForExistence(timeout: 5))
+        let settingsSaveState = app.descendants(matching: .any)["list-settings-save-state"]
+        XCTAssertTrue(settingsSaveState.waitForExistence(timeout: 3))
 
         let renamedHostingName = "Hosting errands \(UUID().uuidString.prefix(6))"
         let listNameField = app.textFields["list-name-field"]
         XCTAssertTrue(listNameField.waitForExistence(timeout: 3))
         replaceText(in: listNameField, with: renamedHostingName)
-        app.buttons["list-name-save-button"].tap()
         XCTAssertTrue(
             waitForListName(
                 listID: hostingListID,
@@ -293,10 +294,14 @@ final class PlaniniUITests: XCTestCase {
             )
         )
 
-        let moveBackwarenUp = app.buttons["category-move-up-\(backwarenCategoryID.uuidString)"]
-        scrollToHittable(moveBackwarenUp, in: app)
-        XCTAssertTrue(moveBackwarenUp.waitForExistence(timeout: 5))
-        tapElement(moveBackwarenUp)
+        let backwarenRow = app.descendants(matching: .any)["category-settings-row-\(backwarenCategoryID.uuidString)"]
+        let konservenRow = app.descendants(matching: .any)["category-settings-row-\(konservenCategoryID.uuidString)"]
+        scrollToHittable(backwarenRow, in: app)
+        XCTAssertTrue(backwarenRow.waitForExistence(timeout: 5))
+        XCTAssertTrue(konservenRow.waitForExistence(timeout: 5))
+        let backwarenGrabber = backwarenRow.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5))
+        let firstCategoryTarget = konservenRow.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.2))
+        backwarenGrabber.press(forDuration: 0.6, thenDragTo: firstCategoryTarget)
         XCTAssertTrue(
             waitForFirstCategoryOrder(
                 listID: hostingListID,

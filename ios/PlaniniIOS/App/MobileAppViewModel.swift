@@ -1089,7 +1089,7 @@ final class MobileAppViewModel: ObservableObject {
     }
 
     @discardableResult
-    private func saveCategoryOrder(categoryIDs: [UUID]) async -> Bool {
+    func saveCategoryOrder(categoryIDs: [UUID]) async -> Bool {
         guard let backendURL, let authToken, let selectedListID else { return false }
         let previousCategoryOrder = categoryOrder
         categoryOrder = categoryIDs.enumerated().map { index, categoryID in

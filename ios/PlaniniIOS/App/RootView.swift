@@ -29,6 +29,54 @@ private struct CategoryDisableConfirmation: Identifiable {
     }
 }
 
+private enum ListSettingsFocusedField: Equatable {
+    case name
+}
+
+private enum ListSettingsSaveState: Equatable {
+    case saved
+    case unsaved
+    case saving
+    case failed
+
+    var title: String {
+        switch self {
+        case .saved:
+            return "Saved"
+        case .unsaved:
+            return "Unsaved"
+        case .saving:
+            return "Saving..."
+        case .failed:
+            return "Error"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .saved:
+            return "checkmark.circle"
+        case .unsaved:
+            return "circle.dotted"
+        case .saving:
+            return "arrow.triangle.2.circlepath"
+        case .failed:
+            return "exclamationmark.triangle"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .saved, .saving:
+            return .secondary
+        case .unsaved:
+            return .orange
+        case .failed:
+            return .red
+        }
+    }
+}
+
 struct RootView: View {
     @EnvironmentObject private var viewModel: MobileAppViewModel
     @State private var selectedTab: AppTab = .favorite
@@ -473,29 +521,6 @@ private struct ListDetailScreen: View {
                         Text("\(viewModel.sections.reduce(0) { $0 + $1.itemCount }) items across \(viewModel.sections.count) sections")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
-                        if viewModel.lists.count > 1 {
-                            Menu {
-                                ForEach(listSwitchSections, id: \.name) { section in
-                                    Section(section.name) {
-                                        ForEach(section.lists) { list in
-                                            Button {
-                                                switchList(to: list.id)
-                                            } label: {
-                                                if list.id == displayedListID {
-                                                    Label(list.name, systemImage: "checkmark")
-                                                } else {
-                                                    Text(list.name)
-                                                }
-                                            }
-                                            .accessibilityIdentifier("switch-list-\(list.name)")
-                                        }
-                                    }
-                                }
-                            } label: {
-                                Label("Switch list", systemImage: "arrow.left.arrow.right")
-                            }
-                            .accessibilityIdentifier("list-switcher-button")
-                        }
                     }
                     .padding(.vertical, 4)
                 }
@@ -530,6 +555,34 @@ private struct ListDetailScreen: View {
         .navigationTitle(currentList?.name ?? "List")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
+            if viewModel.lists.count > 1 {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        ForEach(listSwitchSections, id: \.name) { section in
+                            Section(section.name) {
+                                ForEach(section.lists) { list in
+                                    Button {
+                                        switchList(to: list.id)
+                                    } label: {
+                                        if list.id == displayedListID {
+                                            Label(list.name, systemImage: "checkmark")
+                                        } else {
+                                            Text(list.name)
+                                        }
+                                    }
+                                    .accessibilityIdentifier("switch-list-\(list.name)")
+                                }
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.body.weight(.semibold))
+                    }
+                    .accessibilityIdentifier("list-switcher-button")
+                    .accessibilityLabel("Switch list")
+                }
+            }
+
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     addItemPresentation = AddItemPresentation(categoryID: nil)
@@ -605,9 +658,12 @@ private struct ListSettingsSheet: View {
 
     @State private var name = ""
     @State private var isSavingName = false
-    @State private var settingsStatus: String?
+    @State private var saveState: ListSettingsSaveState = .saved
+    @State private var nameSaveTask: Task<Void, Never>?
     @State private var busyCategoryID: UUID?
+    @State private var isSavingCategoryOrder = false
     @State private var pendingDisable: CategoryDisableConfirmation?
+    @FocusState private var focusedField: ListSettingsFocusedField?
 
     private var currentList: GroceryListSummary? {
         viewModel.lists.first { $0.id == listID }
@@ -617,11 +673,9 @@ private struct ListSettingsSheet: View {
         name.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private var canSaveName: Bool {
+    private var nameNeedsSave: Bool {
         guard let currentList else { return false }
-        return isSavingName == false
-            && trimmedName.isEmpty == false
-            && trimmedName != currentList.name
+        return trimmedName.isEmpty == false && trimmedName != currentList.name
     }
 
     var body: some View {
@@ -633,10 +687,28 @@ private struct ListSettingsSheet: View {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Done") { dismiss() }
                     }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Label(saveState.title, systemImage: saveState.systemImage)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(saveState.tint)
+                            .accessibilityIdentifier("list-settings-save-state")
+                    }
                 }
         }
         .onAppear(perform: syncName)
         .onChange(of: currentList?.name ?? "") { _ in syncName() }
+        .onChange(of: name) { _ in scheduleNameAutosave() }
+        .onChange(of: focusedField) { newValue in
+            if newValue != .name {
+                saveNameNow()
+            }
+        }
+        .onDisappear {
+            nameSaveTask?.cancel()
+            if nameNeedsSave {
+                saveNameNow()
+            }
+        }
         .alert(item: $pendingDisable) { request in
             Alert(
                 title: Text("Disable \(request.category.name)?"),
@@ -654,25 +726,17 @@ private struct ListSettingsSheet: View {
         Form {
             listNameSection
             categoriesSection
-            statusSection
         }
+        .environment(\.editMode, .constant(.active))
     }
 
     private var listNameSection: some View {
         Section("List name") {
             TextField("List name", text: $name)
+                .focused($focusedField, equals: .name)
+                .submitLabel(.done)
+                .onSubmit(saveNameNow)
                 .accessibilityIdentifier("list-name-field")
-            Button {
-                saveName()
-            } label: {
-                if isSavingName {
-                    Label("Saving...", systemImage: "arrow.triangle.2.circlepath")
-                } else {
-                    Label("Save name", systemImage: "checkmark")
-                }
-            }
-            .disabled(canSaveName == false)
-            .accessibilityIdentifier("list-name-save-button")
         }
     }
 
@@ -683,9 +747,10 @@ private struct ListSettingsSheet: View {
                 Label("No categories available", systemImage: "tray")
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(Array(categories.enumerated()), id: \.element.id) { index, category in
-                    categoryRow(category: category, index: index, totalCount: categories.count)
+                ForEach(categories) { category in
+                    categoryRow(category: category)
                 }
+                .onMove(perform: moveCategories)
             }
         } header: {
             Text("Categories")
@@ -694,28 +759,12 @@ private struct ListSettingsSheet: View {
         }
     }
 
-    @ViewBuilder
-    private var statusSection: some View {
-        if let settingsStatus {
-            Section {
-                Label(settingsStatus, systemImage: "checkmark.circle")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .accessibilityIdentifier("list-settings-status")
-            }
-        }
-    }
-
-    private func categoryRow(category: GroceryCategorySummary, index: Int, totalCount: Int) -> some View {
+    private func categoryRow(category: GroceryCategorySummary) -> some View {
         CategorySettingsRow(
             category: category,
             disabled: viewModel.isCategoryDisabled(category.id),
             itemCount: viewModel.itemCount(inCategory: category.id),
-            canMoveUp: index > 0,
-            canMoveDown: index < totalCount - 1,
             isBusy: busyCategoryID == category.id,
-            onMoveUp: { move(category, direction: .up) },
-            onMoveDown: { move(category, direction: .down) },
             onToggleDisabled: { disabled in
                 set(category, disabled: disabled)
             }
@@ -724,30 +773,72 @@ private struct ListSettingsSheet: View {
 
     private func syncName() {
         guard let currentList else { return }
-        if isSavingName == false {
+        if isSavingName == false && focusedField != .name {
             name = currentList.name
+            saveState = .saved
         }
     }
 
-    private func saveName() {
-        guard canSaveName, let currentList else { return }
+    private func scheduleNameAutosave() {
+        nameSaveTask?.cancel()
+        guard currentList != nil else { return }
+        guard trimmedName.isEmpty == false else {
+            saveState = .unsaved
+            return
+        }
+        guard nameNeedsSave else {
+            if isSavingName == false {
+                saveState = .saved
+            }
+            return
+        }
+
+        saveState = .unsaved
+        nameSaveTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 900_000_000)
+            guard Task.isCancelled == false else { return }
+            saveNameNow()
+        }
+    }
+
+    private func saveNameNow() {
+        nameSaveTask?.cancel()
+        guard nameNeedsSave, let currentList else {
+            if isSavingName == false && trimmedName.isEmpty == false {
+                saveState = .saved
+            }
+            return
+        }
+        guard isSavingName == false else { return }
+
+        let nextName = trimmedName
         isSavingName = true
-        settingsStatus = nil
-        Task {
-            let saved = await viewModel.renameList(id: currentList.id, name: name)
+        saveState = .saving
+        Task { @MainActor in
+            let saved = await viewModel.renameList(id: currentList.id, name: nextName)
             isSavingName = false
-            settingsStatus = saved ? "List name saved" : "Could not save list name"
+            if saved {
+                if trimmedName == nextName {
+                    saveState = .saved
+                } else {
+                    scheduleNameAutosave()
+                }
+            } else {
+                saveState = .failed
+            }
         }
     }
 
-    private func move(_ category: GroceryCategorySummary, direction: ListCategoryMoveDirection) {
-        guard busyCategoryID == nil else { return }
-        busyCategoryID = category.id
-        settingsStatus = nil
-        Task {
-            let saved = await viewModel.moveCategory(id: category.id, direction: direction)
-            busyCategoryID = nil
-            settingsStatus = saved ? "Category order saved" : "Could not save category order"
+    private func moveCategories(from source: IndexSet, to destination: Int) {
+        guard isSavingCategoryOrder == false else { return }
+        var categoryIDs = viewModel.categoriesForSettings.map(\.id)
+        categoryIDs.move(fromOffsets: source, toOffset: destination)
+        isSavingCategoryOrder = true
+        saveState = .saving
+        Task { @MainActor in
+            let saved = await viewModel.saveCategoryOrder(categoryIDs: categoryIDs)
+            isSavingCategoryOrder = false
+            saveState = saved ? .saved : .failed
         }
     }
 
@@ -763,11 +854,11 @@ private struct ListSettingsSheet: View {
 
     private func runCategoryToggle(categoryID: UUID, disabled: Bool) {
         busyCategoryID = categoryID
-        settingsStatus = nil
-        Task {
+        saveState = .saving
+        Task { @MainActor in
             let saved = await viewModel.setCategory(id: categoryID, disabled: disabled)
             busyCategoryID = nil
-            settingsStatus = saved ? "Category visibility saved" : "Could not save category visibility"
+            saveState = saved ? .saved : .failed
         }
     }
 
@@ -783,15 +874,11 @@ private struct CategorySettingsRow: View {
     let category: GroceryCategorySummary
     let disabled: Bool
     let itemCount: Int
-    let canMoveUp: Bool
-    let canMoveDown: Bool
     let isBusy: Bool
-    let onMoveUp: () -> Void
-    let onMoveDown: () -> Void
     let onToggleDisabled: (Bool) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        HStack(spacing: 12) {
             HStack(spacing: 10) {
                 Circle()
                     .fill(Color(hex: category.colorHex) ?? Color.secondary.opacity(0.4))
@@ -804,41 +891,20 @@ private struct CategorySettingsRow: View {
                 }
                 Spacer()
             }
+            .opacity(disabled ? 0.42 : 1)
 
-            HStack(spacing: 12) {
-                Button {
-                    onMoveUp()
-                } label: {
-                    Label("Move up", systemImage: "chevron.up")
-                }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.bordered)
-                .disabled(isBusy || canMoveUp == false)
-                .accessibilityIdentifier("category-move-up-\(category.id.uuidString)")
-
-                Button {
-                    onMoveDown()
-                } label: {
-                    Label("Move down", systemImage: "chevron.down")
-                }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.bordered)
-                .disabled(isBusy || canMoveDown == false)
-                .accessibilityIdentifier("category-move-down-\(category.id.uuidString)")
-
-                Spacer()
-
-                Toggle(
-                    "Enabled",
-                    isOn: Binding(
-                        get: { disabled == false },
-                        set: { enabled in onToggleDisabled(enabled == false) }
-                    )
-                )
-                .labelsHidden()
-                .disabled(isBusy)
-                .accessibilityIdentifier("category-enabled-toggle-\(category.id.uuidString)")
+            Button {
+                guard isBusy == false else { return }
+                onToggleDisabled(disabled == false)
+            } label: {
+                Image(systemName: disabled ? "eye.slash" : "eye")
+                    .font(.title3)
+                    .frame(width: 32, height: 32)
             }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.accentColor)
+            .accessibilityIdentifier("category-enabled-toggle-\(category.id.uuidString)")
+            .accessibilityLabel(disabled ? "Show \(category.name)" : "Hide \(category.name)")
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .contain)
