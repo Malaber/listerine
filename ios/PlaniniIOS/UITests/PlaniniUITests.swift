@@ -107,7 +107,14 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(suggestionProbeField.waitForExistence(timeout: 3))
         suggestionProbeField.tap()
         suggestionProbeField.typeText("Bro")
-        let seededCheckedSuggestion = app.buttons.containing(.staticText, identifier: "Brot").firstMatch
+        let seededCheckedSuggestion = firstExistingElement(
+            [
+                app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Brot")).firstMatch,
+                app.staticTexts["Brot"],
+                app.otherElements["Brot"],
+            ],
+            timeout: 3
+        )
         XCTAssertTrue(seededCheckedSuggestion.waitForExistence(timeout: 3))
         XCTAssertFalse(seededCheckedSuggestion.images["scope"].exists, "Suggestion rows should not show a crosshair icon.")
         XCTAssertTrue(tapSuggestionAndWaitForSheetDismissal(seededCheckedSuggestion, app: app))
@@ -715,6 +722,10 @@ final class PlaniniUITests: XCTestCase {
     }
 
     private func tapSuggestionAndWaitForSheetDismissal(_ element: XCUIElement, app: XCUIApplication) -> Bool {
+        tapElement(element)
+        if waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 2) {
+            return true
+        }
         tapTrailingControl(in: element, app: app)
         if waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 2) {
             return true
