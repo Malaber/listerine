@@ -49,6 +49,7 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
         XCTAssertEqual(listTitle.label, initialListName)
         captureScreenshot(named: "ios-ui-list-detail")
+        assertShoppingModeAvailable(in: app)
 
         XCTAssertTrue(app.staticTexts["Uncategorized"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["Konserven"].waitForExistence(timeout: 3))
@@ -808,6 +809,23 @@ final class PlaniniUITests: XCTestCase {
 
         app.buttons["Cancel"].tap()
         XCTAssertFalse(app.otherElements["reviewer-onboarding-sheet"].exists)
+    }
+
+    private func assertShoppingModeAvailable(in app: XCUIApplication) {
+        let shoppingModeButton = app.buttons["shopping-mode-button"]
+        XCTAssertTrue(shoppingModeButton.waitForExistence(timeout: 3))
+        captureScreenshot(named: "ios-ui-shopping-mode-button")
+        shoppingModeButton.tap()
+
+        let becameActive = NSPredicate(format: "label CONTAINS %@", "Shopping mode active")
+        let activeExpectation = XCTNSPredicateExpectation(predicate: becameActive, object: shoppingModeButton)
+        let alert = app.alerts.firstMatch
+        let alertAppeared = alert.waitForExistence(timeout: 1)
+        if alertAppeared {
+            alert.buttons["OK"].tap()
+        }
+        let active = XCTWaiter().wait(for: [activeExpectation], timeout: 3) == .completed
+        XCTAssertTrue(active || alertAppeared)
     }
 
     private func firstExistingElement(_ elements: [XCUIElement], timeout: TimeInterval) -> XCUIElement {

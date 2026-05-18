@@ -428,6 +428,7 @@ private struct ListDetailScreen: View {
 
     @State private var editingItem: GroceryItemRecord?
     @State private var addItemPresentation: AddItemPresentation?
+    @State private var isStartingShoppingMode = false
 
     private var currentList: GroceryListSummary? {
         viewModel.lists.first { $0.id == listID }
@@ -493,6 +494,26 @@ private struct ListDetailScreen: View {
                     Label("Add item", systemImage: "plus")
                 }
                 .accessibilityIdentifier("add-item-button")
+            }
+
+            if let currentList {
+                ToolbarItem(placement: .topBarTrailing) {
+                    let isActive = viewModel.shoppingModeListID == currentList.id
+                    Button {
+                        isStartingShoppingMode = true
+                        Task {
+                            _ = await viewModel.startShoppingMode(listID: currentList.id)
+                            isStartingShoppingMode = false
+                        }
+                    } label: {
+                        Label(
+                            isActive ? "Shopping mode active" : "Start shopping mode",
+                            systemImage: isActive ? "cart.fill" : "cart"
+                        )
+                    }
+                    .disabled(isStartingShoppingMode)
+                    .accessibilityIdentifier("shopping-mode-button")
+                }
             }
 
             if showsFavoriteButton, let currentList {
