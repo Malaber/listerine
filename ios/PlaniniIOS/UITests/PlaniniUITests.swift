@@ -716,7 +716,7 @@ final class PlaniniUITests: XCTestCase {
             }
             if suggestion.exists {
                 scrollToHittable(suggestion, in: app, maxSwipes: 2)
-                tapElement(suggestion)
+                suggestion.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
             }
             if waitForElementToDisappear(sheet, timeout: 2) {
                 return true
@@ -725,26 +725,6 @@ final class PlaniniUITests: XCTestCase {
         }
 
         return !sheet.exists
-    }
-
-    private func tapSuggestionAndWaitForSheetDismissal(
-        _ suggestion: XCUIElement,
-        in app: XCUIApplication,
-        timeout: TimeInterval = 15
-    ) -> Bool {
-        let sheet = app.otherElements["add-item-sheet"]
-        guard sheet.exists else { return true }
-        guard suggestion.exists else { return false }
-
-        suggestion.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
-        if waitForElementToDisappear(sheet, timeout: 5) {
-            return true
-        }
-
-        if suggestion.exists {
-            suggestion.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
-        }
-        return waitForElementToDisappear(sheet, timeout: max(timeout - 5, 1))
     }
 
     private func waitForItemRow(
