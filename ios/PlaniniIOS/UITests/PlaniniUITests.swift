@@ -216,6 +216,7 @@ final class PlaniniUITests: XCTestCase {
                 timeout: 20
             )
         )
+        XCTAssertTrue(waitForElementLabel(updatedCheckButton, containing: "Uncheck", timeout: 20))
         scrollToElement(updatedItemLabel, in: app)
         captureScreenshot(named: "ios-ui-checked-item")
         captureScreenshot(named: "promotion-filled-list")
@@ -535,6 +536,21 @@ final class PlaniniUITests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
         return element.exists == false
+    }
+
+    private func waitForElementLabel(
+        _ element: XCUIElement,
+        containing expectedText: String,
+        timeout: TimeInterval = 8
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if element.exists && element.label.contains(expectedText) {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        return element.exists && element.label.contains(expectedText)
     }
 
     private func waitForLiveUpdatesConnection(
