@@ -131,8 +131,8 @@ final class PlaniniUITests: XCTestCase {
         let nameField = app.textFields["add-item-name-field"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 3))
         nameField.typeText(enterSavedItemName)
-        tapElement(app.buttons["add-item-save-button"])
-        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 10))
+        XCTAssertTrue(waitForFieldValue(nameField, contains: enterSavedItemName))
+        XCTAssertTrue(saveAddItemSheet(in: app))
         XCTAssertTrue(
             waitForItem(
                 named: enterSavedItemName,
@@ -147,10 +147,12 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(prepareKeyboardForTyping(in: app, timeout: 3))
         XCTAssertTrue(nameField.waitForExistence(timeout: 3))
         nameField.typeText(itemName)
+        XCTAssertTrue(waitForFieldValue(nameField, contains: itemName))
 
         let quantityField = app.textFields["add-item-quantity-field"]
         quantityField.tap()
         quantityField.typeText(itemQuantity)
+        XCTAssertTrue(waitForFieldValue(quantityField, contains: itemQuantity))
 
         chooseCategory(
             named: "Milch & Eier",
@@ -165,9 +167,9 @@ final class PlaniniUITests: XCTestCase {
         let noteField = app.textFields["add-item-note-field"]
         noteField.tap()
         noteField.typeText("for pasta")
+        XCTAssertTrue(waitForFieldValue(noteField, contains: "for pasta"))
 
-        tapElement(app.buttons["add-item-save-button"])
-        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 10))
+        XCTAssertTrue(saveAddItemSheet(in: app))
         XCTAssertTrue(
             waitForItem(
                 named: itemName,
@@ -623,6 +625,27 @@ final class PlaniniUITests: XCTestCase {
         }
 
         return sheet.exists
+    }
+
+    private func saveAddItemSheet(in app: XCUIApplication, timeout: TimeInterval = 12) -> Bool {
+        let button = app.buttons["add-item-save-button"]
+        let sheet = app.otherElements["add-item-sheet"]
+        let deadline = Date().addingTimeInterval(timeout)
+
+        while Date() < deadline {
+            if sheet.exists == false {
+                return true
+            }
+            if button.waitForExistence(timeout: 1), button.isEnabled {
+                tapElement(button)
+                if waitForElementToDisappear(sheet, timeout: 2) {
+                    return true
+                }
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+
+        return sheet.exists == false
     }
 
     private func waitForItemCheckedState(
