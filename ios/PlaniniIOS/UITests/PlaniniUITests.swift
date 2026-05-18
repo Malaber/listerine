@@ -254,8 +254,9 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(updatedCheckButton.waitForExistence(timeout: 3))
         tapElement(updatedCheckButton)
         XCTAssertTrue(
-            waitForCheckedItem(
+            waitForItemCheckedState(
                 named: updatedName,
+                checked: true,
                 inListNamed: initialListName,
                 accessToken: session.accessToken,
                 timeout: 20
