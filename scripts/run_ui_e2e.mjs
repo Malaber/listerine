@@ -732,7 +732,7 @@ async function registerAccountFromLogin(page, { displayName, email }, expectedUr
   await page.locator('[data-passkey-register] input[name="email"]').fill(email);
   await Promise.all([
     page.waitForURL(expectedUrlPattern, { waitUntil: "commit", timeout: 10_000 }),
-    page.locator("[data-passkey-register-button]").click(),
+    page.locator('[data-passkey-register] input[name="email"]').press("Enter"),
   ]);
 }
 
