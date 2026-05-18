@@ -66,6 +66,10 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertEqual(listTitle.label, initialListName)
         captureScreenshot(named: "ios-ui-favorite-list")
 
+        let uncategorizedCountBadge = app.staticTexts["section-count-badge-uncategorized"]
+        XCTAssertTrue(uncategorizedCountBadge.waitForExistence(timeout: 3))
+        XCTAssertEqual(uncategorizedCountBadge.label, "1 item")
+
         let quickAddUncategorized = firstExistingElement(
             [
                 app.buttons["quick-add-category-uncategorized"],

@@ -541,10 +541,11 @@ private struct SectionHeader: View {
             Circle()
                 .fill(Color(hex: section.colorHex) ?? Color.secondary.opacity(0.4))
                 .frame(width: 10, height: 10)
-            Text(section.title)
-            Spacer()
-            Text("\(section.itemCount)")
-                .foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                Text(section.title)
+                SectionCountBadge(count: section.itemCount, sectionID: section.id)
+            }
+            Spacer(minLength: 16)
             if allowsQuickAdd {
                 Button {
                     onQuickAdd(quickAddCategoryID)
@@ -560,6 +561,25 @@ private struct SectionHeader: View {
         }
         .textCase(nil)
         .accessibilityIdentifier("section-\(section.id)")
+    }
+}
+
+private struct SectionCountBadge: View {
+    let count: Int
+    let sectionID: String
+
+    var body: some View {
+        Text("\(count)")
+            .font(.caption2.weight(.semibold))
+            .monospacedDigit()
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background {
+                Capsule().fill(Color.secondary.opacity(0.14))
+            }
+            .accessibilityIdentifier("section-count-badge-\(sectionID)")
+            .accessibilityLabel(count == 1 ? "1 item" : "\(count) items")
     }
 }
 
