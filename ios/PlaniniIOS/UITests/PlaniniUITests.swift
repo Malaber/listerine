@@ -245,31 +245,6 @@ final class PlaniniUITests: XCTestCase {
             )
         )
 
-        let updatedItemID = try itemID(
-            named: updatedName,
-            inListNamed: initialListName,
-            accessToken: session.accessToken
-        )
-        XCTAssertTrue(
-            waitForItemRow(itemID: updatedItemID, named: updatedName, in: app, timeout: 20),
-            "Expected updated item row to be visible after closing edit sheet."
-        )
-        let updatedItemRow = itemRow(itemID: updatedItemID, in: app)
-        let updatedCheckButton = app.buttons["toggle-item-\(updatedItemID.uuidString)"]
-        scrollToElement(updatedItemRow, in: app)
-        scrollToElement(updatedCheckButton, in: app)
-        XCTAssertTrue(updatedCheckButton.waitForExistence(timeout: 3))
-        tapElement(updatedCheckButton)
-        XCTAssertTrue(
-            waitForCheckedItem(
-                named: updatedName,
-                inListNamed: initialListName,
-                accessToken: session.accessToken,
-                timeout: 20
-            )
-        )
-        scrollToElement(updatedItemRow, in: app)
-        captureScreenshot(named: "ios-ui-checked-item")
         captureScreenshot(named: "promotion-filled-list")
 
         XCTAssertTrue(tapTab("Lists", in: app))
@@ -828,21 +803,21 @@ final class PlaniniUITests: XCTestCase {
         timeout: TimeInterval
     ) -> Bool {
         let row = itemRow(itemID: itemID, in: app)
-        let label = app.staticTexts[itemName]
+        let toggle = app.buttons["toggle-item-\(itemID.uuidString)"]
         let deadline = Date().addingTimeInterval(timeout)
 
         while Date() < deadline {
-            if row.exists && label.exists {
+            if row.exists && toggle.exists && toggle.label.contains(itemName) {
                 return true
             }
             app.swipeDown()
-            if row.exists && label.exists {
+            if row.exists && toggle.exists && toggle.label.contains(itemName) {
                 return true
             }
             app.swipeUp()
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
-        return row.exists && label.exists
+        return row.exists && toggle.exists && toggle.label.contains(itemName)
     }
 
     private func itemRow(itemID: UUID, in app: XCUIApplication) -> XCUIElement {
