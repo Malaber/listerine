@@ -63,12 +63,26 @@ class DummyWebSocket:
     def __init__(self) -> None:
         self.accepted = False
         self.events: list[dict] = []
+        self.close_calls = 0
 
     async def accept(self) -> None:
         self.accepted = True
 
     async def send_json(self, event: dict) -> None:
         self.events.append(event)
+
+    async def close(self) -> None:
+        self.close_calls += 1
+
+
+class SlowDummyWebSocket(DummyWebSocket):
+    def __init__(self) -> None:
+        super().__init__()
+        self.send_calls = 0
+
+    async def send_json(self, event: dict) -> None:
+        self.send_calls += 1
+        await asyncio.sleep(60)
 
 
 class DummySessionContext:
@@ -236,6 +250,26 @@ def test_websocket_hub_connect_broadcast_disconnect() -> None:
     hub.disconnect(list_id, ws)
     # cover no-op branch
     hub.disconnect(list_id, ws)
+
+
+def test_websocket_hub_drops_slow_connections_without_blocking_peers() -> None:
+    hub = WebSocketHub(send_timeout_seconds=0.001, close_timeout_seconds=0.001)
+    list_id = uuid4()
+    slow_ws = SlowDummyWebSocket()
+    fast_ws = DummyWebSocket()
+
+    asyncio.run(hub.connect(list_id, slow_ws))
+    asyncio.run(hub.connect(list_id, fast_ws))
+
+    asyncio.run(hub.broadcast(list_id, {"type": "x"}))
+    assert slow_ws.send_calls == 1
+    assert slow_ws.close_calls == 1
+    assert fast_ws.events == [{"type": "x"}]
+
+    asyncio.run(hub.broadcast(list_id, {"type": "y"}))
+    assert slow_ws.send_calls == 1
+    assert slow_ws.close_calls == 1
+    assert fast_ws.events == [{"type": "x"}, {"type": "y"}]
 
 
 def test_security_helpers_handle_long_passwords() -> None:
