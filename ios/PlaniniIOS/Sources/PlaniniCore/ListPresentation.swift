@@ -84,6 +84,74 @@ public struct ListCategoryOrderEntry: Equatable, Codable, Sendable {
     }
 }
 
+public enum ListCategoryMoveDirection: Sendable {
+    case up
+    case down
+}
+
+public enum ListCategoryPresentation {
+    public static func orderedCategories(
+        categories: [GroceryCategorySummary],
+        categoryOrder: [ListCategoryOrderEntry]
+    ) -> [GroceryCategorySummary] {
+        let categoryLookup = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
+        let explicitCategoryIDs = categoryOrder
+            .sorted {
+                if $0.sortOrder != $1.sortOrder {
+                    return $0.sortOrder < $1.sortOrder
+                }
+                return $0.categoryID.uuidString < $1.categoryID.uuidString
+            }
+            .map(\.categoryID)
+
+        var seenCategoryIDs = Set<UUID>()
+        var ordered = explicitCategoryIDs.compactMap { categoryID -> GroceryCategorySummary? in
+            guard seenCategoryIDs.insert(categoryID).inserted else { return nil }
+            return categoryLookup[categoryID]
+        }
+
+        ordered.append(
+            contentsOf: categories
+                .filter { seenCategoryIDs.contains($0.id) == false }
+                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        )
+        return ordered
+    }
+
+    public static func availableCategories(
+        categories: [GroceryCategorySummary],
+        disabledCategoryIDs: Set<UUID>
+    ) -> [GroceryCategorySummary] {
+        categories
+            .filter { disabledCategoryIDs.contains($0.id) == false }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    public static func movedCategoryIDs(
+        categories: [GroceryCategorySummary],
+        categoryOrder: [ListCategoryOrderEntry],
+        moving categoryID: UUID,
+        direction: ListCategoryMoveDirection
+    ) -> [UUID]? {
+        var categoryIDs = orderedCategories(categories: categories, categoryOrder: categoryOrder).map(\.id)
+        guard let currentIndex = categoryIDs.firstIndex(of: categoryID) else { return nil }
+
+        let nextIndex: Int
+        switch direction {
+        case .up:
+            guard currentIndex > categoryIDs.startIndex else { return nil }
+            nextIndex = categoryIDs.index(before: currentIndex)
+        case .down:
+            guard currentIndex < categoryIDs.index(before: categoryIDs.endIndex) else { return nil }
+            nextIndex = categoryIDs.index(after: currentIndex)
+        }
+
+        let movedCategoryID = categoryIDs.remove(at: currentIndex)
+        categoryIDs.insert(movedCategoryID, at: nextIndex)
+        return categoryIDs
+    }
+}
+
 public struct GroceryItemRecord: Identifiable, Equatable, Codable, Sendable {
     public let id: UUID
     public let listID: UUID
