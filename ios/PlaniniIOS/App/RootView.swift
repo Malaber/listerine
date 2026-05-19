@@ -121,6 +121,7 @@ struct RootView: View {
                     viewModel.favoriteList?.name ?? l10n.t("ios.tabs.favorite"),
                     systemImage: viewModel.favoriteListID == nil ? "star" : "star.fill"
                 )
+                .accessibilityIdentifier("tab-favorite-button")
             }
             .tag(AppTab.favorite)
             .accessibilityIdentifier("tab-favorite")
@@ -130,6 +131,7 @@ struct RootView: View {
             }
             .tabItem {
                 Label(l10n.t("ios.tabs.lists"), systemImage: "rectangle.grid.1x2")
+                    .accessibilityIdentifier("tab-lists-button")
             }
             .tag(AppTab.lists)
             .accessibilityIdentifier("tab-lists")
@@ -139,6 +141,7 @@ struct RootView: View {
             }
             .tabItem {
                 Label(l10n.t("common.settings"), systemImage: "gearshape")
+                    .accessibilityIdentifier("tab-settings-button")
             }
             .tag(AppTab.settings)
             .accessibilityIdentifier("tab-settings")
@@ -283,6 +286,7 @@ private struct ReviewerOnboardingSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(l10n.t("common.cancel")) { dismiss() }
+                        .accessibilityIdentifier("reviewer-onboarding-cancel-button")
                 }
             }
         }
@@ -674,7 +678,6 @@ private struct SectionHeader: View {
             }
         }
         .textCase(nil)
-        .accessibilityIdentifier("section-\(section.id)")
     }
 }
 
@@ -913,6 +916,7 @@ private struct AddItemSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(l10n.t("common.cancel")) { dismiss() }
+                        .accessibilityIdentifier("add-item-cancel-button")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(l10n.t("common.save")) {
@@ -1251,6 +1255,19 @@ private struct EditItemSheet: View {
             }
         }
 
+        var accessibilityValue: String {
+            switch self {
+            case .saved:
+                return "saved"
+            case .saving:
+                return "saving"
+            case .offline:
+                return "saved-offline"
+            case .invalid:
+                return "invalid"
+            }
+        }
+
         var systemImage: String {
             switch self {
             case .saved:
@@ -1313,6 +1330,7 @@ private struct EditItemSheet: View {
                         .font(.footnote)
                         .foregroundStyle(saveStatus == .invalid ? .red : .secondary)
                         .accessibilityIdentifier("edit-item-save-status")
+                        .accessibilityValue(saveStatus.accessibilityValue)
                 }
             }
             .navigationTitle(l10n.t("ios.item.edit_title"))
