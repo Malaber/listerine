@@ -219,4 +219,18 @@ public extension GroceryItemRecord {
             sortOrder: sortOrder
         )
     }
+
+    func moving(to listID: UUID) -> GroceryItemRecord {
+        GroceryItemRecord(
+            id: id,
+            listID: listID,
+            name: name,
+            quantityText: quantityText,
+            note: note,
+            categoryID: categoryID,
+            checked: checked,
+            checkedAt: checkedAt,
+            sortOrder: sortOrder
+        )
+    }
 }
