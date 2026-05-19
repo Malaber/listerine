@@ -337,7 +337,7 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(listSettingsButton.waitForExistence(timeout: 5))
         listSettingsButton.tap()
         XCTAssertTrue(app.otherElements["list-settings-sheet"].waitForExistence(timeout: 5))
-        let settingsSaveState = app.descendants(matching: .any)["list-settings-save-state"]
+        let settingsSaveState = app.descendants(matching: .any)["list-settings-save-state"].firstMatch
         XCTAssertTrue(settingsSaveState.waitForExistence(timeout: 3))
 
         let renamedHostingName = "Hosting errands \(UUID().uuidString.prefix(6))"
@@ -352,6 +352,7 @@ final class PlaniniUITests: XCTestCase {
             )
         )
         dismissKeyboard(in: app)
+        XCTAssertTrue(waitForElementLabel(settingsSaveState, containing: "Saved", timeout: 8))
 
         let haushaltRow = app.descendants(matching: .any)["category-settings-row-\(haushaltCategoryID.uuidString)"]
         let backwarenRow = app.descendants(matching: .any)["category-settings-row-\(backwarenCategoryID.uuidString)"]
@@ -465,6 +466,49 @@ final class PlaniniUITests: XCTestCase {
         )
         XCTAssertFalse(relaunchedApp.buttons["login-passkey-button"].exists)
         relaunchedApp.terminate()
+    }
+
+    func testInvalidStoredSessionShowsLogin() throws {
+        try assertLocalTestBackend()
+        let session = if let injectedSession {
+            injectedSession
+        } else {
+            try bootstrapSession(email: userEmail)
+        }
+
+        let app = XCUIApplication()
+        app.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
+        app.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
+        app.launchEnvironment["PLANINI_UI_TEST_ACCESS_TOKEN"] = session.accessToken
+        app.launchEnvironment["PLANINI_UI_TEST_DISPLAY_NAME"] = session.displayName
+        app.launchEnvironment["PLANINI_UI_TEST_INITIAL_LIST_NAME"] = initialListName
+        app.launch()
+
+        let listTitle = app.staticTexts["list-detail-title"]
+        XCTAssertTrue(
+            openInitialListDetail(in: app, listTitle: listTitle),
+            "Expected bootstrapped list before invalidating the stored session."
+        )
+        XCTAssertFalse(app.buttons["login-passkey-button"].exists)
+        app.terminate()
+
+        let expiredApp = XCUIApplication()
+        expiredApp.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
+        expiredApp.launchEnvironment["PLANINI_UI_TEST_RESTORE_STORED_SESSION"] = "1"
+        expiredApp.launchEnvironment["PLANINI_UI_TEST_STORED_ACCESS_TOKEN_OVERRIDE"] = "expired-ui-test-token"
+        expiredApp.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
+        expiredApp.launch()
+
+        XCTAssertTrue(expiredApp.buttons["login-passkey-button"].waitForExistence(timeout: 15))
+        XCTAssertFalse(expiredApp.tabBars.firstMatch.exists)
+        XCTAssertTrue(expiredApp.descendants(matching: .any)["login-last-account"].waitForExistence(timeout: 3))
+        let alert = expiredApp.alerts["Error"]
+        if alert.waitForExistence(timeout: 3) {
+            XCTAssertTrue(alert.staticTexts["Session expired. Sign in again with your passkey."].exists)
+            alert.buttons["OK"].tap()
+        }
+        XCTAssertTrue(expiredApp.buttons["login-passkey-button"].waitForExistence(timeout: 3))
+        expiredApp.terminate()
     }
 
     func testListReceivesLiveUpdates() throws {
@@ -865,8 +909,8 @@ final class PlaniniUITests: XCTestCase {
         firstCategoryID: UUID,
         accessToken: String
     ) -> Bool {
-        let grabberOffsets: [CGFloat] = [0.95, 0.85, 0.72, 0.55]
-        let targetOffsets: [CGFloat] = [-0.9, -0.6, -0.35, -0.1]
+        let grabberOffsets: [CGFloat] = [0.98, 0.95, 0.92, 0.85, 0.72, 0.55]
+        let targetOffsets: [CGFloat] = [-1.2, -0.9, -0.7, -0.6, -0.45, -0.35, -0.25, -0.1]
         for grabberOffset in grabberOffsets {
             for targetOffset in targetOffsets {
                 guard movingRow.waitForExistence(timeout: 3), targetRow.waitForExistence(timeout: 3) else {
@@ -875,8 +919,12 @@ final class PlaniniUITests: XCTestCase {
 
                 scrollToHittable(movingRow, in: app)
                 scrollToHittable(targetRow, in: app)
-                let grabber = movingRow.coordinate(withNormalizedOffset: CGVector(dx: grabberOffset, dy: 0.5))
-                let target = targetRow.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: targetOffset))
+                let grabber = movingRow.coordinate(
+                    withNormalizedOffset: CGVector(dx: grabberOffset, dy: 0.5)
+                )
+                let target = targetRow.coordinate(
+                    withNormalizedOffset: CGVector(dx: 0.95, dy: targetOffset)
+                )
                 grabber.press(forDuration: 1.0, thenDragTo: target)
                 if waitForFirstCategoryOrder(
                     listID: listID,
@@ -933,6 +981,21 @@ final class PlaniniUITests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
         return (statusLabel.exists && statusLabel.label.contains(status)) || app.staticTexts[status].exists
+    }
+
+    private func waitForElementLabel(
+        _ element: XCUIElement,
+        containing text: String,
+        timeout: TimeInterval = 8
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if element.exists && (element.label.contains(text) || element.valueText.contains(text)) {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        return element.exists && (element.label.contains(text) || element.valueText.contains(text))
     }
 
     private func waitForFieldValue(
