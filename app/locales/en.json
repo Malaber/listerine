@@ -9,9 +9,14 @@
     "cancel": "Cancel",
     "continue": "Continue",
     "copy": "Copy",
+    "ok": "OK",
+    "save": "Save",
     "save_changes": "Save changes",
+    "done": "Done",
     "delete": "Delete",
+    "edit": "Edit",
     "undo": "Undo",
+    "redo": "Redo",
     "close": "Close",
     "errors": {
       "unauthorized": "Unauthorized",
@@ -340,5 +345,103 @@
     "list_action_failed": "List action failed.",
     "undo_failed": "Could not undo action.",
     "load_failed": "Could not load the list."
+  },
+  "ios": {
+    "error": {
+      "title": "Error"
+    },
+    "language": {
+      "english": "English",
+      "german": "Deutsch"
+    },
+    "login": {
+      "trouble_signing_in": "Having trouble signing in?",
+      "backend": "Backend",
+      "configured_host": "Configured host",
+      "sign_in": "Sign in",
+      "signing_in": "Signing in...",
+      "continue_with_passkey": "Continue with Passkey"
+    },
+    "onboarding": {
+      "sign_in_help": "Sign-in help",
+      "add_passkey": "Add passkey",
+      "passkey_add_link_or_key": "Passkey add link or key",
+      "adding_passkey": "Adding passkey...",
+      "could_not_add_passkey": "Could not add that passkey.",
+      "create_account": "Create account",
+      "email": "Email",
+      "creating_account": "Creating account...",
+      "could_not_create_account": "Could not create that account."
+    },
+    "tabs": {
+      "favorite": "Favorite",
+      "lists": "Lists"
+    },
+    "favorite": {
+      "empty_title": "No favorite list yet",
+      "empty_message": "Pick a list in the Lists tab to keep it one tap away.",
+      "favorite_list": "Favorite list",
+      "unfavorite": "Unfavorite"
+    },
+    "settings": {
+      "account": "Account",
+      "unknown": "Unknown",
+      "sign_out": "Sign out",
+      "appearance": "Appearance",
+      "appearance_system": "System",
+      "appearance_light": "Light",
+      "appearance_dark": "Dark",
+      "language_helper": "Use system language, or choose a language only for Planini.",
+      "language_system_automatic": "Use system (automatic)",
+      "language_system_summary": "System ({language})",
+      "language_option_selected": "Selected",
+      "app": "App",
+      "backend": "Backend",
+      "available_lists": "Available lists",
+      "visible_categories": "Visible categories"
+    },
+    "list": {
+      "fallback_title": "List",
+      "item_summary": "{items} items across {sections} sections",
+      "empty_title": "Nothing on this list",
+      "empty_message": "Add an item to start grouping it into categories.",
+      "uncategorized": "Uncategorized",
+      "checked_off": "Checked off",
+      "quick_add_uncategorized": "Quick add uncategorized item",
+      "quick_add_to": "Quick add to {category}"
+    },
+    "item": {
+      "item_section": "Item",
+      "name": "Name",
+      "quantity": "Quantity",
+      "quantity_value": "Qty: {quantity}",
+      "suggestions": "Suggestions",
+      "category_section": "Category",
+      "category": "Category",
+      "category_search": "Search categories",
+      "category_sort": "Sort",
+      "category_sort_list_short": "List",
+      "category_sort_used_short": "Used",
+      "category_sort_list": "List order",
+      "category_sort_used": "Most used",
+      "categories": "Categories",
+      "no_categories_found": "No categories found",
+      "item_count": "{count} items",
+      "category_option_accessibility": "{name}, {count} items",
+      "notes_section": "Notes",
+      "note": "Note",
+      "add_title": "Add item",
+      "edit_title": "Edit item",
+      "add_back_to_list": "Add {name} back to the list",
+      "add_to_list": "Add {name} to the list",
+      "jump_to_item": "Jump to {name} in the list",
+      "suggestion_checked_off": "{category} - checked off",
+      "check": "Check {name}",
+      "uncheck": "Uncheck {name}",
+      "status_saved": "Saved",
+      "status_saving": "Saving...",
+      "status_saved_offline": "Saved offline",
+      "status_name_required": "Name required"
+    }
   }
 }
