@@ -426,6 +426,7 @@ private struct ReviewerOnboardingSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(l10n.t("common.cancel")) { dismiss() }
+                        .accessibilityIdentifier("reviewer-onboarding-cancel-button")
                 }
             }
         }

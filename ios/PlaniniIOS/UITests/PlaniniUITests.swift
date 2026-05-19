@@ -1349,8 +1349,11 @@ final class PlaniniUITests: XCTestCase {
         emailField.typeText("reviewer@example.com")
         XCTAssertTrue(app.buttons["registration-submit-button"].isEnabled)
 
-        app.buttons["Cancel"].tap()
-        XCTAssertFalse(app.otherElements["reviewer-onboarding-sheet"].exists)
+        let onboardingSheet = app.otherElements["reviewer-onboarding-sheet"]
+        let cancelButton = app.buttons["reviewer-onboarding-cancel-button"]
+        XCTAssertTrue(cancelButton.waitForExistence(timeout: 3))
+        tapElement(cancelButton)
+        XCTAssertTrue(waitForElementToDisappear(onboardingSheet, timeout: 5))
     }
 
     private func firstExistingElement(_ elements: [XCUIElement], timeout: TimeInterval) -> XCUIElement {
