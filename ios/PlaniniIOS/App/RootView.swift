@@ -363,6 +363,7 @@ private struct ReviewerOnboardingSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(l10n.t("common.cancel")) { dismiss() }
+                        .accessibilityIdentifier("reviewer-onboarding-cancel-button")
                 }
             }
         }
@@ -1279,6 +1280,7 @@ private struct AddItemSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(l10n.t("common.cancel")) { dismiss() }
+                        .accessibilityIdentifier("add-item-cancel-button")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(l10n.t("common.save")) {

@@ -11,6 +11,7 @@ final class PlaniniUITests: XCTestCase {
     func testListViewFlow() throws {
         try assertLocalTestBackend()
         let loginApp = XCUIApplication()
+        configureLaunchLanguage(for: loginApp)
         loginApp.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
         loginApp.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
         loginApp.launch()
@@ -25,6 +26,7 @@ final class PlaniniUITests: XCTestCase {
             try bootstrapSession(email: userEmail)
         }
         let app = XCUIApplication()
+        configureLaunchLanguage(for: app)
         app.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
         app.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
         app.launchEnvironment["PLANINI_UI_TEST_ACCESS_TOKEN"] = session.accessToken
@@ -94,7 +96,7 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons["add-item-save-button"].waitForExistence(timeout: 3))
         captureScreenshot(named: "ios-ui-category-quick-add")
-        app.buttons["Cancel"].tap()
+        tapCancelButton(in: app)
         XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 3))
 
         XCTAssertTrue(openAddItemSheet(in: app))
@@ -364,6 +366,7 @@ final class PlaniniUITests: XCTestCase {
             dragCategoryRow(
                 backwarenRow,
                 before: haushaltRow,
+                in: app,
                 listID: hostingListID,
                 firstCategoryID: backwarenCategoryID,
                 accessToken: session.accessToken
@@ -432,6 +435,7 @@ final class PlaniniUITests: XCTestCase {
         }
 
         let app = XCUIApplication()
+        configureLaunchLanguage(for: app)
         app.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
         app.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
         app.launchEnvironment["PLANINI_UI_TEST_ACCESS_TOKEN"] = session.accessToken
@@ -448,6 +452,7 @@ final class PlaniniUITests: XCTestCase {
         app.terminate()
 
         let relaunchedApp = XCUIApplication()
+        configureLaunchLanguage(for: relaunchedApp)
         relaunchedApp.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
         relaunchedApp.launchEnvironment["PLANINI_UI_TEST_RESTORE_STORED_SESSION"] = "1"
         relaunchedApp.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
@@ -471,6 +476,7 @@ final class PlaniniUITests: XCTestCase {
         }
 
         let app = XCUIApplication()
+        configureLaunchLanguage(for: app)
         app.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
         app.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
         app.launchEnvironment["PLANINI_UI_TEST_ACCESS_TOKEN"] = session.accessToken
@@ -532,7 +538,7 @@ final class PlaniniUITests: XCTestCase {
         try assertLocalTestBackend()
         let ownerSession = try bootstrapSession(email: seededEmail)
         let inviteeSession = try bootstrapSession(email: "preview-invitee@example.com")
-        let linkedListID = try listID(named: "Hosting errands", accessToken: ownerSession.accessToken)
+        let linkedListID = try listID(named: initialListName, accessToken: ownerSession.accessToken)
         let inviteToken = try createInvite(
             householdName: "Review Household",
             accessToken: ownerSession.accessToken
@@ -544,7 +550,7 @@ final class PlaniniUITests: XCTestCase {
             openedLink: baseURL.appending(path: "/lists/\(linkedListID.uuidString)")
         )
         XCTAssertTrue(ownerApp.staticTexts["list-detail-title"].waitForExistence(timeout: 10))
-        XCTAssertEqual(ownerApp.staticTexts["list-detail-title"].label, "Hosting errands")
+        XCTAssertEqual(ownerApp.staticTexts["list-detail-title"].label, initialListName)
         ownerApp.terminate()
 
         let inviteeApp = launchedApp(
@@ -649,6 +655,7 @@ final class PlaniniUITests: XCTestCase {
         openedLink: URL? = nil
     ) -> XCUIApplication {
         let app = XCUIApplication()
+        configureLaunchLanguage(for: app)
         app.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
         app.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
         app.launchEnvironment["PLANINI_UI_TEST_ACCESS_TOKEN"] = session.accessToken
@@ -662,6 +669,11 @@ final class PlaniniUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 10))
         return app
+    }
+
+    private func configureLaunchLanguage(for app: XCUIApplication) {
+        app.launchEnvironment["PLANINI_UI_TEST_LANGUAGE"] = "en"
+        app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
     }
 
     private func tapItemToggleButton(
@@ -869,28 +881,34 @@ final class PlaniniUITests: XCTestCase {
     private func dragCategoryRow(
         _ movingRow: XCUIElement,
         before targetRow: XCUIElement,
+        in app: XCUIApplication,
         listID: UUID,
         firstCategoryID: UUID,
         accessToken: String
     ) -> Bool {
-        let targetOffsets: [CGFloat] = [-0.7, -0.35]
-        for targetOffset in targetOffsets {
-            guard movingRow.waitForExistence(timeout: 3), targetRow.waitForExistence(timeout: 3) else {
-                return false
-            }
+        let grabberOffsets: [CGFloat] = [0.95, 0.85, 0.72, 0.55]
+        let targetOffsets: [CGFloat] = [-0.9, -0.6, -0.35, -0.1]
+        for grabberOffset in grabberOffsets {
+            for targetOffset in targetOffsets {
+                guard movingRow.waitForExistence(timeout: 3), targetRow.waitForExistence(timeout: 3) else {
+                    return false
+                }
 
-            let grabber = movingRow.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5))
-            let target = targetRow.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: targetOffset))
-            grabber.press(forDuration: 0.8, thenDragTo: target)
-            if waitForFirstCategoryOrder(
-                listID: listID,
-                categoryID: firstCategoryID,
-                accessToken: accessToken,
-                timeout: 4
-            ) {
-                return true
+                scrollToHittable(movingRow, in: app)
+                scrollToHittable(targetRow, in: app)
+                let grabber = movingRow.coordinate(withNormalizedOffset: CGVector(dx: grabberOffset, dy: 0.5))
+                let target = targetRow.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: targetOffset))
+                grabber.press(forDuration: 1.0, thenDragTo: target)
+                if waitForFirstCategoryOrder(
+                    listID: listID,
+                    categoryID: firstCategoryID,
+                    accessToken: accessToken,
+                    timeout: 4
+                ) {
+                    return true
+                }
+                RunLoop.current.run(until: Date().addingTimeInterval(0.4))
             }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         }
         return waitForFirstCategoryOrder(
             listID: listID,
@@ -1090,7 +1108,6 @@ final class PlaniniUITests: XCTestCase {
         timeout: TimeInterval = 45
     ) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
-        let listsTab = app.tabBars.buttons["Lists"]
         let initialListRow = app.buttons["list-row-\(initialListName)"]
 
         while Date() < deadline {
@@ -1098,11 +1115,7 @@ final class PlaniniUITests: XCTestCase {
                 return true
             }
 
-            if listsTab.exists {
-                guard tapTab("Lists", in: app) else {
-                    RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-                    continue
-                }
+            if tapTab("Lists", in: app, timeout: 1) {
                 returnToListsRootIfNeeded(app)
                 if initialListRow.waitForExistence(timeout: 2) {
                     initialListRow.tap()
@@ -1119,12 +1132,33 @@ final class PlaniniUITests: XCTestCase {
     }
 
     private func tapTab(_ label: String, in app: XCUIApplication, timeout: TimeInterval = 5) -> Bool {
-        let tabButton = app.tabBars.buttons[label]
-        guard tabButton.waitForExistence(timeout: timeout) else {
+        let tabButton = firstExistingElement(tabCandidates(for: label, in: app), timeout: timeout)
+        guard tabButton.exists else {
             return false
         }
         tapElement(tabButton)
         return true
+    }
+
+    private func tabCandidates(for label: String, in app: XCUIApplication) -> [XCUIElement] {
+        switch label {
+        case "Lists":
+            return [
+                app.tabBars.buttons["tab-lists"],
+                app.buttons["tab-lists"],
+                app.tabBars.buttons["Lists"],
+                app.tabBars.buttons["Listen"],
+            ]
+        case "Settings":
+            return [
+                app.tabBars.buttons["tab-settings"],
+                app.buttons["tab-settings"],
+                app.tabBars.buttons["Settings"],
+                app.tabBars.buttons["Einstellungen"],
+            ]
+        default:
+            return [app.tabBars.buttons[label], app.buttons[label]]
+        }
     }
 
     private func chooseCategory(
@@ -1217,6 +1251,20 @@ final class PlaniniUITests: XCTestCase {
             app.swipeDown()
         }
         XCTAssertTrue(waitForElementToDisappear(keyboard, timeout: 3))
+    }
+
+    private func tapCancelButton(in app: XCUIApplication) {
+        let button = firstExistingElement(
+            [
+                app.buttons["add-item-cancel-button"],
+                app.buttons["reviewer-onboarding-cancel-button"],
+                app.buttons["Cancel"],
+                app.buttons["Abbrechen"],
+            ],
+            timeout: 3
+        )
+        XCTAssertTrue(button.exists)
+        tapElement(button)
     }
 
     private func replaceText(in element: XCUIElement, with value: String) {
@@ -1375,7 +1423,7 @@ final class PlaniniUITests: XCTestCase {
         emailField.typeText("reviewer@example.com")
         XCTAssertTrue(app.buttons["registration-submit-button"].isEnabled)
 
-        app.buttons["Cancel"].tap()
+        tapCancelButton(in: app)
         XCTAssertFalse(app.otherElements["reviewer-onboarding-sheet"].exists)
     }
 
