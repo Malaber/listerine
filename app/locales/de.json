@@ -8,10 +8,17 @@
     "logout": "Abmelden",
     "cancel": "Abbrechen",
     "continue": "Weiter",
+    "create": "Erstellen",
     "copy": "Kopieren",
+    "share": "Teilen",
+    "ok": "OK",
+    "save": "Speichern",
     "save_changes": "Änderungen speichern",
+    "done": "Fertig",
     "delete": "Löschen",
+    "edit": "Bearbeiten",
     "undo": "Rückgängig",
+    "redo": "Wiederholen",
     "close": "Schließen",
     "errors": {
       "unauthorized": "Nicht autorisiert",
@@ -340,5 +347,124 @@
     "list_action_failed": "Aktion für die Liste fehlgeschlagen.",
     "undo_failed": "Aktion konnte nicht rückgängig gemacht werden.",
     "load_failed": "Die Liste konnte nicht geladen werden."
+  },
+  "ios": {
+    "error": {
+      "title": "Fehler"
+    },
+    "language": {
+      "english": "Englisch",
+      "german": "Deutsch"
+    },
+    "login": {
+      "trouble_signing_in": "Probleme beim Anmelden?",
+      "backend": "Backend",
+      "configured_host": "Konfigurierter Host",
+      "sign_in": "Anmelden",
+      "signing_in": "Anmeldung läuft...",
+      "continue_with_passkey": "Mit Passkey fortfahren"
+    },
+    "onboarding": {
+      "sign_in_help": "Anmeldehilfe",
+      "add_passkey": "Passkey hinzufügen",
+      "passkey_add_link_or_key": "Passkey-Link oder Schlüssel",
+      "adding_passkey": "Passkey wird hinzugefügt...",
+      "could_not_add_passkey": "Dieser Passkey konnte nicht hinzugefügt werden.",
+      "create_account": "Konto erstellen",
+      "email": "E-Mail",
+      "creating_account": "Konto wird erstellt...",
+      "could_not_create_account": "Dieses Konto konnte nicht erstellt werden."
+    },
+    "tabs": {
+      "favorite": "Favorit",
+      "lists": "Listen"
+    },
+    "favorite": {
+      "empty_title": "Noch keine Favoritenliste",
+      "empty_message": "Wähle eine Liste im Tab Listen, damit sie nur einen Tipp entfernt ist.",
+      "favorite_list": "Favoritenliste",
+      "unfavorite": "Favorit entfernen"
+    },
+    "settings": {
+      "account": "Konto",
+      "unknown": "Unbekannt",
+      "sign_out": "Abmelden",
+      "appearance": "Darstellung",
+      "appearance_system": "System",
+      "appearance_light": "Hell",
+      "appearance_dark": "Dunkel",
+      "language_helper": "Nutze die Systemsprache oder wähle eine Sprache nur für Planini.",
+      "language_system_automatic": "System verwenden (automatisch)",
+      "language_system_summary": "System ({language})",
+      "language_option_selected": "Ausgewählt",
+      "app": "App",
+      "backend": "Backend",
+      "available_lists": "Verfügbare Listen",
+      "visible_categories": "Sichtbare Kategorien"
+    },
+    "households": {
+      "settings_row": "Haushalte und Listen",
+      "title": "Haushalte",
+      "empty_title": "Noch keine Haushalte",
+      "empty_message": "Erstelle einen Haushalt, bevor du Listen oder Einladungslinks hinzufügst.",
+      "new_household": "Neuer Haushalt",
+      "household_name": "Haushaltsname",
+      "list_count_one": "1 Liste",
+      "list_count_other": "{count} Listen",
+      "fallback_title": "Haushalt",
+      "lists_section": "Listen",
+      "no_lists_title": "Noch keine Listen",
+      "no_lists_message": "Erstelle eine Liste für gemeinsame Einkäufe oder Aufgaben.",
+      "new_list": "Neue Liste",
+      "list_name": "Listenname",
+      "invites_section": "Einladungen",
+      "creating_invite": "Einladung wird erstellt...",
+      "create_invite_link": "Einladungslink erstellen",
+      "expires_at": "Läuft ab {date}",
+      "save_failed": "Konnte nicht gespeichert werden."
+    },
+    "list": {
+      "fallback_title": "Liste",
+      "item_summary": "{items} Artikel in {sections} Abschnitten",
+      "empty_title": "Nichts auf dieser Liste",
+      "empty_message": "Füge einen Artikel hinzu, um ihn in Kategorien zu gruppieren.",
+      "uncategorized": "Ohne Kategorie",
+      "checked_off": "Abgehakt",
+      "quick_add_uncategorized": "Artikel ohne Kategorie schnell hinzufügen",
+      "quick_add_to": "Schnell zu {category} hinzufügen"
+    },
+    "item": {
+      "item_section": "Artikel",
+      "name": "Name",
+      "quantity": "Menge",
+      "quantity_value": "Menge: {quantity}",
+      "suggestions": "Vorschläge",
+      "category_section": "Kategorie",
+      "category": "Kategorie",
+      "category_search": "Kategorien suchen",
+      "category_sort": "Sortieren",
+      "category_sort_list_short": "Liste",
+      "category_sort_used_short": "Genutzt",
+      "category_sort_list": "Listenreihenfolge",
+      "category_sort_used": "Meistgenutzt",
+      "categories": "Kategorien",
+      "no_categories_found": "Keine Kategorien gefunden",
+      "item_count": "{count} Artikel",
+      "category_option_accessibility": "{name}, {count} Artikel",
+      "notes_section": "Notizen",
+      "note": "Notiz",
+      "add_title": "Artikel hinzufügen",
+      "edit_title": "Artikel bearbeiten",
+      "add_back_to_list": "{name} wieder zur Liste hinzufügen",
+      "add_to_list": "{name} zur Liste hinzufügen",
+      "jump_to_item": "Zu {name} in der Liste springen",
+      "suggestion_checked_off": "{category} - abgehakt",
+      "check": "{name} abhaken",
+      "uncheck": "{name} wieder öffnen",
+      "status_saved": "Gespeichert",
+      "status_saving": "Speichern...",
+      "status_saved_offline": "Offline gespeichert",
+      "status_name_required": "Name erforderlich"
+    }
   }
 }
