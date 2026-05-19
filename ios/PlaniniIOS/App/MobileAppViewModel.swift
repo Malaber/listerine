@@ -40,6 +40,34 @@ private struct MobileListData: Codable {
     let items: [GroceryItemRecord]
     let categories: [GroceryCategorySummary]
     let categoryOrder: [ListCategoryOrderEntry]
+    let disabledCategoryIDs: [UUID]
+
+    init(
+        items: [GroceryItemRecord],
+        categories: [GroceryCategorySummary],
+        categoryOrder: [ListCategoryOrderEntry],
+        disabledCategoryIDs: [UUID] = []
+    ) {
+        self.items = items
+        self.categories = categories
+        self.categoryOrder = categoryOrder
+        self.disabledCategoryIDs = disabledCategoryIDs
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case items
+        case categories
+        case categoryOrder
+        case disabledCategoryIDs
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        items = try container.decode([GroceryItemRecord].self, forKey: .items)
+        categories = try container.decode([GroceryCategorySummary].self, forKey: .categories)
+        categoryOrder = try container.decode([ListCategoryOrderEntry].self, forKey: .categoryOrder)
+        disabledCategoryIDs = try container.decodeIfPresent([UUID].self, forKey: .disabledCategoryIDs) ?? []
+    }
 }
 
 private struct PendingItemEdit: Codable, Equatable {
@@ -69,6 +97,7 @@ final class MobileAppViewModel: ObservableObject {
     @Published private(set) var items: [GroceryItemRecord] = []
     @Published private(set) var categories: [GroceryCategorySummary] = []
     @Published private(set) var categoryOrder: [ListCategoryOrderEntry] = []
+    @Published private(set) var disabledCategoryIDs: Set<UUID> = []
     @Published var selectedListID: UUID?
     @Published private(set) var favoriteListID: UUID?
     @Published var quickAddItemName: String
@@ -158,7 +187,14 @@ final class MobileAppViewModel: ObservableObject {
     }
 
     var availableCategories: [GroceryCategorySummary] {
-        categories.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        ListCategoryPresentation.availableCategories(
+            categories: categories,
+            disabledCategoryIDs: disabledCategoryIDs
+        )
+    }
+
+    var categoriesForSettings: [GroceryCategorySummary] {
+        ListCategoryPresentation.orderedCategories(categories: categories, categoryOrder: categoryOrder)
     }
 
     var sections: [GroceryItemSection] {
@@ -560,6 +596,7 @@ final class MobileAppViewModel: ObservableObject {
         items = []
         categories = []
         categoryOrder = []
+        disabledCategoryIDs = []
         selectedListID = nil
         errorMessage = nil
         reviewerOnboardingMessage = nil
@@ -596,6 +633,14 @@ final class MobileAppViewModel: ObservableObject {
         quickAddItemName = trimmed.isEmpty ? SharedAppState.defaultQuickAddItemName : trimmed
         userDefaults.set(quickAddItemName, forKey: Self.quickAddItemKey)
         watchSyncCoordinator.publishCurrentState()
+    }
+
+    func isCategoryDisabled(_ categoryID: UUID) -> Bool {
+        disabledCategoryIDs.contains(categoryID)
+    }
+
+    func itemCount(inCategory categoryID: UUID) -> Int {
+        items.filter { $0.categoryID == categoryID }.count
     }
 
     func hasPendingEdit(for itemID: UUID) -> Bool {
@@ -698,6 +743,7 @@ final class MobileAppViewModel: ObservableObject {
             items = []
             categories = []
             categoryOrder = []
+            disabledCategoryIDs = []
             updateLiveUpdatesConnection()
             watchSyncCoordinator.publishCurrentState()
             return
@@ -879,6 +925,87 @@ final class MobileAppViewModel: ObservableObject {
         }
     }
 
+    @discardableResult
+    func renameList(id listID: UUID, name rawName: String) async -> Bool {
+        let trimmed = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false, let backendURL, let authToken else { return false }
+        guard let listIndex = lists.firstIndex(where: { $0.id == listID }) else { return false }
+
+        do {
+            let payload = try await requestJSON(
+                backendURL: backendURL,
+                path: "/api/v1/lists/\(listID.uuidString)",
+                method: "PATCH",
+                body: ["name": trimmed],
+                token: authToken
+            )
+            let previous = lists[listIndex]
+            let updatedName = (payload["name"] as? String) ?? trimmed
+            lists[listIndex] = GroceryListSummary(
+                id: previous.id,
+                householdID: previous.householdID,
+                householdName: previous.householdName,
+                name: updatedName,
+                archived: previous.archived
+            )
+            lists = sortedLists(lists)
+            cacheLists(lists)
+            watchSyncCoordinator.publishCurrentState()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    @discardableResult
+    func moveCategory(id categoryID: UUID, direction: ListCategoryMoveDirection) async -> Bool {
+        guard
+            let categoryIDs = ListCategoryPresentation.movedCategoryIDs(
+                categories: categories,
+                categoryOrder: categoryOrder,
+                moving: categoryID,
+                direction: direction
+            )
+        else {
+            return false
+        }
+
+        return await saveCategoryOrder(categoryIDs: categoryIDs)
+    }
+
+    @discardableResult
+    func setCategory(id categoryID: UUID, disabled: Bool) async -> Bool {
+        guard categories.contains(where: { $0.id == categoryID }) else { return false }
+        guard disabledCategoryIDs.contains(categoryID) != disabled else { return true }
+        guard let backendURL, let authToken, let selectedListID else { return false }
+
+        let previousDisabledCategoryIDs = disabledCategoryIDs
+        if disabled {
+            disabledCategoryIDs.insert(categoryID)
+        } else {
+            disabledCategoryIDs.remove(categoryID)
+        }
+
+        do {
+            let payload = try await requestJSON(
+                backendURL: backendURL,
+                path: "/api/v1/lists/\(selectedListID.uuidString)/disabled-categories",
+                method: "PUT",
+                body: ["category_ids": disabledCategoryIDs.map(\.uuidString)],
+                token: authToken
+            )
+            disabledCategoryIDs = Set(parseDisabledCategoryIDs(from: payload))
+            try await reloadItems()
+            watchSyncCoordinator.publishCurrentState()
+            return true
+        } catch {
+            disabledCategoryIDs = previousDisabledCategoryIDs
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
     private func makeSharedAppState() -> SharedAppState {
         let syncsFavoriteList = selectedListID == favoriteListID
         let syncedItems = syncsFavoriteList ? items : []
@@ -969,16 +1096,26 @@ final class MobileAppViewModel: ObservableObject {
             path: "/api/v1/lists/\(listID.uuidString)/category-order",
             token: authToken
         )
+        async let disabledCategoriesPayload = requestJSON(
+            backendURL: backendURL,
+            path: "/api/v1/lists/\(listID.uuidString)/disabled-categories",
+            method: "GET",
+            body: nil,
+            token: authToken
+        )
 
         let loadedItems = try await itemPayload.compactMap(GroceryItemRecord.init)
         let loadedCategories = try await categoryPayload.compactMap(GroceryCategorySummary.init)
         let loadedCategoryOrder = try await categoryOrderPayload.compactMap(
             ListCategoryOrderEntry.init
         )
+        let disabledCategories = try await disabledCategoriesPayload
+        let loadedDisabledCategoryIDs = parseDisabledCategoryIDs(from: disabledCategories)
         return MobileListData(
             items: loadedItems,
             categories: loadedCategories,
-            categoryOrder: loadedCategoryOrder
+            categoryOrder: loadedCategoryOrder,
+            disabledCategoryIDs: loadedDisabledCategoryIDs
         )
     }
 
@@ -986,6 +1123,51 @@ final class MobileAppViewModel: ObservableObject {
         items = applyPendingItemEdits(to: listData.items)
         categories = listData.categories
         categoryOrder = listData.categoryOrder
+        disabledCategoryIDs = Set(listData.disabledCategoryIDs)
+    }
+
+    private func cacheCurrentListData() {
+        guard let selectedListID else { return }
+        cacheListData(
+            MobileListData(
+                items: items,
+                categories: categories,
+                categoryOrder: categoryOrder,
+                disabledCategoryIDs: Array(disabledCategoryIDs)
+            ),
+            listID: selectedListID
+        )
+    }
+
+    private func parseDisabledCategoryIDs(from payload: [String: Any]) -> [UUID] {
+        (payload["category_ids"] as? [String] ?? []).compactMap(UUID.init(uuidString:))
+    }
+
+    @discardableResult
+    func saveCategoryOrder(categoryIDs: [UUID]) async -> Bool {
+        guard let backendURL, let authToken, let selectedListID else { return false }
+        let previousCategoryOrder = categoryOrder
+        categoryOrder = categoryIDs.enumerated().map { index, categoryID in
+            ListCategoryOrderEntry(categoryID: categoryID, sortOrder: index)
+        }
+
+        do {
+            let response = try await requestArray(
+                backendURL: backendURL,
+                path: "/api/v1/lists/\(selectedListID.uuidString)/category-order",
+                method: "PUT",
+                body: ["category_ids": categoryIDs.map(\.uuidString)],
+                token: authToken
+            )
+            categoryOrder = response.compactMap(ListCategoryOrderEntry.init)
+            cacheCurrentListData()
+            watchSyncCoordinator.publishCurrentState()
+            return true
+        } catch {
+            categoryOrder = previousCategoryOrder
+            errorMessage = error.localizedDescription
+            return false
+        }
     }
 
     private func sortedLists(_ lists: [GroceryListSummary]) -> [GroceryListSummary] {
@@ -1194,12 +1376,18 @@ final class MobileAppViewModel: ObservableObject {
         }
     }
 
-    private func requestArray(backendURL: URL, path: String, token: String) async throws -> [[String: Any]] {
+    private func requestArray(
+        backendURL: URL,
+        path: String,
+        method: String = "GET",
+        body: [String: Any]? = nil,
+        token: String
+    ) async throws -> [[String: Any]] {
         let data = try await requestData(
             backendURL: backendURL,
             path: path,
-            method: "GET",
-            body: nil,
+            method: method,
+            body: body,
             token: token
         )
         do {
@@ -1392,6 +1580,7 @@ final class MobileListLiveUpdateClient {
             "item_unchecked",
             "item_deleted",
             "category_order_updated",
+            "category_disabled_categories_updated",
         ]
         guard liveUpdateTypes.contains(type) else { return }
 
