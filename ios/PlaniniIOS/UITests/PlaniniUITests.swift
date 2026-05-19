@@ -331,7 +331,7 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(moveNoticeMessage.waitForExistence(timeout: 3))
         XCTAssertTrue(moveNoticeMessage.label.contains("Brot"))
         XCTAssertTrue(moveNoticeMessage.label.contains("Hosting errands"))
-        let checkedCountBadge = app.staticTexts["section-count-badge-checked"]
+        let checkedCountBadge = sectionCountBadge(sectionID: "checked", in: app)
         XCTAssertTrue(waitForSectionCountBadge(checkedCountBadge, count: 0))
         captureScreenshot(named: "ios-ui-moved-item-notice")
         app.buttons["move-item-undo-button-\(seededItemID.uuidString)"].tap()
@@ -390,7 +390,7 @@ final class PlaniniUITests: XCTestCase {
         )
         let failedUndoNotice = app.otherElements["item-move-notice-\(updatedItemID.uuidString)"]
         XCTAssertTrue(failedUndoNotice.waitForExistence(timeout: 5))
-        let konservenCountBadge = app.staticTexts["section-count-badge-category-\(sourceKonservenCategoryID.uuidString)"]
+        let konservenCountBadge = sectionCountBadge(sectionID: "category-\(sourceKonservenCategoryID.uuidString)", in: app)
         XCTAssertTrue(waitForSectionCountBadge(konservenCountBadge, count: 1))
         try deleteItem(itemID: updatedItemID, accessToken: session.accessToken)
         app.buttons["move-item-undo-button-\(updatedItemID.uuidString)"].tap()
@@ -1004,6 +1004,10 @@ final class PlaniniUITests: XCTestCase {
         }
 
         return sectionCountBadge(element, matchesNumber: expectedNumber, countText: expectedCountText)
+    }
+
+    private func sectionCountBadge(sectionID: String, in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any)["section-count-badge-\(sectionID)"]
     }
 
     private func sectionCountBadge(_ element: XCUIElement, matchesNumber number: String, countText: String) -> Bool {
