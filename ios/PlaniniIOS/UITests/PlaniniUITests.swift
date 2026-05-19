@@ -338,7 +338,7 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(listSettingsButton.waitForExistence(timeout: 5))
         listSettingsButton.tap()
         XCTAssertTrue(app.otherElements["list-settings-sheet"].waitForExistence(timeout: 5))
-        let settingsSaveState = app.descendants(matching: .any)["list-settings-save-state"]
+        let settingsSaveState = app.descendants(matching: .any)["list-settings-save-state"].firstMatch
         XCTAssertTrue(settingsSaveState.waitForExistence(timeout: 3))
 
         let renamedHostingName = "Hosting errands \(UUID().uuidString.prefix(6))"
