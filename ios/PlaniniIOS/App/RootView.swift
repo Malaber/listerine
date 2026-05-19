@@ -186,6 +186,7 @@ struct RootView: View {
                     viewModel.favoriteList?.name ?? l10n.t("ios.tabs.favorite"),
                     systemImage: viewModel.favoriteListID == nil ? "star" : "star.fill"
                 )
+                .accessibilityIdentifier("tab-favorite-button")
             }
             .tag(AppTab.favorite)
             .accessibilityIdentifier("tab-favorite")
@@ -198,6 +199,7 @@ struct RootView: View {
             }
             .tabItem {
                 Label(l10n.t("ios.tabs.lists"), systemImage: "rectangle.grid.1x2")
+                    .accessibilityIdentifier("tab-lists-button")
             }
             .tag(AppTab.lists)
             .accessibilityIdentifier("tab-lists")
@@ -207,6 +209,7 @@ struct RootView: View {
             }
             .tabItem {
                 Label(l10n.t("common.settings"), systemImage: "gearshape")
+                    .accessibilityIdentifier("tab-settings-button")
             }
             .tag(AppTab.settings)
             .accessibilityIdentifier("tab-settings")
@@ -1071,6 +1074,8 @@ private struct ListDetailScreen: View {
         switch section.kind {
         case .uncategorized:
             return l10n.t("ios.list.uncategorized")
+        case .hidden:
+            return l10n.t("ios.list.hidden_for_later")
         case .checked:
             return l10n.t("ios.list.checked_off")
         case .category:
@@ -1359,7 +1364,7 @@ private struct SectionHeader: View {
 
     private var allowsQuickAdd: Bool {
         switch section.kind {
-        case .checked:
+        case .hidden, .checked:
             return false
         case .uncategorized, .category:
             return true
@@ -1368,7 +1373,7 @@ private struct SectionHeader: View {
 
     private var quickAddCategoryID: UUID? {
         switch section.kind {
-        case .uncategorized, .checked:
+        case .uncategorized, .hidden, .checked:
             return nil
         case let .category(categoryID):
             return categoryID
@@ -1403,7 +1408,6 @@ private struct SectionHeader: View {
             }
         }
         .textCase(nil)
-        .accessibilityIdentifier("section-\(section.id)")
     }
 }
 
@@ -1437,29 +1441,57 @@ private struct ItemRow: View {
     let item: GroceryItemRecord
     let onEdit: () -> Void
 
+    private var isHiddenForLater: Bool {
+        item.isHiddenForLater()
+    }
+
+    private var toggleSystemImageName: String {
+        if isHiddenForLater {
+            return "hourglass.circle"
+        }
+        return item.checked ? "checkmark.circle.fill" : "circle"
+    }
+
+    private var toggleForegroundStyle: Color {
+        if isHiddenForLater {
+            return .orange
+        }
+        return item.checked ? .green : .secondary
+    }
+
+    private var toggleAccessibilityLabel: String {
+        if isHiddenForLater {
+            return l10n.t("ios.item.show_hidden", ["name": item.name])
+        }
+        return item.checked
+            ? l10n.t("ios.item.uncheck", ["name": item.name])
+            : l10n.t("ios.item.check", ["name": item.name])
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             Button {
                 Task {
-                    let toggled = await viewModel.toggle(item)
-                    if toggled {
+                    let didChange: Bool
+                    if isHiddenForLater {
+                        didChange = await viewModel.restoreHiddenItem(item)
+                    } else {
+                        didChange = await viewModel.toggle(item)
+                    }
+                    if didChange {
                         AppHaptics.itemToggle()
                     }
                 }
             } label: {
-                Image(systemName: item.checked ? "checkmark.circle.fill" : "circle")
+                Image(systemName: toggleSystemImageName)
                     .font(.title3)
-                    .foregroundStyle(item.checked ? .green : .secondary)
+                    .foregroundStyle(toggleForegroundStyle)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("toggle-item-\(item.id.uuidString)")
-            .accessibilityLabel(
-                item.checked
-                    ? l10n.t("ios.item.uncheck", ["name": item.name])
-                    : l10n.t("ios.item.check", ["name": item.name])
-            )
+            .accessibilityLabel(toggleAccessibilityLabel)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.name)
@@ -1485,6 +1517,22 @@ private struct ItemRow: View {
         .onTapGesture(perform: onEdit)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("item-row-\(item.id.uuidString)")
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            if item.checked == false && isHiddenForLater == false {
+                Button {
+                    Task {
+                        let hidden = await viewModel.hideForLater(item)
+                        if hidden {
+                            AppHaptics.itemToggle()
+                        }
+                    }
+                } label: {
+                    Label(l10n.t("ios.item.hide_for_later_short"), systemImage: "hourglass")
+                }
+                .tint(.orange)
+                .accessibilityIdentifier("hide-item-\(item.id.uuidString)")
+            }
+        }
         .swipeActions {
             Button(role: .destructive) {
                 Task {
@@ -1939,6 +1987,19 @@ private struct EditItemSheet: View {
             }
         }
 
+        var accessibilityValue: String {
+            switch self {
+            case .saved:
+                return "saved"
+            case .saving:
+                return "saving"
+            case .offline:
+                return "saved-offline"
+            case .invalid:
+                return "invalid"
+            }
+        }
+
         var systemImage: String {
             switch self {
             case .saved:
@@ -2001,6 +2062,7 @@ private struct EditItemSheet: View {
                         .font(.footnote)
                         .foregroundStyle(saveStatus == .invalid ? .red : .secondary)
                         .accessibilityIdentifier("edit-item-save-status")
+                        .accessibilityValue(saveStatus.accessibilityValue)
                 }
             }
             .navigationTitle(l10n.t("ios.item.edit_title"))

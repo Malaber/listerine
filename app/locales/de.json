@@ -429,6 +429,7 @@
       "empty_title": "Nichts auf dieser Liste",
       "empty_message": "Füge einen Artikel hinzu, um ihn in Kategorien zu gruppieren.",
       "uncategorized": "Ohne Kategorie",
+      "hidden_for_later": "Für 4h ausgeblendet",
       "checked_off": "Abgehakt",
       "quick_add_uncategorized": "Artikel ohne Kategorie schnell hinzufügen",
       "quick_add_to": "Schnell zu {category} hinzufügen"
@@ -461,6 +462,8 @@
       "suggestion_checked_off": "{category} - abgehakt",
       "check": "{name} abhaken",
       "uncheck": "{name} wieder öffnen",
+      "show_hidden": "{name} jetzt anzeigen",
+      "hide_for_later_short": "Später 4h",
       "status_saved": "Gespeichert",
       "status_saving": "Speichern...",
       "status_saved_offline": "Offline gespeichert",
