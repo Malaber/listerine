@@ -18,6 +18,7 @@ struct WatchRootView: View {
                 } else {
                     listsSection
                 }
+                versionSection
             }
             .navigationTitle("Lists")
             .toolbar {
@@ -89,6 +90,16 @@ struct WatchRootView: View {
                     }
                 }
             }
+        }
+    }
+
+    private var versionSection: some View {
+        Section {
+            Text(viewModel.versionBuildText)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .accessibilityIdentifier("watch-version-build-label")
         }
     }
 }

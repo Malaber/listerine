@@ -111,6 +111,13 @@ final class WatchAppViewModel: ObservableObject {
         isPhoneReachable ? "Sync from iPhone" : "Open and unlock iPhone app"
     }
 
+    var versionBuildText: String {
+        let info = Bundle.main.infoDictionary ?? [:]
+        let version = info["CFBundleShortVersionString"] as? String ?? "0"
+        let build = info["CFBundleVersion"] as? String ?? "0"
+        return "Version \(version) (\(build))"
+    }
+
     func performInitialLoad() async {
         await Task.yield()
         connectivityBridge.requestLatestState()
