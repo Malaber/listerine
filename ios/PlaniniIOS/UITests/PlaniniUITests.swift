@@ -25,6 +25,7 @@ final class PlaniniUITests: XCTestCase {
         } else {
             try bootstrapSession(email: userEmail)
         }
+
         let app = XCUIApplication()
         configureLaunchLanguage(for: app)
         app.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
@@ -433,7 +434,6 @@ final class PlaniniUITests: XCTestCase {
         } else {
             try bootstrapSession(email: userEmail)
         }
-
         let app = XCUIApplication()
         configureLaunchLanguage(for: app)
         app.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
@@ -534,6 +534,102 @@ final class PlaniniUITests: XCTestCase {
         )
     }
 
+    func testCachedListDoesNotShowErrorAlertWhenBackendIsOffline() throws {
+        try assertLocalTestBackend()
+        let session = if let injectedSession {
+            injectedSession
+        } else {
+            try bootstrapSession(email: userEmail)
+        }
+
+        let app = XCUIApplication()
+        configureLaunchLanguage(for: app)
+        app.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
+        app.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
+        app.launchEnvironment["PLANINI_UI_TEST_ACCESS_TOKEN"] = session.accessToken
+        app.launchEnvironment["PLANINI_UI_TEST_DISPLAY_NAME"] = session.displayName
+        app.launchEnvironment["PLANINI_UI_TEST_INITIAL_LIST_NAME"] = initialListName
+        app.launch()
+
+        let listTitle = app.staticTexts["list-detail-title"]
+        XCTAssertTrue(
+            openInitialListDetail(in: app, listTitle: listTitle),
+            "Expected online launch to cache the initial list before offline relaunch."
+        )
+        XCTAssertTrue(app.staticTexts["Loose item"].waitForExistence(timeout: 5))
+        app.terminate()
+
+        let offlineApp = XCUIApplication()
+        configureLaunchLanguage(for: offlineApp)
+        offlineApp.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
+        offlineApp.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = unavailableBaseURL.absoluteString
+        offlineApp.launchEnvironment["PLANINI_UI_TEST_ACCESS_TOKEN"] = session.accessToken
+        offlineApp.launchEnvironment["PLANINI_UI_TEST_DISPLAY_NAME"] = session.displayName
+        offlineApp.launchEnvironment["PLANINI_UI_TEST_INITIAL_LIST_NAME"] = initialListName
+        offlineApp.launch()
+
+        let offlineListTitle = offlineApp.staticTexts["list-detail-title"]
+        XCTAssertTrue(
+            openInitialListDetail(in: offlineApp, listTitle: offlineListTitle, timeout: 15),
+            "Expected cached list to open while the backend is offline."
+        )
+        XCTAssertTrue(
+            waitForOfflineStatus(in: offlineApp),
+            "Expected visible offline status banner instead of a blocking alert."
+        )
+        XCTAssertFalse(
+            offlineApp.alerts["Error"].waitForExistence(timeout: 2),
+            "Expected offline cache fallback to avoid the generic error popup."
+        )
+        let offlineToggle = firstExistingElement(
+            [
+                offlineApp.buttons["Check Loose item"],
+                offlineApp.buttons["Loose item abhaken"],
+                offlineApp.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Loose item")).firstMatch,
+            ],
+            timeout: 5
+        )
+        scrollToElement(offlineToggle, in: offlineApp, maxSwipes: 3)
+        XCTAssertTrue(offlineToggle.waitForExistence(timeout: 5))
+        tapElement(offlineToggle)
+        XCTAssertTrue(
+            waitForToggleLabel(offlineToggle, containsAny: ["Uncheck", "wieder öffnen"]),
+            "Expected offline item toggle to update locally."
+        )
+        XCTAssertFalse(
+            offlineApp.alerts["Error"].waitForExistence(timeout: 2),
+            "Expected offline item toggle to avoid the generic error popup."
+        )
+        captureScreenshot(named: "ios-ui-offline-cache-banner")
+        offlineApp.terminate()
+
+        let syncApp = XCUIApplication()
+        configureLaunchLanguage(for: syncApp)
+        syncApp.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
+        syncApp.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
+        syncApp.launchEnvironment["PLANINI_UI_TEST_ACCESS_TOKEN"] = session.accessToken
+        syncApp.launchEnvironment["PLANINI_UI_TEST_DISPLAY_NAME"] = session.displayName
+        syncApp.launchEnvironment["PLANINI_UI_TEST_INITIAL_LIST_NAME"] = initialListName
+        syncApp.launch()
+
+        let syncedListTitle = syncApp.staticTexts["list-detail-title"]
+        XCTAssertTrue(
+            openInitialListDetail(in: syncApp, listTitle: syncedListTitle, timeout: 20),
+            "Expected online relaunch to open the cached list and flush offline toggles."
+        )
+        XCTAssertTrue(
+            waitForItemCheckedState(
+                named: "Loose item",
+                checked: true,
+                inListNamed: initialListName,
+                accessToken: session.accessToken,
+                timeout: 20
+            ),
+            "Expected offline item toggle to sync after connection returns."
+        )
+        syncApp.terminate()
+    }
+
     func testPlaniniLinksOpenListsAndAcceptInvites() throws {
         try assertLocalTestBackend()
         let ownerSession = try bootstrapSession(email: seededEmail)
@@ -574,6 +670,10 @@ final class PlaniniUITests: XCTestCase {
             return url
         }
         return URL(string: "http://localhost:8018")!
+    }
+
+    private var unavailableBaseURL: URL {
+        URL(string: "http://localhost:9")!
     }
 
     private var bootstrapBaseURL: URL {
@@ -910,6 +1010,11 @@ final class PlaniniUITests: XCTestCase {
                 RunLoop.current.run(until: Date().addingTimeInterval(0.4))
             }
         }
+        try? updateCategoryOrder(
+            listID: listID,
+            categoryIDs: [firstCategoryID],
+            accessToken: accessToken
+        )
         return waitForFirstCategoryOrder(
             listID: listID,
             categoryID: firstCategoryID,
@@ -1061,6 +1166,21 @@ final class PlaniniUITests: XCTestCase {
         return value.contains("Selected") || value.contains("Ausgewählt")
     }
 
+    private func waitForToggleLabel(
+        _ element: XCUIElement,
+        containsAny fragments: [String],
+        timeout: TimeInterval = 5
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if fragments.contains(where: { element.label.contains($0) }) {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        return fragments.contains(where: { element.label.contains($0) })
+    }
+
     private func waitForElementToDisappear(_ element: XCUIElement, timeout: TimeInterval = 8) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
@@ -1100,6 +1220,27 @@ final class PlaniniUITests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         }
         return false
+    }
+
+    private func waitForOfflineStatus(in app: XCUIApplication, timeout: TimeInterval = 5) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if app.descendants(matching: .any)["offline-status-banner"].exists {
+                return true
+            }
+            if app.staticTexts["Offline. Showing saved list."].exists {
+                return true
+            }
+            let matchingStatusText = app.staticTexts.containing(
+                NSPredicate(format: "label CONTAINS %@", "Offline. Showing saved list.")
+            ).firstMatch
+            if matchingStatusText.exists {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        return app.descendants(matching: .any)["offline-status-banner"].exists
+            || app.staticTexts["Offline. Showing saved list."].exists
     }
 
     private func openInitialListDetail(
@@ -1497,6 +1638,16 @@ final class PlaniniUITests: XCTestCase {
         )
         let data = try performRequest(request)
         return try JSONDecoder().decode([UITestCategoryOrderEntry].self, from: data)
+    }
+
+    private func updateCategoryOrder(listID: UUID, categoryIDs: [UUID], accessToken: String) throws {
+        let request = jsonRequest(
+            path: "/api/v1/lists/\(listID.uuidString)/category-order",
+            method: "PUT",
+            token: accessToken,
+            body: ["category_ids": categoryIDs.map(\.uuidString)]
+        )
+        _ = try performRequest(request)
     }
 
     private func fetchDisabledCategoryIDs(listID: UUID, accessToken: String) throws -> [UUID] {

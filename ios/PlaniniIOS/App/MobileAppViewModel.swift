@@ -76,6 +76,14 @@ private struct PendingItemEdit: Codable, Equatable {
     var updatedAt: Date
 }
 
+private struct PendingItemToggle: Codable, Equatable {
+    let mutationID: String
+    let listID: UUID
+    let itemID: UUID
+    var checked: Bool
+    var recordedAt: Date
+}
+
 struct LinkedListNavigationRequest: Equatable {
     let id = UUID()
     let listID: UUID
@@ -88,10 +96,16 @@ final class MobileAppViewModel: ObservableObject {
     private static let displayNameKey = "planini.displayName"
     private static let quickAddItemKey = "planini.quickAddItemName"
     private static let pendingItemEditsKey = "planini.pendingItemEdits"
+    private static let pendingItemTogglesKey = "planini.pendingItemToggles"
     private static let cachedListsKey = "planini.cachedLists"
     private static let cachedListDataPrefix = "planini.cachedListData."
     private static let passkeyTokenAllowedCharacters = CharacterSet.alphanumerics
         .union(CharacterSet(charactersIn: "-._~"))
+    private static let offlineMutationDateFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
 
     @Published private(set) var backendURL: URL?
     @Published private(set) var isAuthenticating = false
@@ -106,6 +120,7 @@ final class MobileAppViewModel: ObservableObject {
     @Published private(set) var favoriteListID: UUID?
     @Published var quickAddItemName: String
     @Published var errorMessage: String?
+    @Published var offlineStatusMessage: String?
     @Published var reviewerOnboardingMessage: String?
     @Published private(set) var linkedListNavigationRequest: LinkedListNavigationRequest?
 
@@ -119,6 +134,7 @@ final class MobileAppViewModel: ObservableObject {
     private var didAttemptLaunchBootstrap = false
     private var itemReloadGeneration = 0
     private var pendingItemEdits: [PendingItemEdit]
+    private var pendingItemToggles: [PendingItemToggle]
     private var itemEditSaveRevisions: [UUID: Int] = [:]
     private var pendingPlaniniLink: PlaniniLink?
 
@@ -157,6 +173,7 @@ final class MobileAppViewModel: ObservableObject {
             quickAddItemName = SharedAppState.defaultQuickAddItemName
         }
         pendingItemEdits = Self.loadPendingItemEdits(from: userDefaults)
+        pendingItemToggles = Self.loadPendingItemToggles(from: userDefaults)
         watchSyncCoordinator.setStateProvider { [weak self] in
             let state = self?.makeSharedAppState() ?? SharedAppState()
             self?.sharedStateStore.save(state)
@@ -519,7 +536,9 @@ final class MobileAppViewModel: ObservableObject {
         authToken = accessToken
         userDefaults.set(accessToken, forKey: Self.authTokenKey)
 
-        if let backendURL {
+        if let displayNameOverride, displayNameOverride.isEmpty == false {
+            displayName = displayNameOverride
+        } else if let backendURL {
             let me = try await requestJSON(
                 backendURL: backendURL,
                 path: "/api/v1/auth/me",
@@ -528,8 +547,6 @@ final class MobileAppViewModel: ObservableObject {
                 token: accessToken
             )
             displayName = me["display_name"] as? String
-        } else if let displayNameOverride, displayNameOverride.isEmpty == false {
-            displayName = displayNameOverride
         }
 
         userDefaults.set(displayName, forKey: Self.displayNameKey)
@@ -562,6 +579,7 @@ final class MobileAppViewModel: ObservableObject {
         disabledCategoryIDs = []
         selectedListID = nil
         errorMessage = nil
+        offlineStatusMessage = nil
         reviewerOnboardingMessage = nil
         userDefaults.removeObject(forKey: Self.authTokenKey)
         userDefaults.removeObject(forKey: Self.displayNameKey)
@@ -659,10 +677,11 @@ final class MobileAppViewModel: ObservableObject {
 
             lists = sortedLists(loadedLists)
             cacheLists(lists)
+            clearOfflineStatus()
         } catch {
             if let cachedLists = cachedLists(), cachedLists.isEmpty == false {
                 lists = cachedLists
-                errorMessage = "Offline. Showing saved list."
+                showOfflineStatus("Offline. Showing saved list.")
             } else {
                 throw error
             }
@@ -683,6 +702,7 @@ final class MobileAppViewModel: ObservableObject {
 
         try await reloadItems()
         await flushPendingItemEdits()
+        await flushPendingItemToggles()
         updateLiveUpdatesConnection()
         watchSyncCoordinator.publishCurrentState()
     }
@@ -798,10 +818,11 @@ final class MobileAppViewModel: ObservableObject {
                 listID: reloadedListID
             )
             cacheListData(listData, listID: reloadedListID)
+            clearOfflineStatus()
         } catch {
             if let cachedListData = cachedListData(listID: reloadedListID) {
                 listData = cachedListData
-                errorMessage = "Offline. Showing saved list."
+                showOfflineStatus("Offline. Showing saved list.")
             } else {
                 throw error
             }
@@ -818,6 +839,7 @@ final class MobileAppViewModel: ObservableObject {
 
         applyListData(listData)
         await flushPendingItemEdits()
+        await flushPendingItemToggles()
         updateLiveUpdatesConnection()
         watchSyncCoordinator.publishCurrentState()
     }
@@ -843,6 +865,7 @@ final class MobileAppViewModel: ObservableObject {
                 token: authToken
             )
             try await reloadItems()
+            clearOfflineStatus()
             watchSyncCoordinator.publishCurrentState()
             return true
         } catch {
@@ -853,22 +876,42 @@ final class MobileAppViewModel: ObservableObject {
 
     @discardableResult
     func toggle(_ item: GroceryItemRecord) async -> Bool {
-        guard let backendURL, let authToken else { return false }
-        let suffix = item.checked ? "uncheck" : "check"
+        let checked = item.checked == false
+        let recordedAt = Date()
+
+        guard pendingItemToggles.isEmpty else {
+            queuePendingItemToggle(listID: item.listID, itemID: item.id, checked: checked, recordedAt: recordedAt)
+            showOfflineStatus("Changes saved offline. They will sync when the backend is reachable.")
+            return true
+        }
+
+        guard let backendURL, let authToken else {
+            queuePendingItemToggle(listID: item.listID, itemID: item.id, checked: checked, recordedAt: recordedAt)
+            showOfflineStatus("Changes saved offline. They will sync when the backend is reachable.")
+            return true
+        }
+
+        let suffix = checked ? "check" : "uncheck"
         do {
-            _ = try await requestJSON(
+            let saved = try await requestJSON(
                 backendURL: backendURL,
                 path: "/api/v1/items/\(item.id.uuidString)/\(suffix)",
                 method: "POST",
                 body: [:],
                 token: authToken
             )
-            try await reloadItems()
+            if let savedItem = GroceryItemRecord(json: saved) {
+                upsertLocalItem(savedItem)
+            } else {
+                try await reloadItems()
+            }
+            clearOfflineStatus()
             watchSyncCoordinator.publishCurrentState()
             return true
         } catch {
-            errorMessage = error.localizedDescription
-            return false
+            queuePendingItemToggle(listID: item.listID, itemID: item.id, checked: checked, recordedAt: recordedAt)
+            showOfflineStatus("Changes saved offline. They will sync when the backend is reachable.")
+            return true
         }
     }
 
@@ -914,12 +957,13 @@ final class MobileAppViewModel: ObservableObject {
             if itemEditSaveRevisions[item.id] == revision, let savedItem = GroceryItemRecord(json: saved) {
                 upsertLocalItem(savedItem)
             }
+            clearOfflineStatus()
             watchSyncCoordinator.publishCurrentState()
             return true
         } catch {
             if itemEditSaveRevisions[item.id] == revision {
                 queuePendingItemEdit(listID: item.listID, itemID: item.id, payload: payload)
-                errorMessage = "Changes saved offline. They will sync when the backend is reachable."
+                showOfflineStatus("Changes saved offline. They will sync when the backend is reachable.")
             }
             return true
         }
@@ -938,6 +982,7 @@ final class MobileAppViewModel: ObservableObject {
                 token: authToken
             )
             try await reloadItems()
+            clearOfflineStatus()
             watchSyncCoordinator.publishCurrentState()
             return true
         } catch {
@@ -1063,6 +1108,15 @@ final class MobileAppViewModel: ObservableObject {
         )
     }
 
+    private func showOfflineStatus(_ message: String) {
+        errorMessage = nil
+        offlineStatusMessage = message
+    }
+
+    private func clearOfflineStatus() {
+        offlineStatusMessage = nil
+    }
+
     private func handleLiveListChanged(_ listID: UUID) async {
         guard selectedListID == listID else { return }
         netLog.debug(
@@ -1121,7 +1175,7 @@ final class MobileAppViewModel: ObservableObject {
     }
 
     private func applyListData(_ listData: MobileListData) {
-        items = applyPendingItemEdits(to: listData.items)
+        items = applyPendingItemToggles(to: applyPendingItemEdits(to: listData.items))
         categories = listData.categories
         categoryOrder = listData.categoryOrder
         disabledCategoryIDs = Set(listData.disabledCategoryIDs)
@@ -1211,9 +1265,19 @@ final class MobileAppViewModel: ObservableObject {
         return (try? JSONDecoder().decode([PendingItemEdit].self, from: data)) ?? []
     }
 
+    private static func loadPendingItemToggles(from userDefaults: UserDefaults) -> [PendingItemToggle] {
+        guard let data = userDefaults.data(forKey: pendingItemTogglesKey) else { return [] }
+        return (try? JSONDecoder().decode([PendingItemToggle].self, from: data)) ?? []
+    }
+
     private func savePendingItemEdits() {
         guard let data = try? JSONEncoder().encode(pendingItemEdits) else { return }
         userDefaults.set(data, forKey: Self.pendingItemEditsKey)
+    }
+
+    private func savePendingItemToggles() {
+        guard let data = try? JSONEncoder().encode(pendingItemToggles) else { return }
+        userDefaults.set(data, forKey: Self.pendingItemTogglesKey)
     }
 
     private func queuePendingItemEdit(listID: UUID, itemID: UUID, payload: GroceryItemEditPayload) {
@@ -1234,9 +1298,31 @@ final class MobileAppViewModel: ObservableObject {
         applyLocalEdit(itemID: itemID, payload: payload)
     }
 
+    private func queuePendingItemToggle(listID: UUID, itemID: UUID, checked: Bool, recordedAt: Date) {
+        let toggle = PendingItemToggle(
+            mutationID: UUID().uuidString,
+            listID: listID,
+            itemID: itemID,
+            checked: checked,
+            recordedAt: recordedAt
+        )
+        if let index = pendingItemToggles.firstIndex(where: { $0.itemID == itemID }) {
+            pendingItemToggles[index] = toggle
+        } else {
+            pendingItemToggles.append(toggle)
+        }
+        savePendingItemToggles()
+        applyLocalToggle(itemID: itemID, checked: checked, recordedAt: recordedAt)
+    }
+
     private func removePendingItemEdit(itemID: UUID) {
         pendingItemEdits.removeAll { $0.itemID == itemID }
         savePendingItemEdits()
+    }
+
+    private func removePendingItemToggles(mutationIDs: Set<String>) {
+        pendingItemToggles.removeAll { mutationIDs.contains($0.mutationID) }
+        savePendingItemToggles()
     }
 
     private func applyPendingItemEdits(to loadedItems: [GroceryItemRecord]) -> [GroceryItemRecord] {
@@ -1252,9 +1338,28 @@ final class MobileAppViewModel: ObservableObject {
         }
     }
 
+    private func applyPendingItemToggles(to loadedItems: [GroceryItemRecord]) -> [GroceryItemRecord] {
+        guard let selectedListID else { return loadedItems }
+        let pendingByItemID = Dictionary(
+            uniqueKeysWithValues: pendingItemToggles
+                .filter { $0.listID == selectedListID }
+                .map { ($0.itemID, $0) }
+        )
+        return loadedItems.map { item in
+            guard let toggle = pendingByItemID[item.id] else { return item }
+            return item.applyingCheckedState(toggle.checked, recordedAt: toggle.recordedAt)
+        }
+    }
+
     private func applyLocalEdit(itemID: UUID, payload: GroceryItemEditPayload) {
         guard let index = items.firstIndex(where: { $0.id == itemID }) else { return }
         items[index] = items[index].applyingEditPayload(payload)
+        watchSyncCoordinator.publishCurrentState()
+    }
+
+    private func applyLocalToggle(itemID: UUID, checked: Bool, recordedAt: Date) {
+        guard let index = items.firstIndex(where: { $0.id == itemID }) else { return }
+        items[index] = items[index].applyingCheckedState(checked, recordedAt: recordedAt)
         watchSyncCoordinator.publishCurrentState()
     }
 
@@ -1290,6 +1395,51 @@ final class MobileAppViewModel: ObservableObject {
             }
         }
         watchSyncCoordinator.publishCurrentState()
+    }
+
+    private func flushPendingItemToggles() async {
+        guard let backendURL, let authToken else { return }
+        let togglesByListID = Dictionary(grouping: pendingItemToggles, by: \.listID)
+        for (listID, toggles) in togglesByListID {
+            let sortedToggles = toggles.sorted { $0.recordedAt < $1.recordedAt }
+            let body: [String: Any] = [
+                "mutations": sortedToggles.map { toggle in
+                    [
+                        "mutation_id": toggle.mutationID,
+                        "type": "set_checked",
+                        "item_id": toggle.itemID.uuidString,
+                        "recorded_at": Self.iso8601String(from: toggle.recordedAt),
+                        "checked": toggle.checked,
+                    ] as [String: Any]
+                },
+            ]
+
+            do {
+                let response = try await requestJSON(
+                    backendURL: backendURL,
+                    path: "/api/v1/lists/\(listID.uuidString)/items/sync",
+                    method: "POST",
+                    body: body,
+                    token: authToken
+                )
+                let appliedMutationIDs = Set(response["applied_mutation_ids"] as? [String] ?? [])
+                removePendingItemToggles(mutationIDs: appliedMutationIDs)
+                if selectedListID == listID, let itemPayloads = response["items"] as? [[String: Any]] {
+                    itemPayloads.compactMap(GroceryItemRecord.init).forEach(upsertLocalItem)
+                }
+            } catch {
+                netLog.error(
+                    "Pending iPhone item toggle sync failed: \(error.localizedDescription, privacy: .public)"
+                )
+                showOfflineStatus("Changes saved offline. They will sync when the backend is reachable.")
+                return
+            }
+        }
+        watchSyncCoordinator.publishCurrentState()
+    }
+
+    private static func iso8601String(from date: Date) -> String {
+        offlineMutationDateFormatter.string(from: date)
     }
 
     private func rpID(from optionsPayload: [String: Any]) -> String? {
