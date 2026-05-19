@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		142B222D9AF4456A414702B8 /* WatchRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DD17D440ED10778295E1855 /* WatchRootView.swift */; };
+		1762001ECBF396E6038B3335 /* de.json in Resources */ = {isa = PBXBuildFile; fileRef = 0B9F178CF03EA47741BB75CC /* de.json */; };
 		1EE4C0BA89B1304ABB8EF270 /* AppGroupSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60FA6FAB5BF0777FEBF85FFD /* AppGroupSupport.swift */; };
 		22ABDECD56E908533F61F12B /* PlaniniUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BC0DDEFF1265803A638BC83 /* PlaniniUITests.swift */; };
 		250FF99C2969A78D7407C4FE /* PlaniniWatchWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C49069FE00F2CBEEBA975C11 /* PlaniniWatchWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -17,8 +18,10 @@
 		4E1F9A68D9324BA591514A9C /* PlaniniWatchWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1FEC963E9A630C6DAF6BF6E /* PlaniniWatchWidget.swift */; };
 		577D3C1135BA6D7407B8A0AA /* PlaniniWatchApp.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 37808C13EE8980C6D7EB5E3F /* PlaniniWatchApp.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		5D844E1AC4837B05434646D1 /* WatchAppViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C9901FC6B3FC621A6B229A /* WatchAppViewModel.swift */; };
+		5E09D5479AB378CFC658DF40 /* AppLocalization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DEEA95181710CC9F8714BAF /* AppLocalization.swift */; };
 		8DCFC53928E38080B5E5BD87 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 560BCFBB3415FB0A326907AA /* Assets.xcassets */; };
 		91F9EBCE9439F40E96C581E7 /* PlaniniCore in Frameworks */ = {isa = PBXBuildFile; productRef = 08CDF818F45A22289EF0AD81 /* PlaniniCore */; };
+		92C2FE7F0F7558D9F5827AEF /* en.json in Resources */ = {isa = PBXBuildFile; fileRef = 5F163107B1A440953DF748B8 /* en.json */; };
 		A1FA5501E23CE80CE82DA8E9 /* PlaniniWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F02701FC01526A4FEE42211 /* PlaniniWatchApp.swift */; };
 		A4E6FD246C4225C71AEC2BB5 /* WatchBackendClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE6AB6DEC64D1F5BD03FCCF1 /* WatchBackendClient.swift */; };
 		A779CDB8931E1EA01F2246CA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 560BCFBB3415FB0A326907AA /* Assets.xcassets */; };
@@ -92,6 +95,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		0B9F178CF03EA47741BB75CC /* de.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = de.json; sourceTree = "<group>"; };
 		1F02701FC01526A4FEE42211 /* PlaniniWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaniniWatchApp.swift; sourceTree = "<group>"; };
 		20B83DD3FDFA519C2128AC67 /* BuildConfiguration.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildConfiguration.generated.swift; sourceTree = "<group>"; };
 		2403081BBCE4A9CDD0BB942C /* PlaniniApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaniniApp.swift; sourceTree = "<group>"; };
@@ -103,12 +107,14 @@
 		53D8F0E8983062553D42950A /* MobileAppViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileAppViewModel.swift; sourceTree = "<group>"; };
 		560BCFBB3415FB0A326907AA /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		5BCE483AB7F4F77593152B5D /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		5F163107B1A440953DF748B8 /* en.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = en.json; sourceTree = "<group>"; };
 		60FA6FAB5BF0777FEBF85FFD /* AppGroupSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroupSupport.swift; sourceTree = "<group>"; };
 		6BC0DDEFF1265803A638BC83 /* PlaniniUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaniniUITests.swift; sourceTree = "<group>"; };
 		7D9440F383C21A058EA39C13 /* ApplePasskeyClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplePasskeyClient.swift; sourceTree = "<group>"; };
 		7DD17D440ED10778295E1855 /* WatchRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRootView.swift; sourceTree = "<group>"; };
 		905E5C36A0321D88D618675F /* Planini.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Planini.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		976E7E216506A44F10DDD3A5 /* Planini.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Planini.entitlements; sourceTree = "<group>"; };
+		9DEEA95181710CC9F8714BAF /* AppLocalization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLocalization.swift; sourceTree = "<group>"; };
 		A6C9901FC6B3FC621A6B229A /* WatchAppViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchAppViewModel.swift; sourceTree = "<group>"; };
 		B398FAB562EB897F7FED2897 /* PlaniniIOS */ = {isa = PBXFileReference; lastKnownFileType = folder; name = PlaniniIOS; path = .; sourceTree = SOURCE_ROOT; };
 		C49069FE00F2CBEEBA975C11 /* PlaniniWatchWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PlaniniWatchWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -178,11 +184,22 @@
 			path = WatchApp;
 			sourceTree = "<group>";
 		};
+		593F26CA0AF54B489ECA2029 /* locales */ = {
+			isa = PBXGroup;
+			children = (
+				0B9F178CF03EA47741BB75CC /* de.json */,
+				5F163107B1A440953DF748B8 /* en.json */,
+			);
+			name = locales;
+			path = ../../app/locales;
+			sourceTree = "<group>";
+		};
 		7D5A7F0DE7ED9CD9B8A2C944 = {
 			isa = PBXGroup;
 			children = (
 				560BCFBB3415FB0A326907AA /* Assets.xcassets */,
 				B4A4AD180EDFC2830FEA7FF0 /* App */,
+				593F26CA0AF54B489ECA2029 /* locales */,
 				4DC0782A5EB7AE07ABE1E221 /* Packages */,
 				8F695A2B717D8B462E02AA3F /* UITests */,
 				50A4E55A2074DE676B6FD0A2 /* WatchApp */,
@@ -205,6 +222,7 @@
 			children = (
 				4978A019F11BDE53315B6469 /* AppearanceSettings.swift */,
 				7D9440F383C21A058EA39C13 /* ApplePasskeyClient.swift */,
+				9DEEA95181710CC9F8714BAF /* AppLocalization.swift */,
 				20B83DD3FDFA519C2128AC67 /* BuildConfiguration.generated.swift */,
 				53D8F0E8983062553D42950A /* MobileAppViewModel.swift */,
 				976E7E216506A44F10DDD3A5 /* Planini.entitlements */,
@@ -394,6 +412,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				8DCFC53928E38080B5E5BD87 /* Assets.xcassets in Resources */,
+				1762001ECBF396E6038B3335 /* de.json in Resources */,
+				92C2FE7F0F7558D9F5827AEF /* en.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -486,6 +506,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5E09D5479AB378CFC658DF40 /* AppLocalization.swift in Sources */,
 				CAD0D61C08D5E9E772F22CE9 /* AppearanceSettings.swift in Sources */,
 				D5800F3309DEA622AA24ADC4 /* ApplePasskeyClient.swift in Sources */,
 				F3A245BA428BCA7DD2FECEEF /* BuildConfiguration.generated.swift in Sources */,
