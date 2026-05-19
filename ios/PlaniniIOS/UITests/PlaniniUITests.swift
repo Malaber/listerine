@@ -332,6 +332,7 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(moveNoticeMessage.label.contains("Brot"))
         XCTAssertTrue(moveNoticeMessage.label.contains("Hosting errands"))
         let checkedCountBadge = sectionCountBadge(sectionID: "checked", in: app)
+        scrollToElement(checkedCountBadge, in: app, maxSwipes: 4)
         XCTAssertTrue(waitForSectionCountBadge(checkedCountBadge, count: 0))
         captureScreenshot(named: "ios-ui-moved-item-notice")
         app.buttons["move-item-undo-button-\(seededItemID.uuidString)"].tap()
@@ -366,6 +367,7 @@ final class PlaniniUITests: XCTestCase {
             )
         )
         XCTAssertTrue(waitForItemRow(itemID: seededItemID, named: "Brot", in: app, timeout: 20))
+        scrollToElement(checkedCountBadge, in: app, maxSwipes: 4)
         XCTAssertTrue(waitForSectionCountBadge(checkedCountBadge, count: 1))
 
         XCTAssertTrue(
@@ -391,6 +393,7 @@ final class PlaniniUITests: XCTestCase {
         let failedUndoNotice = app.otherElements["item-move-notice-\(updatedItemID.uuidString)"]
         XCTAssertTrue(failedUndoNotice.waitForExistence(timeout: 5))
         let konservenCountBadge = sectionCountBadge(sectionID: "category-\(sourceKonservenCategoryID.uuidString)", in: app)
+        scrollToElement(konservenCountBadge, in: app, maxSwipes: 4)
         XCTAssertTrue(waitForSectionCountBadge(konservenCountBadge, count: 1))
         try deleteItem(itemID: updatedItemID, accessToken: session.accessToken)
         app.buttons["move-item-undo-button-\(updatedItemID.uuidString)"].tap()
