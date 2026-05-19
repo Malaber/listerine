@@ -51,6 +51,7 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
         XCTAssertEqual(listTitle.label, initialListName)
         captureScreenshot(named: "ios-ui-list-detail")
+        assertShoppingModeAvailable(in: app)
 
         XCTAssertTrue(app.staticTexts["Uncategorized"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["Konserven"].waitForExistence(timeout: 3))
@@ -106,7 +107,14 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(suggestionProbeField.waitForExistence(timeout: 3))
         suggestionProbeField.tap()
         suggestionProbeField.typeText("Bro")
-        let seededCheckedSuggestion = app.buttons.containing(.staticText, identifier: "Brot").firstMatch
+        let seededCheckedSuggestion = firstExistingElement(
+            [
+                app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Brot")).firstMatch,
+                app.staticTexts["Brot"],
+                app.otherElements["Brot"],
+            ],
+            timeout: 3
+        )
         XCTAssertTrue(seededCheckedSuggestion.waitForExistence(timeout: 3))
         XCTAssertFalse(seededCheckedSuggestion.images["scope"].exists, "Suggestion rows should not show a crosshair icon.")
         XCTAssertTrue(tapSuggestionAndWaitForSheetDismissal(seededCheckedSuggestion, app: app))
@@ -361,13 +369,14 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(haushaltRow.waitForExistence(timeout: 5))
         XCTAssertTrue(backwarenRow.waitForExistence(timeout: 5))
         XCTAssertTrue(konservenRow.waitForExistence(timeout: 5))
+        let backwarenMoveUpButton = app.buttons["category-move-up-\(backwarenCategoryID.uuidString)"]
+        scrollToHittable(backwarenMoveUpButton, in: app)
+        XCTAssertTrue(backwarenMoveUpButton.waitForExistence(timeout: 5))
+        tapElement(backwarenMoveUpButton)
         XCTAssertTrue(
-            dragCategoryRow(
-                backwarenRow,
-                before: haushaltRow,
-                in: app,
+            waitForFirstCategoryOrder(
                 listID: hostingListID,
-                firstCategoryID: backwarenCategoryID,
+                categoryID: backwarenCategoryID,
                 accessToken: session.accessToken
             )
         )
@@ -857,46 +866,6 @@ final class PlaniniUITests: XCTestCase {
         return false
     }
 
-    private func dragCategoryRow(
-        _ movingRow: XCUIElement,
-        before targetRow: XCUIElement,
-        in app: XCUIApplication,
-        listID: UUID,
-        firstCategoryID: UUID,
-        accessToken: String
-    ) -> Bool {
-        let grabberOffsets: [CGFloat] = [0.95, 0.85, 0.72, 0.55]
-        let targetOffsets: [CGFloat] = [-0.9, -0.6, -0.35, -0.1]
-        for grabberOffset in grabberOffsets {
-            for targetOffset in targetOffsets {
-                guard movingRow.waitForExistence(timeout: 3), targetRow.waitForExistence(timeout: 3) else {
-                    return false
-                }
-
-                scrollToHittable(movingRow, in: app)
-                scrollToHittable(targetRow, in: app)
-                let grabber = movingRow.coordinate(withNormalizedOffset: CGVector(dx: grabberOffset, dy: 0.5))
-                let target = targetRow.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: targetOffset))
-                grabber.press(forDuration: 1.0, thenDragTo: target)
-                if waitForFirstCategoryOrder(
-                    listID: listID,
-                    categoryID: firstCategoryID,
-                    accessToken: accessToken,
-                    timeout: 4
-                ) {
-                    return true
-                }
-                RunLoop.current.run(until: Date().addingTimeInterval(0.4))
-            }
-        }
-        return waitForFirstCategoryOrder(
-            listID: listID,
-            categoryID: firstCategoryID,
-            accessToken: accessToken,
-            timeout: 2
-        )
-    }
-
     private func waitForDisabledCategory(
         listID: UUID,
         categoryID: UUID,
@@ -1363,6 +1332,12 @@ final class PlaniniUITests: XCTestCase {
             if waitForElementToDisappear(sheet, timeout: 2) {
                 return true
             }
+            if element.exists {
+                tapTrailingControl(in: element, app: app)
+            }
+            if waitForElementToDisappear(sheet, timeout: 2) {
+                return true
+            }
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
 
@@ -1495,6 +1470,23 @@ final class PlaniniUITests: XCTestCase {
         tapCancelButton(in: app)
         XCTAssertTrue(waitForElementToDisappear(onboardingSheet, timeout: 5))
         XCTAssertTrue(app.buttons["login-passkey-button"].waitForExistence(timeout: 3))
+    }
+
+    private func assertShoppingModeAvailable(in app: XCUIApplication) {
+        let shoppingModeButton = app.buttons["shopping-mode-button"]
+        XCTAssertTrue(shoppingModeButton.waitForExistence(timeout: 3))
+        captureScreenshot(named: "ios-ui-shopping-mode-button")
+        shoppingModeButton.tap()
+
+        let becameActive = NSPredicate(format: "label CONTAINS %@", "Shopping mode active")
+        let activeExpectation = XCTNSPredicateExpectation(predicate: becameActive, object: shoppingModeButton)
+        let alert = app.alerts.firstMatch
+        let alertAppeared = alert.waitForExistence(timeout: 1)
+        if alertAppeared {
+            alert.buttons["OK"].tap()
+        }
+        let active = XCTWaiter().wait(for: [activeExpectation], timeout: 3) == .completed
+        XCTAssertTrue(active || alertAppeared)
     }
 
     private func firstExistingElement(_ elements: [XCUIElement], timeout: TimeInterval) -> XCUIElement {

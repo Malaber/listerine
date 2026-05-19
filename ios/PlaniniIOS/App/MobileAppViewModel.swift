@@ -105,6 +105,7 @@ final class MobileAppViewModel: ObservableObject {
     @Published private(set) var disabledCategoryIDs: Set<UUID> = []
     @Published var selectedListID: UUID?
     @Published private(set) var favoriteListID: UUID?
+    @Published private(set) var shoppingModeListID: UUID?
     @Published var quickAddItemName: String
     @Published var errorMessage: String?
     @Published var reviewerOnboardingMessage: String?
@@ -116,6 +117,9 @@ final class MobileAppViewModel: ObservableObject {
     private let watchSyncCoordinator: WatchSyncCoordinator
     private let sharedStateStore: SharedAppStateStore
     private let liveUpdates: MobileListLiveUpdateClient
+    #if canImport(ActivityKit)
+    private let shoppingActivityController: Any?
+    #endif
     private let isSimulatorBuild: Bool
     private var didAttemptLaunchBootstrap = false
     private var itemReloadGeneration = 0
@@ -138,6 +142,13 @@ final class MobileAppViewModel: ObservableObject {
         self.sharedStateStore = SharedAppStateStore(
             userDefaults: UserDefaults(suiteName: PlaniniSharedConstants.watchAppGroupID) ?? .standard
         )
+        #if canImport(ActivityKit)
+        if #available(iOS 16.2, *) {
+            shoppingActivityController = ShoppingActivityController()
+        } else {
+            shoppingActivityController = nil
+        }
+        #endif
         #if targetEnvironment(simulator)
             isSimulatorBuild = true
         #else
@@ -158,6 +169,16 @@ final class MobileAppViewModel: ObservableObject {
             quickAddItemName = SharedAppState.defaultQuickAddItemName
         }
         pendingItemEdits = Self.loadPendingItemEdits(from: userDefaults)
+        #if canImport(ActivityKit)
+        if #available(iOS 16.2, *),
+            let controller = shoppingActivityController as? ShoppingActivityController
+        {
+            controller.onActivityExpired = { [weak self] listID in
+                guard self?.shoppingModeListID == listID else { return }
+                self?.shoppingModeListID = nil
+            }
+        }
+        #endif
         watchSyncCoordinator.setStateProvider { [weak self] in
             let state = self?.makeSharedAppState() ?? SharedAppState()
             self?.sharedStateStore.save(state)
@@ -915,6 +936,7 @@ final class MobileAppViewModel: ObservableObject {
         applyListData(listData)
         await flushPendingItemEdits()
         updateLiveUpdatesConnection()
+        await updateShoppingActivityIfNeeded()
         watchSyncCoordinator.publishCurrentState()
     }
 
@@ -1010,11 +1032,13 @@ final class MobileAppViewModel: ObservableObject {
             if itemEditSaveRevisions[item.id] == revision, let savedItem = GroceryItemRecord(json: saved) {
                 upsertLocalItem(savedItem)
             }
+            await updateShoppingActivityIfNeeded()
             watchSyncCoordinator.publishCurrentState()
             return true
         } catch {
             if itemEditSaveRevisions[item.id] == revision {
                 queuePendingItemEdit(listID: item.listID, itemID: item.id, payload: payload)
+                await updateShoppingActivityIfNeeded()
                 errorMessage = "Changes saved offline. They will sync when the backend is reachable."
             }
             return true
@@ -1040,6 +1064,51 @@ final class MobileAppViewModel: ObservableObject {
             errorMessage = error.localizedDescription
             return false
         }
+    }
+
+    @discardableResult
+    func startShoppingMode(listID: UUID) async -> Bool {
+        let state = makeSharedAppState(syncedListID: listID)
+        guard state.shoppingSnapshot(for: listID) != nil else {
+            errorMessage = "Open a list before starting shopping mode."
+            return false
+        }
+
+        #if canImport(ActivityKit)
+        if #available(iOS 16.2, *),
+            let controller = shoppingActivityController as? ShoppingActivityController
+        {
+            do {
+                _ = try await controller.start(listID: listID, using: state)
+                shoppingModeListID = listID
+                errorMessage = nil
+                watchSyncCoordinator.publishCurrentState()
+                return true
+            } catch {
+                errorMessage = error.localizedDescription
+                return false
+            }
+        }
+        #endif
+
+        errorMessage = "Shopping mode needs iOS 16.2 or newer."
+        return false
+    }
+
+    private func updateShoppingActivityIfNeeded() async {
+        guard let shoppingModeListID else { return }
+        guard selectedListID == shoppingModeListID else { return }
+
+        #if canImport(ActivityKit)
+        if #available(iOS 16.2, *),
+            let controller = shoppingActivityController as? ShoppingActivityController
+        {
+            await controller.update(
+                listID: shoppingModeListID,
+                using: makeSharedAppState(syncedListID: shoppingModeListID)
+            )
+        }
+        #endif
     }
 
     @discardableResult
@@ -1123,16 +1192,18 @@ final class MobileAppViewModel: ObservableObject {
         }
     }
 
-    private func makeSharedAppState() -> SharedAppState {
-        let syncsFavoriteList = selectedListID == favoriteListID
-        let syncedItems = syncsFavoriteList ? items : []
-        let syncedCategories = syncsFavoriteList ? categories : []
-        let syncedCategoryOrder = syncsFavoriteList ? categoryOrder : []
+    private func makeSharedAppState(syncedListID requestedSyncedListID: UUID? = nil) -> SharedAppState {
+        let targetSyncedListID = requestedSyncedListID ?? selectedListID
+        let syncsSelectedList = selectedListID == targetSyncedListID
+        let syncedItems = syncsSelectedList ? items : []
+        let syncedCategories = syncsSelectedList ? categories : []
+        let syncedCategoryOrder = syncsSelectedList ? categoryOrder : []
         return SharedAppState(
             backendURL: backendURL,
             authToken: authToken,
             displayName: displayName,
             favoriteListID: favoriteListID,
+            syncedListID: syncsSelectedList ? targetSyncedListID : nil,
             quickAddItemName: quickAddItemName,
             lists: lists,
             items: syncedItems,
