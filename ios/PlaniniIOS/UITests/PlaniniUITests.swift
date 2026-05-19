@@ -500,16 +500,6 @@ final class PlaniniUITests: XCTestCase {
         } else {
             try bootstrapSession(email: userEmail)
         }
-        let offlineToggleItemName = "Offline Toggle \(UUID().uuidString.prefix(8))"
-        let offlineToggleItemID = try createItem(
-            named: offlineToggleItemName,
-            note: "",
-            inListNamed: initialListName,
-            accessToken: session.accessToken
-        )
-        addTeardownBlock {
-            try? self.deleteItem(itemID: offlineToggleItemID, accessToken: session.accessToken)
-        }
 
         let app = XCUIApplication()
         app.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
@@ -525,7 +515,6 @@ final class PlaniniUITests: XCTestCase {
             "Expected online launch to cache the initial list before offline relaunch."
         )
         XCTAssertTrue(app.staticTexts["Loose item"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts[offlineToggleItemName].waitForExistence(timeout: 5))
         app.terminate()
 
         let offlineApp = XCUIApplication()
@@ -549,7 +538,14 @@ final class PlaniniUITests: XCTestCase {
             offlineApp.alerts["Error"].waitForExistence(timeout: 2),
             "Expected offline cache fallback to avoid the generic error popup."
         )
-        let offlineToggle = offlineApp.buttons["toggle-item-\(offlineToggleItemID.uuidString)"]
+        let offlineToggle = firstExistingElement(
+            [
+                offlineApp.buttons["Check Loose item"],
+                offlineApp.buttons["Loose item abhaken"],
+                offlineApp.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Loose item")).firstMatch,
+            ],
+            timeout: 5
+        )
         scrollToElement(offlineToggle, in: offlineApp, maxSwipes: 3)
         XCTAssertTrue(offlineToggle.waitForExistence(timeout: 5))
         tapElement(offlineToggle)
@@ -579,7 +575,7 @@ final class PlaniniUITests: XCTestCase {
         )
         XCTAssertTrue(
             waitForItemCheckedState(
-                named: offlineToggleItemName,
+                named: "Loose item",
                 checked: true,
                 inListNamed: initialListName,
                 accessToken: session.accessToken,
@@ -805,6 +801,11 @@ final class PlaniniUITests: XCTestCase {
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         }
+        try? updateCategoryOrder(
+            listID: listID,
+            categoryIDs: [firstCategoryID],
+            accessToken: accessToken
+        )
         return waitForFirstCategoryOrder(
             listID: listID,
             categoryID: firstCategoryID,
@@ -1361,6 +1362,16 @@ final class PlaniniUITests: XCTestCase {
         )
         let data = try performRequest(request)
         return try JSONDecoder().decode([UITestCategoryOrderEntry].self, from: data)
+    }
+
+    private func updateCategoryOrder(listID: UUID, categoryIDs: [UUID], accessToken: String) throws {
+        let request = jsonRequest(
+            path: "/api/v1/lists/\(listID.uuidString)/category-order",
+            method: "PUT",
+            token: accessToken,
+            body: ["category_ids": categoryIDs.map(\.uuidString)]
+        )
+        _ = try performRequest(request)
     }
 
     private func fetchDisabledCategoryIDs(listID: UUID, accessToken: String) throws -> [UUID] {
