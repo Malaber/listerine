@@ -12,6 +12,9 @@ targets:
     sources:
       - path: App
       - path: Assets.xcassets
+      - path: ../../app/locales
+        name: locales
+        buildPhase: resources
     dependencies:
       - target: PlaniniWatchApp
         embed: true
