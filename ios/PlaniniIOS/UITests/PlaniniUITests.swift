@@ -11,6 +11,7 @@ final class PlaniniUITests: XCTestCase {
     func testListViewFlow() throws {
         try assertLocalTestBackend()
         let loginApp = XCUIApplication()
+        configureLaunchLanguage(for: loginApp)
         loginApp.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
         loginApp.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
         loginApp.launch()
@@ -25,6 +26,7 @@ final class PlaniniUITests: XCTestCase {
             try bootstrapSession(email: userEmail)
         }
         let app = XCUIApplication()
+        configureLaunchLanguage(for: app)
         app.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
         app.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
         app.launchEnvironment["PLANINI_UI_TEST_ACCESS_TOKEN"] = session.accessToken
@@ -90,16 +92,14 @@ final class PlaniniUITests: XCTestCase {
             timeout: 3
         )
         XCTAssertTrue(quickAddUncategorized.waitForExistence(timeout: 3))
-        quickAddUncategorized.tap()
-        XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
+        XCTAssertTrue(openAddItemSheet(using: quickAddUncategorized, in: app))
         XCTAssertTrue(app.buttons["add-item-save-button"].waitForExistence(timeout: 3))
         captureScreenshot(named: "ios-ui-category-quick-add")
-        app.buttons["Cancel"].tap()
+        tapCancelButton(in: app)
         XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 3))
 
-        tapElement(app.buttons["add-item-button"])
-        XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        XCTAssertTrue(openAddItemSheet(in: app))
+        XCTAssertTrue(prepareKeyboardForTyping(in: app, timeout: 3))
         captureScreenshot(named: "ios-ui-add-item-sheet")
 
         let suggestionProbeField = app.textFields["add-item-name-field"]
@@ -121,8 +121,7 @@ final class PlaniniUITests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(1.0))
         captureScreenshot(named: "ios-ui-suggestion-reactivated")
 
-        tapElement(app.buttons["add-item-button"])
-        XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
+        XCTAssertTrue(openAddItemSheet(in: app))
 
         let uniqueSuffix = UUID().uuidString.prefix(8)
         let enterSavedItemName = "UI Test Enter \(uniqueSuffix)"
@@ -133,8 +132,9 @@ final class PlaniniUITests: XCTestCase {
         let nameField = app.textFields["add-item-name-field"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 3))
         nameField.tap()
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        XCTAssertTrue(prepareKeyboardForTyping(in: app, timeout: 3))
         nameField.typeText(enterSavedItemName)
+        XCTAssertTrue(waitForFieldValue(nameField, contains: enterSavedItemName))
         XCTAssertTrue(tapAddItemSaveAndWaitForDismissal(in: app))
         XCTAssertTrue(app.staticTexts[enterSavedItemName].waitForExistence(timeout: 5))
         XCTAssertTrue(
@@ -147,16 +147,17 @@ final class PlaniniUITests: XCTestCase {
         )
         XCTAssertTrue(app.staticTexts[enterSavedItemName].waitForExistence(timeout: 15))
 
-        tapElement(app.buttons["add-item-button"])
-        XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        XCTAssertTrue(openAddItemSheet(in: app))
+        XCTAssertTrue(prepareKeyboardForTyping(in: app, timeout: 3))
         XCTAssertTrue(nameField.waitForExistence(timeout: 3))
         nameField.tap()
         nameField.typeText(itemName)
+        XCTAssertTrue(waitForFieldValue(nameField, contains: itemName))
 
         let quantityField = app.textFields["add-item-quantity-field"]
         quantityField.tap()
         quantityField.typeText(itemQuantity)
+        XCTAssertTrue(waitForFieldValue(quantityField, contains: itemQuantity))
 
         chooseCategory(
             named: "Milch & Eier",
@@ -168,6 +169,10 @@ final class PlaniniUITests: XCTestCase {
         )
         XCTAssertTrue(app.buttons["add-item-category-link"].label.contains("Milch & Eier"))
 
+        let noteField = app.textFields["add-item-note-field"]
+        noteField.tap()
+        noteField.typeText("for pasta")
+        XCTAssertTrue(waitForFieldValue(noteField, contains: "for pasta"))
         XCTAssertTrue(tapAddItemSaveAndWaitForDismissal(in: app))
         XCTAssertTrue(
             waitForItem(
@@ -204,10 +209,19 @@ final class PlaniniUITests: XCTestCase {
 
         let editNameField = app.textFields["edit-item-name-field"]
         editNameField.tap()
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        XCTAssertTrue(prepareKeyboardForTyping(in: app, timeout: 5))
         editNameField.typeText(" Updated")
+        XCTAssertTrue(waitForFieldValue(editNameField, contains: updatedName))
         XCTAssertTrue(waitForEditStatus("Saved", app: app))
-        XCTAssertTrue(editNameField.valueText.contains(updatedName))
+
+        undoButton.tap()
+        XCTAssertTrue(waitForFieldValue(editNameField, contains: itemName))
+        XCTAssertFalse(editNameField.valueText.contains("Updated"))
+        XCTAssertTrue(waitForEditStatus("Saved", app: app))
+
+        redoButton.tap()
+        XCTAssertTrue(waitForFieldValue(editNameField, contains: updatedName))
+        XCTAssertTrue(waitForEditStatus("Saved", app: app))
 
         chooseCategory(
             named: "Konserven",
@@ -239,6 +253,28 @@ final class PlaniniUITests: XCTestCase {
             )
         )
 
+        let updatedItemID = try itemID(
+            named: updatedName,
+            inListNamed: initialListName,
+            accessToken: session.accessToken
+        )
+        XCTAssertTrue(
+            waitForItemRow(itemID: updatedItemID, named: updatedName, in: app, timeout: 20),
+            "Expected updated item row to be visible after closing edit sheet."
+        )
+        XCTAssertTrue(
+            tapItemToggleButton(
+                itemID: updatedItemID,
+                named: updatedName,
+                checked: true,
+                in: app,
+                inListNamed: initialListName,
+                accessToken: session.accessToken,
+                timeout: 20
+            ),
+            "Expected tapping the item check button to mark the item checked."
+        )
+        captureScreenshot(named: "ios-ui-checked-item")
         captureScreenshot(named: "promotion-filled-list")
 
         let hostingListName = "Hosting errands"
@@ -371,6 +407,7 @@ final class PlaniniUITests: XCTestCase {
 
         XCTAssertTrue(tapTab("Settings", in: app, timeout: 10))
         XCTAssertTrue(app.buttons["settings-sign-out-button"].waitForExistence(timeout: 5))
+        try exerciseHouseholdManagement(in: app, accessToken: session.accessToken)
         assertAppearanceMode("System", in: app)
         selectAppearanceMode("Dark", in: app)
         assertAppearanceMode("Dark", in: app)
@@ -398,6 +435,7 @@ final class PlaniniUITests: XCTestCase {
         }
 
         let app = XCUIApplication()
+        configureLaunchLanguage(for: app)
         app.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
         app.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
         app.launchEnvironment["PLANINI_UI_TEST_ACCESS_TOKEN"] = session.accessToken
@@ -414,6 +452,7 @@ final class PlaniniUITests: XCTestCase {
         app.terminate()
 
         let relaunchedApp = XCUIApplication()
+        configureLaunchLanguage(for: relaunchedApp)
         relaunchedApp.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
         relaunchedApp.launchEnvironment["PLANINI_UI_TEST_RESTORE_STORED_SESSION"] = "1"
         relaunchedApp.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
@@ -437,6 +476,7 @@ final class PlaniniUITests: XCTestCase {
         }
 
         let app = XCUIApplication()
+        configureLaunchLanguage(for: app)
         app.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
         app.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
         app.launchEnvironment["PLANINI_UI_TEST_ACCESS_TOKEN"] = session.accessToken
@@ -492,6 +532,38 @@ final class PlaniniUITests: XCTestCase {
             waitForElementToDisappear(app.staticTexts[updatedName], timeout: 20),
             "Expected live-deleted item to disappear without manual refresh."
         )
+    }
+
+    func testPlaniniLinksOpenListsAndAcceptInvites() throws {
+        try assertLocalTestBackend()
+        let ownerSession = try bootstrapSession(email: seededEmail)
+        let inviteeSession = try bootstrapSession(email: "preview-invitee@example.com")
+        let linkedListID = try listID(named: initialListName, accessToken: ownerSession.accessToken)
+        let inviteToken = try createInvite(
+            householdName: "Review Household",
+            accessToken: ownerSession.accessToken
+        )
+
+        let ownerApp = launchedApp(
+            session: ownerSession,
+            initialListName: nil,
+            openedLink: baseURL.appending(path: "/lists/\(linkedListID.uuidString)")
+        )
+        XCTAssertTrue(ownerApp.staticTexts["list-detail-title"].waitForExistence(timeout: 10))
+        XCTAssertEqual(ownerApp.staticTexts["list-detail-title"].label, initialListName)
+        ownerApp.terminate()
+
+        let inviteeApp = launchedApp(
+            session: inviteeSession,
+            initialListName: nil,
+            openedLink: baseURL.appending(path: "/invite/\(inviteToken)")
+        )
+        XCTAssertTrue(
+            waitForList(named: initialListName, accessToken: inviteeSession.accessToken, timeout: 12),
+            "Expected invitee API access after opening invite link."
+        )
+        XCTAssertTrue(inviteeApp.staticTexts["list-detail-title"].waitForExistence(timeout: 10))
+        XCTAssertEqual(inviteeApp.staticTexts["list-detail-title"].label, initialListName)
     }
 
     private var baseURL: URL {
@@ -577,6 +649,97 @@ final class PlaniniUITests: XCTestCase {
         return try JSONDecoder().decode(UITestSession.self, from: capturedData)
     }
 
+    private func launchedApp(
+        session: UITestSession,
+        initialListName: String? = nil,
+        openedLink: URL? = nil
+    ) -> XCUIApplication {
+        let app = XCUIApplication()
+        configureLaunchLanguage(for: app)
+        app.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
+        app.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
+        app.launchEnvironment["PLANINI_UI_TEST_ACCESS_TOKEN"] = session.accessToken
+        app.launchEnvironment["PLANINI_UI_TEST_DISPLAY_NAME"] = session.displayName
+        if let initialListName {
+            app.launchEnvironment["PLANINI_UI_TEST_INITIAL_LIST_NAME"] = initialListName
+        }
+        if let openedLink {
+            app.launchEnvironment["PLANINI_UI_TEST_OPEN_URL"] = openedLink.absoluteString
+        }
+        app.launch()
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 10))
+        return app
+    }
+
+    private func configureLaunchLanguage(for app: XCUIApplication) {
+        app.launchEnvironment["PLANINI_UI_TEST_LANGUAGE"] = "en"
+        app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+    }
+
+    private func tapItemToggleButton(
+        itemID: UUID,
+        named itemName: String,
+        checked: Bool,
+        in app: XCUIApplication,
+        inListNamed listName: String,
+        accessToken: String,
+        timeout: TimeInterval = 20
+    ) -> Bool {
+        let button = app.buttons["toggle-item-\(itemID.uuidString)"]
+        let editSheet = app.otherElements["edit-item-sheet"]
+        let deadline = Date().addingTimeInterval(timeout)
+
+        while Date() < deadline {
+            if waitForItemCheckedState(
+                named: itemName,
+                checked: checked,
+                inListNamed: listName,
+                accessToken: accessToken,
+                timeout: 0.5
+            ) {
+                return true
+            }
+
+            if editSheet.exists {
+                app.buttons["Done"].tap()
+                _ = waitForElementToDisappear(editSheet, timeout: 3)
+            }
+
+            if button.exists {
+                scrollToHittable(button, in: app, maxSwipes: 2)
+                if button.isHittable {
+                    button.tap()
+                } else {
+                    tapElement(button)
+                }
+            } else {
+                _ = waitForItemRow(itemID: itemID, named: itemName, in: app, timeout: 2)
+            }
+
+            if waitForItemCheckedState(
+                named: itemName,
+                checked: checked,
+                inListNamed: listName,
+                accessToken: accessToken,
+                timeout: 2
+            ) {
+                return true
+            }
+        }
+
+        return waitForItemCheckedState(
+            named: itemName,
+            checked: checked,
+            inListNamed: listName,
+            accessToken: accessToken,
+            timeout: 0.5
+        )
+    }
+
+    private func openAddItemSheet(in app: XCUIApplication, timeout: TimeInterval = 10) -> Bool {
+        openAddItemSheet(using: app.buttons["add-item-button"], in: app, timeout: timeout)
+    }
+
     private func waitForItemCheckedState(
         named itemName: String,
         checked: Bool,
@@ -607,6 +770,21 @@ final class PlaniniUITests: XCTestCase {
             if let items = try? fetchItems(inListNamed: listName, accessToken: accessToken),
                 items.contains(where: { $0.name == itemName })
             {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.35))
+        }
+        return false
+    }
+
+    private func waitForList(
+        named listName: String,
+        accessToken: String,
+        timeout: TimeInterval = 8
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if (try? listID(named: listName, accessToken: accessToken)) != nil {
                 return true
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.35))
@@ -687,18 +865,19 @@ final class PlaniniUITests: XCTestCase {
         firstCategoryID: UUID,
         accessToken: String
     ) -> Bool {
-        let dragOffsets: [CGFloat] = [1.12, 1.04, 0.96]
+        let grabberOffsets: [CGFloat] = [1.12, 1.04, 0.96, 0.85, 0.72, 0.55]
         let targetOffsets: [CGFloat] = [-0.9, -0.65, -0.35, -0.1]
-        for dragOffset in dragOffsets {
+        for grabberOffset in grabberOffsets {
             for targetOffset in targetOffsets {
-                scrollToHittable(targetRow, in: app, maxSwipes: 2)
                 scrollToHittable(movingRow, in: app, maxSwipes: 2)
+                scrollToHittable(targetRow, in: app, maxSwipes: 2)
                 guard movingRow.waitForExistence(timeout: 3), targetRow.waitForExistence(timeout: 3) else {
                     return false
                 }
 
-                let grabber = movingRow.coordinate(withNormalizedOffset: CGVector(dx: dragOffset, dy: 0.5))
-                let target = targetRow.coordinate(withNormalizedOffset: CGVector(dx: dragOffset, dy: targetOffset))
+                let targetX = min(grabberOffset, 0.95)
+                let grabber = movingRow.coordinate(withNormalizedOffset: CGVector(dx: grabberOffset, dy: 0.5))
+                let target = targetRow.coordinate(withNormalizedOffset: CGVector(dx: targetX, dy: targetOffset))
                 grabber.press(forDuration: 1.2, thenDragTo: target)
                 if waitForFirstCategoryOrder(
                     listID: listID,
@@ -755,6 +934,104 @@ final class PlaniniUITests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
         return (statusLabel.exists && statusLabel.label.contains(status)) || app.staticTexts[status].exists
+    }
+
+    private func waitForFieldValue(
+        _ field: XCUIElement,
+        contains expectedText: String,
+        timeout: TimeInterval = 8
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if field.valueText.contains(expectedText) {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        return field.valueText.contains(expectedText)
+    }
+
+    private func prepareKeyboardForTyping(in app: XCUIApplication, timeout: TimeInterval = 3) -> Bool {
+        guard app.keyboards.firstMatch.waitForExistence(timeout: timeout) else {
+            return false
+        }
+        dismissKeyboardTipsIfPresent(in: app)
+        return true
+    }
+
+    private func dismissKeyboardTipsIfPresent(in app: XCUIApplication) {
+        let continueButton = app.buttons["Continue"]
+        let deadline = Date().addingTimeInterval(2)
+
+        while Date() < deadline {
+            if continueButton.exists {
+                tapElement(continueButton)
+                _ = waitForElementToDisappear(continueButton, timeout: 2)
+                return
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
+    }
+
+    private func exerciseHouseholdManagement(in app: XCUIApplication, accessToken: String) throws {
+        let suffix = UUID().uuidString.prefix(8)
+        let householdName = "UI Household \(suffix)"
+        let listName = "UI Household List \(suffix)"
+
+        let managementLink = app.buttons["settings-household-management-link"]
+        XCTAssertTrue(managementLink.waitForExistence(timeout: 5))
+        tapElement(managementLink)
+
+        let managementScreen = app.descendants(matching: .any)["household-management-screen"]
+        XCTAssertTrue(managementScreen.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["new-household-button"].waitForExistence(timeout: 5))
+
+        tapElement(app.buttons["new-household-button"])
+        let householdField = app.textFields["new-household-name-field"]
+        XCTAssertTrue(householdField.waitForExistence(timeout: 5))
+        householdField.tap()
+        householdField.typeText(householdName)
+        tapElement(app.buttons["new-household-save-button"])
+
+        let householdRow = app.buttons["household-row-\(householdName)"]
+        XCTAssertTrue(householdRow.waitForExistence(timeout: 10))
+        XCTAssertTrue(waitForHousehold(named: householdName, accessToken: accessToken))
+        tapElement(householdRow)
+
+        let householdDetail = app.descendants(matching: .any)["household-detail-management-screen"]
+        XCTAssertTrue(householdDetail.waitForExistence(timeout: 5))
+        tapElement(app.buttons["new-household-list-button"])
+
+        let listField = app.textFields["new-household-list-name-field"]
+        XCTAssertTrue(listField.waitForExistence(timeout: 5))
+        listField.tap()
+        listField.typeText(listName)
+        tapElement(app.buttons["new-household-list-save-button"])
+
+        let listRow = app.buttons["managed-list-row-\(listName)"]
+        XCTAssertTrue(listRow.waitForExistence(timeout: 10))
+        XCTAssertTrue(
+            waitForList(named: listName, inHouseholdNamed: householdName, accessToken: accessToken)
+        )
+
+        tapElement(app.buttons["create-household-invite-button"])
+        let inviteValue = app.staticTexts["household-invite-url-value"]
+        XCTAssertTrue(inviteValue.waitForExistence(timeout: 10))
+        let inviteURL = inviteValue.label
+        XCTAssertTrue(inviteURL.contains("/invite/"))
+        XCTAssertTrue(
+            waitForInvitePreview(
+                inviteURL: inviteURL,
+                householdName: householdName,
+                accessToken: accessToken
+            )
+        )
+        captureScreenshot(named: "ios-ui-household-management")
+
+        navigateBack(in: app)
+        XCTAssertTrue(managementScreen.waitForExistence(timeout: 3))
+        navigateBack(in: app)
+        XCTAssertTrue(app.buttons["settings-sign-out-button"].waitForExistence(timeout: 5))
     }
 
     private func assertLanguageSettings(in app: XCUIApplication) {
@@ -872,7 +1149,6 @@ final class PlaniniUITests: XCTestCase {
         timeout: TimeInterval = 45
     ) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
-        let listsTab = app.tabBars.buttons["Lists"]
         let initialListRow = app.buttons["list-row-\(initialListName)"]
 
         while Date() < deadline {
@@ -880,11 +1156,7 @@ final class PlaniniUITests: XCTestCase {
                 return true
             }
 
-            if listsTab.exists {
-                guard tapTab("Lists", in: app) else {
-                    RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-                    continue
-                }
+            if tapTab("Lists", in: app, timeout: 1) {
                 returnToListsRootIfNeeded(app)
                 if initialListRow.waitForExistence(timeout: 2) {
                     initialListRow.tap()
@@ -901,12 +1173,33 @@ final class PlaniniUITests: XCTestCase {
     }
 
     private func tapTab(_ label: String, in app: XCUIApplication, timeout: TimeInterval = 5) -> Bool {
-        let tabButton = app.tabBars.buttons[label]
-        guard tabButton.waitForExistence(timeout: timeout) else {
+        let tabButton = firstExistingElement(tabCandidates(for: label, in: app), timeout: timeout)
+        guard tabButton.exists else {
             return false
         }
         tapElement(tabButton)
         return true
+    }
+
+    private func tabCandidates(for label: String, in app: XCUIApplication) -> [XCUIElement] {
+        switch label {
+        case "Lists":
+            return [
+                app.tabBars.buttons["tab-lists"],
+                app.buttons["tab-lists"],
+                app.tabBars.buttons["Lists"],
+                app.tabBars.buttons["Listen"],
+            ]
+        case "Settings":
+            return [
+                app.tabBars.buttons["tab-settings"],
+                app.buttons["tab-settings"],
+                app.tabBars.buttons["Settings"],
+                app.tabBars.buttons["Einstellungen"],
+            ]
+        default:
+            return [app.tabBars.buttons[label], app.buttons[label]]
+        }
     }
 
     private func chooseCategory(
@@ -1001,6 +1294,20 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(waitForElementToDisappear(keyboard, timeout: 3))
     }
 
+    private func tapCancelButton(in app: XCUIApplication) {
+        let button = firstExistingElement(
+            [
+                app.buttons["add-item-cancel-button"],
+                app.buttons["reviewer-onboarding-cancel-button"],
+                app.buttons["Cancel"],
+                app.buttons["Abbrechen"],
+            ],
+            timeout: 3
+        )
+        XCTAssertTrue(button.exists)
+        tapElement(button)
+    }
+
     private func replaceText(in element: XCUIElement, with value: String) {
         element.tap()
         let deleteSequence = String(repeating: XCUIKeyboardKey.delete.rawValue, count: element.valueText.count)
@@ -1015,6 +1322,31 @@ final class PlaniniUITests: XCTestCase {
         app.coordinate(withNormalizedOffset: .zero)
             .withOffset(CGVector(dx: frame.maxX - 115, dy: frame.midY))
             .tap()
+    }
+
+    private func openAddItemSheet(
+        using trigger: XCUIElement,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10
+    ) -> Bool {
+        let sheet = app.otherElements["add-item-sheet"]
+        let deadline = Date().addingTimeInterval(timeout)
+
+        while Date() < deadline {
+            if sheet.exists {
+                return true
+            }
+            if trigger.exists {
+                scrollToHittable(trigger, in: app, maxSwipes: 2)
+                tapElement(trigger)
+            }
+            if sheet.waitForExistence(timeout: 1) {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+
+        return sheet.exists
     }
 
     private func tapSuggestionAndWaitForSheetDismissal(_ element: XCUIElement, app: XCUIApplication) -> Bool {
@@ -1040,13 +1372,13 @@ final class PlaniniUITests: XCTestCase {
 
     private func tapAddItemSaveAndWaitForDismissal(in app: XCUIApplication, timeout: TimeInterval = 12) -> Bool {
         let sheet = app.otherElements["add-item-sheet"]
-        let saveButton = app.buttons["add-item-save-button"]
         let deadline = Date().addingTimeInterval(timeout)
 
         while Date() < deadline {
-            if waitForElementToDisappear(sheet, timeout: 1) {
+            guard sheet.exists else {
                 return true
             }
+            let saveButton = sheet.buttons["add-item-save-button"]
             if saveButton.exists && saveButton.isEnabled {
                 tapElement(saveButton)
             }
@@ -1135,8 +1467,8 @@ final class PlaniniUITests: XCTestCase {
             ],
             timeout: 3
         )
-        XCTAssertTrue(helpButton.waitForExistence(timeout: 3))
-        helpButton.tap()
+        XCTAssertTrue(helpButton.exists)
+        tapElement(helpButton)
 
         XCTAssertTrue(app.otherElements["reviewer-onboarding-sheet"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.textFields["passkey-add-link-field"].waitForExistence(timeout: 3))
@@ -1144,6 +1476,10 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(app.textFields["registration-email-field"].waitForExistence(timeout: 3))
         captureScreenshot(named: "ios-ui-reviewer-onboarding")
 
+        XCTAssertFalse(app.buttons["passkey-add-submit-button"].isEnabled)
+        XCTAssertFalse(app.buttons["registration-submit-button"].isEnabled)
+
+        let onboardingSheet = app.otherElements["reviewer-onboarding-sheet"]
         let passkeyField = app.textFields["passkey-add-link-field"]
         passkeyField.tap()
         passkeyField.typeText("\(baseURL.absoluteString)/passkey-add/missing-reviewer-token")
@@ -1157,8 +1493,9 @@ final class PlaniniUITests: XCTestCase {
         emailField.typeText("reviewer@example.com")
         XCTAssertTrue(app.buttons["registration-submit-button"].isEnabled)
 
-        app.buttons["Cancel"].tap()
-        XCTAssertFalse(app.otherElements["reviewer-onboarding-sheet"].exists)
+        tapCancelButton(in: app)
+        XCTAssertTrue(waitForElementToDisappear(onboardingSheet, timeout: 5))
+        XCTAssertTrue(app.buttons["login-passkey-button"].waitForExistence(timeout: 3))
     }
 
     private func firstExistingElement(_ elements: [XCUIElement], timeout: TimeInterval) -> XCUIElement {
@@ -1171,22 +1508,10 @@ final class PlaniniUITests: XCTestCase {
     }
 
     private func fetchItems(inListNamed listName: String, accessToken: String) throws -> [UITestItem] {
-        let householdRequest = jsonRequest(
-            path: "/api/v1/households",
-            method: "GET",
-            token: accessToken
-        )
-        let householdData = try performRequest(householdRequest)
-        let households = try JSONDecoder().decode([UITestHousehold].self, from: householdData)
+        let households = try fetchHouseholds(accessToken: accessToken)
 
         for household in households {
-            let listsRequest = jsonRequest(
-                path: "/api/v1/households/\(household.id.uuidString)/lists",
-                method: "GET",
-                token: accessToken
-            )
-            let listData = try performRequest(listsRequest)
-            let lists = try JSONDecoder().decode([UITestList].self, from: listData)
+            let lists = try fetchLists(householdID: household.id, accessToken: accessToken)
             guard let matchingList = lists.first(where: { $0.name == listName }) else {
                 continue
             }
@@ -1201,6 +1526,104 @@ final class PlaniniUITests: XCTestCase {
         }
 
         return []
+    }
+
+    private func waitForHousehold(
+        named householdName: String,
+        accessToken: String,
+        timeout: TimeInterval = 8
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let households = try? fetchHouseholds(accessToken: accessToken),
+                households.contains(where: { $0.name == householdName })
+            {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.35))
+        }
+        return false
+    }
+
+    private func waitForList(
+        named listName: String,
+        inHouseholdNamed householdName: String,
+        accessToken: String,
+        timeout: TimeInterval = 8
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let households = try? fetchHouseholds(accessToken: accessToken),
+                let household = households.first(where: { $0.name == householdName }),
+                let lists = try? fetchLists(householdID: household.id, accessToken: accessToken),
+                lists.contains(where: { $0.name == listName })
+            {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.35))
+        }
+        return false
+    }
+
+    private func waitForInvitePreview(
+        inviteURL: String,
+        householdName: String,
+        accessToken: String,
+        timeout: TimeInterval = 8
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let preview = try? invitePreview(inviteURL: inviteURL, accessToken: accessToken),
+                preview.householdName == householdName,
+                preview.alreadyMember
+            {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.35))
+        }
+        return false
+    }
+
+    private func fetchHouseholds(accessToken: String) throws -> [UITestHousehold] {
+        let request = jsonRequest(
+            path: "/api/v1/households",
+            method: "GET",
+            token: accessToken
+        )
+        let data = try performRequest(request)
+        return try JSONDecoder().decode([UITestHousehold].self, from: data)
+    }
+
+    private func fetchLists(householdID: UUID, accessToken: String) throws -> [UITestList] {
+        let request = jsonRequest(
+            path: "/api/v1/households/\(householdID.uuidString)/lists",
+            method: "GET",
+            token: accessToken
+        )
+        let data = try performRequest(request)
+        return try JSONDecoder().decode([UITestList].self, from: data)
+    }
+
+    private func invitePreview(inviteURL: String, accessToken: String) throws -> UITestInvitePreview {
+        guard
+            let url = URL(string: inviteURL),
+            let token = url.pathComponents.last,
+            token.isEmpty == false
+        else {
+            throw NSError(
+                domain: "PlaniniUITests",
+                code: 6,
+                userInfo: [NSLocalizedDescriptionKey: "Could not parse invite URL."]
+            )
+        }
+
+        let request = jsonRequest(
+            path: "/api/v1/households/invites/\(token)",
+            method: "GET",
+            token: accessToken
+        )
+        let data = try performRequest(request)
+        return try JSONDecoder().decode(UITestInvitePreview.self, from: data)
     }
 
     private func fetchList(listID: UUID, accessToken: String) throws -> UITestList {
@@ -1321,23 +1744,45 @@ final class PlaniniUITests: XCTestCase {
         _ = try performRequest(request)
     }
 
-    private func listID(named listName: String, accessToken: String) throws -> UUID {
-        let householdRequest = jsonRequest(
-            path: "/api/v1/households",
-            method: "GET",
-            token: accessToken
+    private func createInvite(householdName: String, accessToken: String) throws -> String {
+        let householdID = try householdID(named: householdName, accessToken: accessToken)
+        let request = jsonRequest(
+            path: "/api/v1/households/\(householdID.uuidString)/invites",
+            method: "POST",
+            token: accessToken,
+            body: [:]
         )
-        let householdData = try performRequest(householdRequest)
-        let households = try JSONDecoder().decode([UITestHousehold].self, from: householdData)
+        let data = try performRequest(request)
+        let invite = try JSONDecoder().decode(UITestInvite.self, from: data)
+        guard let token = invite.inviteURL.split(separator: "/").last else {
+            throw NSError(
+                domain: "PlaniniUITests",
+                code: 5,
+                userInfo: [NSLocalizedDescriptionKey: "Could not extract invite token."]
+            )
+        }
+        return String(token)
+    }
+
+    private func householdID(named householdName: String, accessToken: String) throws -> UUID {
+        let request = jsonRequest(path: "/api/v1/households", method: "GET", token: accessToken)
+        let data = try performRequest(request)
+        let households = try JSONDecoder().decode([UITestHousehold].self, from: data)
+        if let household = households.first(where: { $0.name == householdName }) {
+            return household.id
+        }
+        throw NSError(
+            domain: "PlaniniUITests",
+            code: 6,
+            userInfo: [NSLocalizedDescriptionKey: "Could not find household named \(householdName)."]
+        )
+    }
+
+    private func listID(named listName: String, accessToken: String) throws -> UUID {
+        let households = try fetchHouseholds(accessToken: accessToken)
 
         for household in households {
-            let listsRequest = jsonRequest(
-                path: "/api/v1/households/\(household.id.uuidString)/lists",
-                method: "GET",
-                token: accessToken
-            )
-            let listData = try performRequest(listsRequest)
-            let lists = try JSONDecoder().decode([UITestList].self, from: listData)
+            let lists = try fetchLists(householdID: household.id, accessToken: accessToken)
             if let matchingList = lists.first(where: { $0.name == listName }) {
                 return matchingList.id
             }
@@ -1441,6 +1886,13 @@ final class PlaniniUITests: XCTestCase {
         }
     }
 
+    private func navigateBack(in app: XCUIApplication) {
+        let backButton = app.navigationBars.buttons.firstMatch
+        if backButton.waitForExistence(timeout: 3) {
+            tapElement(backButton)
+        }
+    }
+
     private func captureScreenshot(named name: String) {
         let screenshot = XCUIScreen.main.screenshot()
         let attachment = XCTAttachment(screenshot: screenshot)
@@ -1483,6 +1935,7 @@ private struct UITestSession: Decodable {
 
 private struct UITestHousehold: Decodable {
     let id: UUID
+    let name: String
 }
 
 private struct UITestList: Decodable {
@@ -1529,6 +1982,24 @@ private struct UITestItem: Decodable {
 
 private struct UITestIdentifiedItem: Decodable {
     let id: UUID
+}
+
+private struct UITestInvitePreview: Decodable {
+    let householdName: String
+    let alreadyMember: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case householdName = "household_name"
+        case alreadyMember = "already_member"
+    }
+}
+
+private struct UITestInvite: Decodable {
+    let inviteURL: String
+
+    private enum CodingKeys: String, CodingKey {
+        case inviteURL = "invite_url"
+    }
 }
 
 private extension XCUIElement {

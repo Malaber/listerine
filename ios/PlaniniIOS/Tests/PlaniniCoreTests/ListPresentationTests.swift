@@ -3,6 +3,56 @@ import Testing
 @testable import PlaniniCore
 
 struct ListPresentationTests {
+    @Test func householdSummaryParsesJSON() {
+        let householdID = UUID()
+
+        let household = HouseholdSummary(
+            json: [
+                "id": householdID.uuidString,
+                "name": "Home",
+            ]
+        )
+
+        #expect(household == HouseholdSummary(id: householdID, name: "Home"))
+    }
+
+    @Test func householdSummaryRejectsInvalidJSON() {
+        #expect(HouseholdSummary(json: [:]) == nil)
+        #expect(
+            HouseholdSummary(
+                json: [
+                    "id": "not-a-uuid",
+                    "name": "Home",
+                ]
+            ) == nil
+        )
+    }
+
+    @Test func householdInviteLinkParsesJSON() {
+        let invite = HouseholdInviteLink(
+            json: [
+                "invite_url": "https://planini.top/invite/token",
+                "expires_at": "2026-05-18T12:00:00.123Z",
+            ]
+        )
+
+        #expect(invite?.inviteURL == "https://planini.top/invite/token")
+        #expect(invite?.expiresAt != nil)
+    }
+
+    @Test func householdInviteLinkParsesJSONWithoutValidExpiration() {
+        let invite = HouseholdInviteLink(
+            json: [
+                "invite_url": "https://planini.top/invite/token",
+                "expires_at": "not-a-date",
+            ]
+        )
+
+        #expect(invite?.inviteURL == "https://planini.top/invite/token")
+        #expect(invite?.expiresAt == nil)
+        #expect(HouseholdInviteLink(json: [:]) == nil)
+    }
+
     @Test func groceryListSummaryStoresInitializerArguments() {
         let listID = UUID()
         let householdID = UUID()
