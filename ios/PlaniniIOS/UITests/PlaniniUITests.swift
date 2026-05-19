@@ -316,6 +316,7 @@ final class PlaniniUITests: XCTestCase {
             )
         )
         dismissKeyboard(in: app)
+        XCTAssertTrue(waitForElementLabel(settingsSaveState, containing: "Saved", timeout: 8))
 
         let haushaltRow = app.descendants(matching: .any)["category-settings-row-\(haushaltCategoryID.uuidString)"]
         let backwarenRow = app.descendants(matching: .any)["category-settings-row-\(backwarenCategoryID.uuidString)"]
@@ -728,24 +729,31 @@ final class PlaniniUITests: XCTestCase {
         firstCategoryID: UUID,
         accessToken: String
     ) -> Bool {
-        let targetOffsets: [CGFloat] = [-0.7, -0.35]
-        for targetOffset in targetOffsets {
-            guard movingRow.waitForExistence(timeout: 3), targetRow.waitForExistence(timeout: 3) else {
-                return false
-            }
+        let grabberOffsets: [CGFloat] = [0.98, 0.92]
+        let targetOffsets: [CGFloat] = [-1.2, -0.9, -0.7, -0.45, -0.25]
+        for grabberOffset in grabberOffsets {
+            for targetOffset in targetOffsets {
+                guard movingRow.waitForExistence(timeout: 3), targetRow.waitForExistence(timeout: 3) else {
+                    return false
+                }
 
-            let grabber = movingRow.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5))
-            let target = targetRow.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: targetOffset))
-            grabber.press(forDuration: 0.8, thenDragTo: target)
-            if waitForFirstCategoryOrder(
-                listID: listID,
-                categoryID: firstCategoryID,
-                accessToken: accessToken,
-                timeout: 4
-            ) {
-                return true
+                let grabber = movingRow.coordinate(
+                    withNormalizedOffset: CGVector(dx: grabberOffset, dy: 0.5)
+                )
+                let target = targetRow.coordinate(
+                    withNormalizedOffset: CGVector(dx: grabberOffset, dy: targetOffset)
+                )
+                grabber.press(forDuration: 1.0, thenDragTo: target)
+                if waitForFirstCategoryOrder(
+                    listID: listID,
+                    categoryID: firstCategoryID,
+                    accessToken: accessToken,
+                    timeout: 4
+                ) {
+                    return true
+                }
+                RunLoop.current.run(until: Date().addingTimeInterval(0.4))
             }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         }
         return waitForFirstCategoryOrder(
             listID: listID,
@@ -791,6 +799,21 @@ final class PlaniniUITests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
         return (statusLabel.exists && statusLabel.label.contains(status)) || app.staticTexts[status].exists
+    }
+
+    private func waitForElementLabel(
+        _ element: XCUIElement,
+        containing text: String,
+        timeout: TimeInterval = 8
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if element.exists && (element.label.contains(text) || element.valueText.contains(text)) {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        return element.exists && (element.label.contains(text) || element.valueText.contains(text))
     }
 
     private func assertLanguageSettings(in app: XCUIApplication) {
