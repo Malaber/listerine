@@ -24,6 +24,7 @@ final class PlaniniUITests: XCTestCase {
         } else {
             try bootstrapSession(email: userEmail)
         }
+
         let app = XCUIApplication()
         app.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
         app.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
@@ -277,7 +278,6 @@ final class PlaniniUITests: XCTestCase {
         } else {
             try bootstrapSession(email: userEmail)
         }
-
         let app = XCUIApplication()
         app.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
         app.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
@@ -382,6 +382,16 @@ final class PlaniniUITests: XCTestCase {
         } else {
             try bootstrapSession(email: userEmail)
         }
+        let offlineToggleItemName = "Offline Toggle \(UUID().uuidString.prefix(8))"
+        let offlineToggleItemID = try createItem(
+            named: offlineToggleItemName,
+            note: "",
+            inListNamed: initialListName,
+            accessToken: session.accessToken
+        )
+        addTeardownBlock {
+            try? self.deleteItem(itemID: offlineToggleItemID, accessToken: session.accessToken)
+        }
 
         let app = XCUIApplication()
         app.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
@@ -397,6 +407,7 @@ final class PlaniniUITests: XCTestCase {
             "Expected online launch to cache the initial list before offline relaunch."
         )
         XCTAssertTrue(app.staticTexts["Loose item"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts[offlineToggleItemName].waitForExistence(timeout: 5))
         app.terminate()
 
         let offlineApp = XCUIApplication()
@@ -420,7 +431,45 @@ final class PlaniniUITests: XCTestCase {
             offlineApp.alerts["Error"].waitForExistence(timeout: 2),
             "Expected offline cache fallback to avoid the generic error popup."
         )
+        let offlineToggle = offlineApp.buttons["toggle-item-\(offlineToggleItemID.uuidString)"]
+        scrollToElement(offlineToggle, in: offlineApp, maxSwipes: 3)
+        XCTAssertTrue(offlineToggle.waitForExistence(timeout: 5))
+        tapElement(offlineToggle)
+        XCTAssertTrue(
+            waitForToggleLabel(offlineToggle, containsAny: ["Uncheck", "wieder öffnen"]),
+            "Expected offline item toggle to update locally."
+        )
+        XCTAssertFalse(
+            offlineApp.alerts["Error"].waitForExistence(timeout: 2),
+            "Expected offline item toggle to avoid the generic error popup."
+        )
         captureScreenshot(named: "ios-ui-offline-cache-banner")
+        offlineApp.terminate()
+
+        let syncApp = XCUIApplication()
+        syncApp.launchEnvironment["PLANINI_UI_TEST_MODE"] = "1"
+        syncApp.launchEnvironment["PLANINI_BACKEND_BASE_URL_OVERRIDE"] = baseURL.absoluteString
+        syncApp.launchEnvironment["PLANINI_UI_TEST_ACCESS_TOKEN"] = session.accessToken
+        syncApp.launchEnvironment["PLANINI_UI_TEST_DISPLAY_NAME"] = session.displayName
+        syncApp.launchEnvironment["PLANINI_UI_TEST_INITIAL_LIST_NAME"] = initialListName
+        syncApp.launch()
+
+        let syncedListTitle = syncApp.staticTexts["list-detail-title"]
+        XCTAssertTrue(
+            openInitialListDetail(in: syncApp, listTitle: syncedListTitle, timeout: 20),
+            "Expected online relaunch to open the cached list and flush offline toggles."
+        )
+        XCTAssertTrue(
+            waitForItemCheckedState(
+                named: offlineToggleItemName,
+                checked: true,
+                inListNamed: initialListName,
+                accessToken: session.accessToken,
+                timeout: 20
+            ),
+            "Expected offline item toggle to sync after connection returns."
+        )
+        syncApp.terminate()
     }
 
     private var baseURL: URL {
@@ -661,6 +710,21 @@ final class PlaniniUITests: XCTestCase {
         }
         let value = element.valueText
         return value.contains("Selected") || value.contains("Ausgewählt")
+    }
+
+    private func waitForToggleLabel(
+        _ element: XCUIElement,
+        containsAny fragments: [String],
+        timeout: TimeInterval = 5
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if fragments.contains(where: { element.label.contains($0) }) {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        return fragments.contains(where: { element.label.contains($0) })
     }
 
     private func waitForElementToDisappear(_ element: XCUIElement, timeout: TimeInterval = 8) -> Bool {
