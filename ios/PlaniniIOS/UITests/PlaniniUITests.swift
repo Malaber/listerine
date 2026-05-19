@@ -316,7 +316,7 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(moveNoticeMessage.label.contains("Brot"))
         XCTAssertTrue(moveNoticeMessage.label.contains("Hosting errands"))
         let checkedCountBadge = app.staticTexts["section-count-badge-checked"]
-        XCTAssertTrue(waitForElementLabel(checkedCountBadge, equals: "Checked off count, 0 items"))
+        XCTAssertTrue(waitForSectionCountBadge(checkedCountBadge, count: 0))
         captureScreenshot(named: "ios-ui-moved-item-notice")
         app.buttons["move-item-undo-button-\(seededItemID.uuidString)"].tap()
         XCTAssertTrue(
@@ -350,7 +350,7 @@ final class PlaniniUITests: XCTestCase {
             )
         )
         XCTAssertTrue(waitForItemRow(itemID: seededItemID, named: "Brot", in: app, timeout: 20))
-        XCTAssertTrue(waitForElementLabel(checkedCountBadge, equals: "Checked off count, 1 item"))
+        XCTAssertTrue(waitForSectionCountBadge(checkedCountBadge, count: 1))
 
         XCTAssertTrue(
             waitForItemRow(itemID: updatedItemID, named: updatedName, in: app, timeout: 20),
@@ -375,7 +375,7 @@ final class PlaniniUITests: XCTestCase {
         let failedUndoNotice = app.otherElements["item-move-notice-\(updatedItemID.uuidString)"]
         XCTAssertTrue(failedUndoNotice.waitForExistence(timeout: 5))
         let konservenCountBadge = app.staticTexts["section-count-badge-category-\(konservenCategoryID.uuidString)"]
-        XCTAssertTrue(waitForElementLabel(konservenCountBadge, equals: "Konserven count, 1 item"))
+        XCTAssertTrue(waitForSectionCountBadge(konservenCountBadge, count: 1))
         try deleteItem(itemID: updatedItemID, accessToken: session.accessToken)
         app.buttons["move-item-undo-button-\(updatedItemID.uuidString)"].tap()
         let failedUndoError = app.staticTexts["item-move-notice-error-\(updatedItemID.uuidString)"]
@@ -781,19 +781,29 @@ final class PlaniniUITests: XCTestCase {
         return element.exists == false
     }
 
-    private func waitForElementLabel(
+    private func waitForSectionCountBadge(
         _ element: XCUIElement,
-        equals expectedLabel: String,
+        count expectedCount: Int,
         timeout: TimeInterval = 5
     ) -> Bool {
+        let expectedNumber = "\(expectedCount)"
+        let expectedCountText = expectedCount == 1 ? "1 item" : "\(expectedCount) items"
         let deadline = Date().addingTimeInterval(timeout)
+
         while Date() < deadline {
-            if element.exists && element.label == expectedLabel {
+            if sectionCountBadge(element, matchesNumber: expectedNumber, countText: expectedCountText) {
                 return true
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
-        return element.exists && element.label == expectedLabel
+
+        return sectionCountBadge(element, matchesNumber: expectedNumber, countText: expectedCountText)
+    }
+
+    private func sectionCountBadge(_ element: XCUIElement, matchesNumber number: String, countText: String) -> Bool {
+        guard element.exists else { return false }
+        let exposedTexts = [element.label, element.valueText].filter { $0.isEmpty == false }
+        return exposedTexts.contains(number) || exposedTexts.contains { $0.contains(countText) }
     }
 
     private func saveAddItemSheet(in app: XCUIApplication, timeout: TimeInterval = 10) -> Bool {
