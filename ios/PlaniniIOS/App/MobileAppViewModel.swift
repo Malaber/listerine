@@ -76,6 +76,11 @@ private struct PendingItemEdit: Codable, Equatable {
     var updatedAt: Date
 }
 
+struct LinkedListNavigationRequest: Equatable {
+    let id = UUID()
+    let listID: UUID
+}
+
 @MainActor
 final class MobileAppViewModel: ObservableObject {
     private static let favoriteListKey = "planini.favoriteListID"
@@ -103,6 +108,7 @@ final class MobileAppViewModel: ObservableObject {
     @Published var quickAddItemName: String
     @Published var errorMessage: String?
     @Published var reviewerOnboardingMessage: String?
+    @Published private(set) var linkedListNavigationRequest: LinkedListNavigationRequest?
 
     private let passkeyClient: ApplePasskeyClient
     private let userDefaults: UserDefaults
@@ -115,6 +121,7 @@ final class MobileAppViewModel: ObservableObject {
     private var itemReloadGeneration = 0
     private var pendingItemEdits: [PendingItemEdit]
     private var itemEditSaveRevisions: [UUID: Int] = [:]
+    private var pendingPlaniniLink: PlaniniLink?
 
     init(
         passkeyClient: ApplePasskeyClient = ApplePasskeyClient(),
@@ -205,63 +212,22 @@ final class MobileAppViewModel: ObservableObject {
     }
 
     nonisolated static func passkeyAddToken(from rawValue: String) -> String? {
-        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.isEmpty == false else { return nil }
-
-        if let token = passkeyAddTokenFromURL(trimmed) {
-            return token
-        }
-
-        for marker in ["/passkey-add/", "passkey-add/"] {
-            guard let range = trimmed.range(of: marker) else { continue }
-            let suffix = String(trimmed[range.upperBound...])
-            if let token = normalizedPasskeyAddToken(suffix) {
-                return token
-            }
-        }
-
-        return normalizedPasskeyAddToken(trimmed)
+        PlaniniLinkParser.passkeyAddToken(from: rawValue)
     }
 
-    nonisolated private static func passkeyAddTokenFromURL(_ rawValue: String) -> String? {
-        guard let url = URL(string: rawValue), url.scheme != nil else { return nil }
-        let segments = url.path.split(separator: "/").map(String.init)
-        if
-            let markerIndex = segments.firstIndex(of: "passkey-add"),
-            markerIndex + 1 < segments.count
-        {
-            return normalizedPasskeyAddToken(segments[markerIndex + 1])
+    func handleIncomingPlaniniLink(_ rawValue: String) async {
+        guard let link = PlaniniLinkParser.parse(rawValue, allowedWebHosts: allowedPlaniniLinkHosts) else {
+            return
         }
-        if url.host == "passkey-add", let token = segments.first {
-            return normalizedPasskeyAddToken(token)
-        }
-        return nil
-    }
 
-    nonisolated private static func normalizedPasskeyAddToken(_ rawValue: String) -> String? {
-        var value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        for separator in ["?", "#"] {
-            if let range = value.range(of: separator) {
-                value = String(value[..<range.lowerBound])
-            }
+        switch link {
+        case .passkeyAdd:
+            return
+        case let .invite(token):
+            await acceptInviteFromLink(token: token)
+        case let .list(id):
+            await openListFromLink(id: id)
         }
-        while value.hasPrefix("/") {
-            value.removeFirst()
-        }
-        while value.hasSuffix("/") {
-            value.removeLast()
-        }
-        if let slashIndex = value.firstIndex(of: "/") {
-            value = String(value[..<slashIndex])
-        }
-        value = value.removingPercentEncoding ?? value
-        guard
-            value.isEmpty == false,
-            value.rangeOfCharacter(from: .whitespacesAndNewlines) == nil
-        else {
-            return nil
-        }
-        return value
     }
 
     func loginWithPasskey() async {
@@ -276,7 +242,6 @@ final class MobileAppViewModel: ObservableObject {
 
         do {
             try await performPasskeyLogin(backendURL: backendURL)
-            errorMessage = nil
             reviewerOnboardingMessage = nil
             watchSyncCoordinator.publishCurrentState()
         } catch {
@@ -334,7 +299,6 @@ final class MobileAppViewModel: ObservableObject {
 
             reviewerOnboardingMessage = "Passkey added. Signing in…"
             try await performPasskeyLogin(backendURL: backendURL)
-            errorMessage = nil
             reviewerOnboardingMessage = nil
             return true
         } catch {
@@ -402,7 +366,6 @@ final class MobileAppViewModel: ObservableObject {
 
             reviewerOnboardingMessage = "Account created. Signing in…"
             try await performPasskeyLogin(backendURL: backendURL)
-            errorMessage = nil
             reviewerOnboardingMessage = nil
             return true
         } catch {
@@ -466,6 +429,8 @@ final class MobileAppViewModel: ObservableObject {
         displayName = me["display_name"] as? String
         userDefaults.set(displayName, forKey: Self.displayNameKey)
         try await reloadAllData()
+        errorMessage = nil
+        await processPendingPlaniniLinkIfPossible()
         watchSyncCoordinator.publishCurrentState()
     }
 
@@ -485,6 +450,7 @@ final class MobileAppViewModel: ObservableObject {
                     displayNameOverride: environment["PLANINI_UI_TEST_DISPLAY_NAME"],
                     preferredListName: environment["PLANINI_UI_TEST_INITIAL_LIST_NAME"]
                 )
+                await handleUITestOpenURLIfNeeded()
                 return
             }
 
@@ -504,12 +470,26 @@ final class MobileAppViewModel: ObservableObject {
                     email: bootstrapEmail,
                     preferredListName: environment["PLANINI_SIMULATOR_INITIAL_LIST_NAME"]
                 )
+                await handleUITestOpenURLIfNeeded()
             }
         } catch {
             authToken = nil
             userDefaults.removeObject(forKey: Self.authTokenKey)
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func handleUITestOpenURLIfNeeded() async {
+        guard
+            processInfo.environment["PLANINI_UI_TEST_MODE"] == "1",
+            let urlString = processInfo.environment["PLANINI_UI_TEST_OPEN_URL"]?.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            ),
+            urlString.isEmpty == false
+        else {
+            return
+        }
+        await handleIncomingPlaniniLink(urlString)
     }
 
     private func bootstrapSimulatorSession(email: String, preferredListName: String?) async throws {
@@ -572,6 +552,7 @@ final class MobileAppViewModel: ObservableObject {
         }
 
         errorMessage = nil
+        await processPendingPlaniniLinkIfPossible()
         watchSyncCoordinator.publishCurrentState()
     }
 
@@ -810,6 +791,81 @@ final class MobileAppViewModel: ObservableObject {
         selectedListID = id
         try? await reloadItems()
         updateLiveUpdatesConnection()
+    }
+
+    private var allowedPlaniniLinkHosts: Set<String> {
+        var hosts: Set<String> = ["planini.top", "www.planini.top"]
+        if let host = backendURL?.host?.lowercased(), host.isEmpty == false {
+            hosts.insert(host)
+        }
+        return hosts
+    }
+
+    private func processPendingPlaniniLinkIfPossible() async {
+        guard let pendingPlaniniLink, authToken != nil else { return }
+        self.pendingPlaniniLink = nil
+        switch pendingPlaniniLink {
+        case .passkeyAdd:
+            return
+        case let .invite(token):
+            await acceptInviteFromLink(token: token)
+        case let .list(id):
+            await openListFromLink(id: id)
+        }
+    }
+
+    private func openListFromLink(id: UUID) async {
+        guard authToken != nil else {
+            pendingPlaniniLink = .list(id: id)
+            errorMessage = "Sign in to open that list."
+            return
+        }
+
+        do {
+            try await reloadAllData()
+            guard lists.contains(where: { $0.id == id }) else {
+                errorMessage = "That list is not available for this account."
+                return
+            }
+            await selectList(id: id)
+            linkedListNavigationRequest = LinkedListNavigationRequest(listID: id)
+            errorMessage = nil
+            watchSyncCoordinator.publishCurrentState()
+        } catch {
+            errorMessage = (error as NSError).localizedDescription
+        }
+    }
+
+    private func acceptInviteFromLink(token: String) async {
+        guard let backendURL, let authToken else {
+            pendingPlaniniLink = .invite(token: token)
+            errorMessage = "Sign in to accept this invite."
+            return
+        }
+
+        do {
+            let encodedToken = token.addingPercentEncoding(withAllowedCharacters: Self.passkeyTokenAllowedCharacters) ?? token
+            let household = try await requestJSON(
+                backendURL: backendURL,
+                path: "/api/v1/households/invites/\(encodedToken)/accept",
+                method: "POST",
+                body: [:],
+                token: authToken
+            )
+            let householdID = (household["id"] as? String).flatMap(UUID.init(uuidString:))
+            try await reloadAllData()
+            if
+                let householdID,
+                let linkedList = lists.first(where: { $0.householdID == householdID })
+            {
+                await selectList(id: linkedList.id)
+                linkedListNavigationRequest = LinkedListNavigationRequest(listID: linkedList.id)
+            }
+            errorMessage = nil
+            watchSyncCoordinator.publishCurrentState()
+        } catch {
+            errorMessage = (error as NSError).localizedDescription
+        }
     }
 
     func reloadItems() async throws {
