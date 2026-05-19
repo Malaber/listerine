@@ -37,8 +37,8 @@ enum WatchBackendClientError: LocalizedError, Equatable {
 
 struct WatchBackendClient {
     func refreshFavoriteItems(using state: SharedAppState) async throws -> WatchListSnapshot {
-        let session = try requireSession(from: state)
-        return try await refreshList(for: session.favoriteListID, using: state)
+        let favoriteListID = try requireFavoriteListID(from: state)
+        return try await refreshList(for: favoriteListID, using: state)
     }
 
     func refreshList(for listID: UUID, using state: SharedAppState) async throws -> WatchListSnapshot {
@@ -75,8 +75,8 @@ struct WatchBackendClient {
     }
 
     func addItem(named name: String, using state: SharedAppState) async throws -> SharedAppState {
-        let session = try requireSession(from: state)
-        return try await addItem(named: name, to: session.favoriteListID, using: state)
+        let favoriteListID = try requireFavoriteListID(from: state)
+        return try await addItem(named: name, to: favoriteListID, using: state)
     }
 
     func addItem(named name: String, to listID: UUID, using state: SharedAppState) async throws -> SharedAppState {
@@ -259,8 +259,7 @@ struct WatchBackendClient {
 
     private func requireSession(from state: SharedAppState) throws -> (
         backendURL: URL,
-        authToken: String,
-        favoriteListID: UUID
+        authToken: String
     ) {
         guard
             let backendURL = state.backendURL,
@@ -269,10 +268,14 @@ struct WatchBackendClient {
         else {
             throw WatchBackendClientError.missingSession
         }
+        return (backendURL, authToken)
+    }
+
+    private func requireFavoriteListID(from state: SharedAppState) throws -> UUID {
         guard let favoriteListID = state.favoriteListID else {
             throw WatchBackendClientError.missingFavoriteList
         }
-        return (backendURL, authToken, favoriteListID)
+        return favoriteListID
     }
 
     private func requestArray(
