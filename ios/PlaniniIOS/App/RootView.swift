@@ -612,6 +612,24 @@ private struct ListDetailScreen: View {
                         )
                             .font(.footnote)
                             .foregroundStyle(.secondary)
+
+                        let isShoppingModeActive = viewModel.shoppingModeListID == list.id
+                        Button {
+                            isStartingShoppingMode = true
+                            Task {
+                                _ = await viewModel.startShoppingMode(listID: list.id)
+                                isStartingShoppingMode = false
+                            }
+                        } label: {
+                            Label(
+                                isShoppingModeActive ? "Shopping mode active" : "Start shopping mode",
+                                systemImage: isShoppingModeActive ? "cart.fill" : "cart"
+                            )
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(isStartingShoppingMode)
+                        .accessibilityIdentifier("shopping-mode-button")
                     }
                     .padding(.vertical, 4)
                 }
@@ -680,26 +698,6 @@ private struct ListDetailScreen: View {
                     Label(l10n.t("ios.item.add_title"), systemImage: "plus")
                 }
                 .accessibilityIdentifier("add-item-button")
-            }
-
-            if let currentList {
-                ToolbarItem(placement: .topBarTrailing) {
-                    let isActive = viewModel.shoppingModeListID == currentList.id
-                    Button {
-                        isStartingShoppingMode = true
-                        Task {
-                            _ = await viewModel.startShoppingMode(listID: currentList.id)
-                            isStartingShoppingMode = false
-                        }
-                    } label: {
-                        Label(
-                            isActive ? "Shopping mode active" : "Start shopping mode",
-                            systemImage: isActive ? "cart.fill" : "cart"
-                        )
-                    }
-                    .disabled(isStartingShoppingMode)
-                    .accessibilityIdentifier("shopping-mode-button")
-                }
             }
 
             ToolbarItem(placement: .topBarTrailing) {
