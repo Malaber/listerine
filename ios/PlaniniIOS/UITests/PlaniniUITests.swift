@@ -333,12 +333,14 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(haushaltRow.waitForExistence(timeout: 5))
         XCTAssertTrue(backwarenRow.waitForExistence(timeout: 5))
         XCTAssertTrue(konservenRow.waitForExistence(timeout: 5))
+        let backwarenMoveUpButton = app.buttons["category-move-up-\(backwarenCategoryID.uuidString)"]
+        scrollToHittable(backwarenMoveUpButton, in: app)
+        XCTAssertTrue(backwarenMoveUpButton.waitForExistence(timeout: 5))
+        tapElement(backwarenMoveUpButton)
         XCTAssertTrue(
-            dragCategoryRow(
-                backwarenRow,
-                before: haushaltRow,
+            waitForFirstCategoryOrder(
                 listID: hostingListID,
-                firstCategoryID: backwarenCategoryID,
+                categoryID: backwarenCategoryID,
                 accessToken: session.accessToken
             )
         )
@@ -684,40 +686,6 @@ final class PlaniniUITests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.35))
         }
         return false
-    }
-
-    private func dragCategoryRow(
-        _ movingRow: XCUIElement,
-        before targetRow: XCUIElement,
-        listID: UUID,
-        firstCategoryID: UUID,
-        accessToken: String
-    ) -> Bool {
-        let targetOffsets: [CGFloat] = [-0.7, -0.35]
-        for targetOffset in targetOffsets {
-            guard movingRow.waitForExistence(timeout: 3), targetRow.waitForExistence(timeout: 3) else {
-                return false
-            }
-
-            let grabber = movingRow.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5))
-            let target = targetRow.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: targetOffset))
-            grabber.press(forDuration: 0.8, thenDragTo: target)
-            if waitForFirstCategoryOrder(
-                listID: listID,
-                categoryID: firstCategoryID,
-                accessToken: accessToken,
-                timeout: 4
-            ) {
-                return true
-            }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.4))
-        }
-        return waitForFirstCategoryOrder(
-            listID: listID,
-            categoryID: firstCategoryID,
-            accessToken: accessToken,
-            timeout: 2
-        )
     }
 
     private func waitForDisabledCategory(
