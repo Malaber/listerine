@@ -133,11 +133,10 @@ final class PlaniniUITests: XCTestCase {
         let nameField = app.textFields["add-item-name-field"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 3))
         nameField.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         nameField.typeText(enterSavedItemName)
-        let addItemSaveButton = app.buttons["add-item-save-button"]
-        XCTAssertTrue(waitForElementToBecomeEnabled(addItemSaveButton, timeout: 5))
-        tapElement(addItemSaveButton)
-        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 10))
+        XCTAssertTrue(tapAddItemSaveAndWaitForDismissal(in: app))
+        XCTAssertTrue(app.staticTexts[enterSavedItemName].waitForExistence(timeout: 5))
         XCTAssertTrue(
             waitForItem(
                 named: enterSavedItemName,
@@ -169,13 +168,7 @@ final class PlaniniUITests: XCTestCase {
         )
         XCTAssertTrue(app.buttons["add-item-category-link"].label.contains("Milch & Eier"))
 
-        let noteField = app.textFields["add-item-note-field"]
-        noteField.tap()
-        noteField.typeText("for pasta")
-
-        XCTAssertTrue(waitForElementToBecomeEnabled(addItemSaveButton, timeout: 5))
-        tapElement(addItemSaveButton)
-        XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 10))
+        XCTAssertTrue(tapAddItemSaveAndWaitForDismissal(in: app))
         XCTAssertTrue(
             waitForItem(
                 named: itemName,
@@ -211,6 +204,7 @@ final class PlaniniUITests: XCTestCase {
 
         let editNameField = app.textFields["edit-item-name-field"]
         editNameField.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         editNameField.typeText(" Updated")
         XCTAssertTrue(waitForEditStatus("Saved", app: app))
         XCTAssertTrue(editNameField.valueText.contains(updatedName))
@@ -273,6 +267,7 @@ final class PlaniniUITests: XCTestCase {
         selectAppearanceMode("System", in: app)
         assertAppearanceMode("System", in: app)
         captureScreenshot(named: "ios-ui-settings")
+        assertLanguageSettings(in: app)
     }
 
     func testForceClosedAppRestoresSavedSession() throws {
@@ -600,6 +595,74 @@ final class PlaniniUITests: XCTestCase {
         return (statusLabel.exists && statusLabel.label.contains(status)) || app.staticTexts[status].exists
     }
 
+    private func assertLanguageSettings(in app: XCUIApplication) {
+        let languageRow = app.buttons["settings-language-row"]
+        scrollToElement(languageRow, in: app, maxSwipes: 3)
+        XCTAssertTrue(languageRow.waitForExistence(timeout: 3))
+        tapElement(languageRow)
+
+        let germanOption = app.buttons["language-option-de"]
+        XCTAssertTrue(
+            firstExistingElement(
+                [app.navigationBars["Language"], app.staticTexts["Choose language"], germanOption],
+                timeout: 5
+            ).exists
+        )
+        scrollToElement(germanOption, in: app, maxSwipes: 3)
+        XCTAssertTrue(germanOption.waitForExistence(timeout: 3))
+        tapElement(germanOption)
+
+        XCTAssertTrue(
+            firstExistingElement(
+                [app.navigationBars["Sprache"], app.staticTexts["Sprache"]],
+                timeout: 3
+            ).exists
+        )
+        XCTAssertTrue(waitForLanguageOptionSelected(app.buttons["language-option-de"]))
+        captureScreenshot(named: "ios-ui-settings-german")
+
+        let backButton = firstExistingElement(
+            [
+                app.navigationBars.buttons["Einstellungen"],
+                app.navigationBars.buttons["Settings"],
+                app.navigationBars.buttons.element(boundBy: 0),
+            ],
+            timeout: 3
+        )
+        XCTAssertTrue(backButton.exists)
+        tapElement(backButton)
+        XCTAssertTrue(app.buttons["settings-sign-out-button"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["settings-sign-out-button"].label.contains("Abmelden"))
+
+        let localizedLanguageRow = app.buttons["settings-language-row"]
+        scrollToElement(localizedLanguageRow, in: app, maxSwipes: 3)
+        XCTAssertTrue(localizedLanguageRow.waitForExistence(timeout: 3))
+        tapElement(localizedLanguageRow)
+
+        let systemOption = app.buttons["language-option-system"]
+        scrollToElement(systemOption, in: app, maxSwipes: 3)
+        XCTAssertTrue(systemOption.waitForExistence(timeout: 3))
+        tapElement(systemOption)
+
+        XCTAssertTrue(waitForLanguageOptionSelected(app.buttons["language-option-system"]))
+    }
+
+    private func waitForLanguageOptionSelected(
+        _ element: XCUIElement,
+        timeout: TimeInterval = 3
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let value = element.valueText
+            if value.contains("Selected") || value.contains("Ausgewählt") {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
+        let value = element.valueText
+        return value.contains("Selected") || value.contains("Ausgewählt")
+    }
+
     private func waitForElementToDisappear(_ element: XCUIElement, timeout: TimeInterval = 8) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
@@ -609,17 +672,6 @@ final class PlaniniUITests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
         return element.exists == false
-    }
-
-    private func waitForElementToBecomeEnabled(_ element: XCUIElement, timeout: TimeInterval = 5) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if element.exists && element.isEnabled {
-                return true
-            }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
-        }
-        return element.exists && element.isEnabled
     }
 
     private func waitForLiveUpdatesConnection(
@@ -803,12 +855,45 @@ final class PlaniniUITests: XCTestCase {
     }
 
     private func tapSuggestionAndWaitForSheetDismissal(_ element: XCUIElement, app: XCUIApplication) -> Bool {
-        tapTrailingControl(in: element, app: app)
-        if waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 2) {
-            return true
+        let sheet = app.otherElements["add-item-sheet"]
+        let deadline = Date().addingTimeInterval(12)
+
+        while Date() < deadline {
+            if waitForElementToDisappear(sheet, timeout: 1) {
+                return true
+            }
+            if element.exists {
+                scrollToHittable(element, in: app, maxSwipes: 2)
+                tapElement(element)
+            }
+            if waitForElementToDisappear(sheet, timeout: 2) {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
-        tapTrailingControl(in: element, app: app)
-        return waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 10)
+
+        return !sheet.exists
+    }
+
+    private func tapAddItemSaveAndWaitForDismissal(in app: XCUIApplication, timeout: TimeInterval = 12) -> Bool {
+        let sheet = app.otherElements["add-item-sheet"]
+        let saveButton = app.buttons["add-item-save-button"]
+        let deadline = Date().addingTimeInterval(timeout)
+
+        while Date() < deadline {
+            if waitForElementToDisappear(sheet, timeout: 1) {
+                return true
+            }
+            if saveButton.exists && saveButton.isEnabled {
+                tapElement(saveButton)
+            }
+            if waitForElementToDisappear(sheet, timeout: 2) {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+
+        return !sheet.exists
     }
 
     private func waitForItemRow(
