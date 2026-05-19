@@ -121,7 +121,7 @@ struct ListPresentationTests {
                 "category_id": categoryID.uuidString,
                 "checked": true,
                 "checked_at": "2026-04-09T10:00:00.123Z",
-                "hidden_until": "2026-04-09T14:00:00.123Z",
+                "hidden_until": "2026-04-09T14:00:00",
                 "sort_order": 7,
             ]
         )

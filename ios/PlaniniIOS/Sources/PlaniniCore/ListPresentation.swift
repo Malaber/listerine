@@ -163,7 +163,20 @@ public struct GroceryItemRecord: Identifiable, Equatable, Codable, Sendable {
 
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: value)
+        if let parsed = formatter.date(from: value) {
+            return parsed
+        }
+
+        let sqliteFormatter = DateFormatter()
+        sqliteFormatter.locale = Locale(identifier: "en_US_POSIX")
+        sqliteFormatter.timeZone = TimeZone(secondsFromGMT: 0)
+        for format in ["yyyy-MM-dd'T'HH:mm:ss.SSSSSS", "yyyy-MM-dd'T'HH:mm:ss"] {
+            sqliteFormatter.dateFormat = format
+            if let parsed = sqliteFormatter.date(from: value) {
+                return parsed
+            }
+        }
+        return nil
     }
 }
 
