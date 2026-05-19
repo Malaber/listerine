@@ -132,8 +132,11 @@ final class PlaniniUITests: XCTestCase {
 
         let nameField = app.textFields["add-item-name-field"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 3))
+        nameField.tap()
         nameField.typeText(enterSavedItemName)
-        tapElement(app.buttons["add-item-save-button"])
+        let addItemSaveButton = app.buttons["add-item-save-button"]
+        XCTAssertTrue(waitForElementToBecomeEnabled(addItemSaveButton, timeout: 5))
+        tapElement(addItemSaveButton)
         XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 10))
         XCTAssertTrue(
             waitForItem(
@@ -149,6 +152,7 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         XCTAssertTrue(nameField.waitForExistence(timeout: 3))
+        nameField.tap()
         nameField.typeText(itemName)
 
         let quantityField = app.textFields["add-item-quantity-field"]
@@ -169,7 +173,8 @@ final class PlaniniUITests: XCTestCase {
         noteField.tap()
         noteField.typeText("for pasta")
 
-        tapElement(app.buttons["add-item-save-button"])
+        XCTAssertTrue(waitForElementToBecomeEnabled(addItemSaveButton, timeout: 5))
+        tapElement(addItemSaveButton)
         XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 10))
         XCTAssertTrue(
             waitForItem(
@@ -604,6 +609,17 @@ final class PlaniniUITests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
         return element.exists == false
+    }
+
+    private func waitForElementToBecomeEnabled(_ element: XCUIElement, timeout: TimeInterval = 5) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if element.exists && element.isEnabled {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        return element.exists && element.isEnabled
     }
 
     private func waitForLiveUpdatesConnection(
