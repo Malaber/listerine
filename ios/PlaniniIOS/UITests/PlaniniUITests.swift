@@ -460,7 +460,7 @@ final class PlaniniUITests: XCTestCase {
 
         XCTAssertTrue(expiredApp.buttons["login-passkey-button"].waitForExistence(timeout: 15))
         XCTAssertFalse(expiredApp.tabBars.firstMatch.exists)
-        XCTAssertTrue(expiredApp.staticTexts[session.displayName].waitForExistence(timeout: 3))
+        XCTAssertTrue(expiredApp.descendants(matching: .any)["login-last-account"].waitForExistence(timeout: 3))
         let alert = expiredApp.alerts["Error"]
         if alert.waitForExistence(timeout: 3) {
             XCTAssertTrue(alert.staticTexts["Session expired. Sign in again with your passkey."].exists)
