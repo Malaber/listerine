@@ -329,6 +329,7 @@ final class PlaniniUITests: XCTestCase {
             dragCategoryRow(
                 backwarenRow,
                 before: haushaltRow,
+                in: app,
                 listID: hostingListID,
                 firstCategoryID: backwarenCategoryID,
                 accessToken: session.accessToken
@@ -681,34 +682,40 @@ final class PlaniniUITests: XCTestCase {
     private func dragCategoryRow(
         _ movingRow: XCUIElement,
         before targetRow: XCUIElement,
+        in app: XCUIApplication,
         listID: UUID,
         firstCategoryID: UUID,
         accessToken: String
     ) -> Bool {
-        let targetOffsets: [CGFloat] = [-0.7, -0.35]
-        for targetOffset in targetOffsets {
-            guard movingRow.waitForExistence(timeout: 3), targetRow.waitForExistence(timeout: 3) else {
-                return false
-            }
+        let dragOffsets: [CGFloat] = [1.12, 1.04, 0.96]
+        let targetOffsets: [CGFloat] = [-0.9, -0.65, -0.35, -0.1]
+        for dragOffset in dragOffsets {
+            for targetOffset in targetOffsets {
+                scrollToHittable(targetRow, in: app, maxSwipes: 2)
+                scrollToHittable(movingRow, in: app, maxSwipes: 2)
+                guard movingRow.waitForExistence(timeout: 3), targetRow.waitForExistence(timeout: 3) else {
+                    return false
+                }
 
-            let grabber = movingRow.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5))
-            let target = targetRow.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: targetOffset))
-            grabber.press(forDuration: 0.8, thenDragTo: target)
-            if waitForFirstCategoryOrder(
-                listID: listID,
-                categoryID: firstCategoryID,
-                accessToken: accessToken,
-                timeout: 4
-            ) {
-                return true
+                let grabber = movingRow.coordinate(withNormalizedOffset: CGVector(dx: dragOffset, dy: 0.5))
+                let target = targetRow.coordinate(withNormalizedOffset: CGVector(dx: dragOffset, dy: targetOffset))
+                grabber.press(forDuration: 1.2, thenDragTo: target)
+                if waitForFirstCategoryOrder(
+                    listID: listID,
+                    categoryID: firstCategoryID,
+                    accessToken: accessToken,
+                    timeout: 6
+                ) {
+                    return true
+                }
+                RunLoop.current.run(until: Date().addingTimeInterval(0.5))
             }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         }
         return waitForFirstCategoryOrder(
             listID: listID,
             categoryID: firstCategoryID,
             accessToken: accessToken,
-            timeout: 2
+            timeout: 4
         )
     }
 
