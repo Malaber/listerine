@@ -402,7 +402,16 @@ final class PlaniniUITests: XCTestCase {
         )
         captureScreenshot(named: "ios-ui-list-settings")
 
-        tapElement(konservenToggle)
+        let disabledKonservenToggle = firstExistingElement(
+            [
+                app.switches["category-enabled-toggle-\(konservenCategoryID.uuidString)"],
+                app.buttons["category-enabled-toggle-\(konservenCategoryID.uuidString)"],
+            ],
+            timeout: 3
+        )
+        scrollToHittable(disabledKonservenToggle, in: app)
+        XCTAssertTrue(disabledKonservenToggle.waitForExistence(timeout: 5))
+        tapElement(disabledKonservenToggle)
         XCTAssertTrue(
             waitForDisabledCategory(
                 listID: hostingListID,
