@@ -15,7 +15,7 @@ import threading
 from contextlib import closing
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 from urllib.request import Request, urlopen
 
 try:
@@ -239,11 +239,15 @@ def _write_ios_ui_e2e_summary(artifact_dir: str) -> None:
     artifact_path = ROOT / artifact_dir
     screenshots = sorted(path.name for path in artifact_path.glob("*.png"))
     result_bundle_path = artifact_path / DEFAULT_IOS_UI_E2E_RESULT_BUNDLE
+    failure_summaries = _ios_ui_e2e_failure_summaries(result_bundle_path)
     summary_lines = [
         "# iOS UI e2e",
         "",
         f"Stored screenshots: {len(screenshots)}",
     ]
+    if failure_summaries:
+        summary_lines.extend(["", "## Failures"])
+        summary_lines.extend(f"- {summary}" for summary in failure_summaries)
     if screenshots:
         summary_lines.extend(["", "## Screenshots"])
         summary_lines.extend(f"- {name}" for name in screenshots)
@@ -271,19 +275,109 @@ def _dedupe_lines(lines: list[str]) -> list[str]:
     return deduped
 
 
-def _string_field(payload: dict[str, object], *keys: str) -> str:
-    for key in keys:
-        value = payload.get(key)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
+def _scalar_string(value: object) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, bool):
+        return ""
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        return str(int(value)) if value.is_integer() else str(value)
+    if isinstance(value, dict):
+        return _scalar_string(value.get("_value"))
     return ""
 
 
-def _collect_xcresult_failure_summaries(payload: object, current_test: str = "") -> list[str]:
+def _string_field(payload: dict[str, object], *keys: str) -> str:
+    for key in keys:
+        value = _scalar_string(payload.get(key))
+        if value:
+            return value
+    return ""
+
+
+def _xcresult_location_fragment(value: str) -> int | None:
+    match = re.search(r"(?:StartingLineNumber|lineNumber|line)=(\d+)", value)
+    if not match:
+        return None
+    return int(match.group(1))
+
+
+def _xcresult_line_number(payload: dict[str, object]) -> int | None:
+    for key in ("lineNumber", "line", "startingLineNumber"):
+        value = _string_field(payload, key)
+        if value.isdigit():
+            return int(value)
+    for key in ("fileName", "filePath", "fileURL", "url", "documentURL"):
+        value = _string_field(payload, key)
+        if value:
+            line = _xcresult_location_fragment(value)
+            if line is not None:
+                return line
+    return None
+
+
+def _short_xcresult_path(path_value: str) -> str:
+    parsed = urlparse(path_value)
+    path = unquote(parsed.path) if parsed.scheme == "file" else path_value
+    if not path:
+        path = path_value
+    path = path.split("#", 1)[0]
+    try:
+        path_obj = Path(path)
+        if path_obj.is_absolute():
+            try:
+                return path_obj.relative_to(ROOT).as_posix()
+            except ValueError:
+                parts = path_obj.parts
+                if "ios" in parts:
+                    return "/".join(parts[parts.index("ios") :])
+                return "/".join(parts[-3:])
+        return path_obj.as_posix()
+    except ValueError:
+        return path
+
+
+def _xcresult_location(payload: dict[str, object], inherited_location: str = "") -> str:
+    for key in ("sourceCodeContext", "location", "documentLocationInCreatingWorkspace"):
+        nested = payload.get(key)
+        if isinstance(nested, dict):
+            location = _xcresult_location(nested, inherited_location)
+            if location:
+                return location
+
+    path = _string_field(payload, "fileName", "filePath", "fileURL", "url", "documentURL")
+    line = _xcresult_line_number(payload)
+    if not path:
+        return inherited_location
+
+    location = _short_xcresult_path(path)
+    if line is not None:
+        return f"{location}:{line}"
+    return location or inherited_location
+
+
+def _format_xcresult_failure_summary(
+    *,
+    test_name: str,
+    message: str,
+    location: str,
+) -> str:
+    label = test_name or "iOS UI test"
+    context = f" ({location})" if location else ""
+    return f"{label}{context}: {message}"
+
+
+def _collect_xcresult_failure_summaries(
+    payload: object, current_test: str = "", current_location: str = ""
+) -> list[str]:
     if isinstance(payload, list):
         summaries: list[str] = []
         for item in payload:
-            summaries.extend(_collect_xcresult_failure_summaries(item, current_test))
+            summaries.extend(
+                _collect_xcresult_failure_summaries(item, current_test, current_location)
+            )
         return summaries
 
     if not isinstance(payload, dict):
@@ -304,14 +398,22 @@ def _collect_xcresult_failure_summaries(payload: object, current_test: str = "")
         "testStatus",
         "status",
         "result",
+        "outcome",
     ).lower()
     message = _string_field(
         payload,
         "message",
+        "failureMessage",
         "failureText",
         "detailedDescription",
         "compactDescription",
+        "issueDescription",
+        "reason",
+        "errorMessage",
     )
+    if not message and ("fail" in status or "error" in status):
+        message = _string_field(payload, "summary", "description")
+    location = _xcresult_location(payload, current_location)
 
     skipped_keys = {
         "testName",
@@ -321,23 +423,49 @@ def _collect_xcresult_failure_summaries(payload: object, current_test: str = "")
         "testStatus",
         "status",
         "result",
+        "outcome",
         "message",
+        "failureMessage",
         "failureText",
         "detailedDescription",
         "compactDescription",
+        "issueDescription",
+        "summary",
+        "description",
+        "reason",
+        "errorMessage",
+        "fileName",
+        "filePath",
+        "fileURL",
+        "url",
+        "documentURL",
+        "lineNumber",
+        "line",
+        "startingLineNumber",
     }
     child_summaries: list[str] = []
     for key, value in payload.items():
         if key in skipped_keys:
             continue
-        child_summaries.extend(_collect_xcresult_failure_summaries(value, test_name))
+        child_summaries.extend(_collect_xcresult_failure_summaries(value, test_name, location))
 
     summaries: list[str] = []
     if message and ("fail" in status or "error" in status or current_test or test_name):
-        label = test_name or "iOS UI test"
-        summaries.append(f"{label}: {message}")
+        summaries.append(
+            _format_xcresult_failure_summary(
+                test_name=test_name,
+                message=message,
+                location=location,
+            )
+        )
     elif "fail" in status and test_name and not child_summaries:
-        summaries.append(f"{test_name}: failed")
+        summaries.append(
+            _format_xcresult_failure_summary(
+                test_name=test_name,
+                message="failed",
+                location=location,
+            )
+        )
     summaries.extend(child_summaries)
     return _dedupe_lines(summaries)
 

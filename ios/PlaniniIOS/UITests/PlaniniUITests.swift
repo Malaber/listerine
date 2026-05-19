@@ -248,14 +248,132 @@ final class PlaniniUITests: XCTestCase {
 
         captureScreenshot(named: "promotion-filled-list")
 
+        let hostingListName = "Hosting errands"
+        let hostingListID = try listID(named: hostingListName, accessToken: session.accessToken)
+        let haushaltCategoryID = try categoryID(
+            named: "Haushalt",
+            inListNamed: hostingListName,
+            accessToken: session.accessToken
+        )
+        let backwarenCategoryID = try categoryID(
+            named: "Backwaren",
+            inListNamed: hostingListName,
+            accessToken: session.accessToken
+        )
+        let konservenCategoryID = try categoryID(
+            named: "Konserven",
+            inListNamed: hostingListName,
+            accessToken: session.accessToken
+        )
         XCTAssertTrue(tapTab("Lists", in: app))
         returnToListsRootIfNeeded(app)
-        let hostingListRow = app.buttons["list-row-Hosting errands"]
+        let hostingListRow = app.buttons["list-row-\(hostingListName)"]
         XCTAssertTrue(hostingListRow.waitForExistence(timeout: 10))
         hostingListRow.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)).tap()
         XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
-        XCTAssertEqual(listTitle.label, "Hosting errands")
+        XCTAssertEqual(listTitle.label, hostingListName)
         captureScreenshot(named: "ios-ui-list-switcher")
+
+        let switcherButton = app.buttons["list-switcher-button"]
+        XCTAssertTrue(switcherButton.waitForExistence(timeout: 5))
+        tapElement(switcherButton)
+        let initialSwitchTarget = firstExistingElement(
+            [
+                app.buttons["switch-list-\(initialListName)"],
+                app.buttons[initialListName],
+                app.menuItems[initialListName],
+            ],
+            timeout: 3
+        )
+        XCTAssertTrue(initialSwitchTarget.waitForExistence(timeout: 3))
+        tapElement(initialSwitchTarget)
+        XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
+        XCTAssertEqual(listTitle.label, initialListName)
+
+        tapElement(switcherButton)
+        let hostingSwitchTarget = firstExistingElement(
+            [
+                app.buttons["switch-list-\(hostingListName)"],
+                app.buttons[hostingListName],
+                app.menuItems[hostingListName],
+            ],
+            timeout: 3
+        )
+        XCTAssertTrue(hostingSwitchTarget.waitForExistence(timeout: 3))
+        tapElement(hostingSwitchTarget)
+        XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
+        XCTAssertEqual(listTitle.label, hostingListName)
+
+        let listSettingsButton = app.buttons["list-settings-button"]
+        XCTAssertTrue(listSettingsButton.waitForExistence(timeout: 5))
+        listSettingsButton.tap()
+        XCTAssertTrue(app.otherElements["list-settings-sheet"].waitForExistence(timeout: 5))
+        let settingsSaveState = app.descendants(matching: .any)["list-settings-save-state"]
+        XCTAssertTrue(settingsSaveState.waitForExistence(timeout: 3))
+
+        let renamedHostingName = "Hosting errands \(UUID().uuidString.prefix(6))"
+        let listNameField = app.textFields["list-name-field"]
+        XCTAssertTrue(listNameField.waitForExistence(timeout: 3))
+        replaceText(in: listNameField, with: renamedHostingName)
+        XCTAssertTrue(
+            waitForListName(
+                listID: hostingListID,
+                name: renamedHostingName,
+                accessToken: session.accessToken
+            )
+        )
+        dismissKeyboard(in: app)
+
+        let haushaltRow = app.descendants(matching: .any)["category-settings-row-\(haushaltCategoryID.uuidString)"]
+        let backwarenRow = app.descendants(matching: .any)["category-settings-row-\(backwarenCategoryID.uuidString)"]
+        let konservenRow = app.descendants(matching: .any)["category-settings-row-\(konservenCategoryID.uuidString)"]
+        scrollToHittable(haushaltRow, in: app)
+        scrollToHittable(backwarenRow, in: app)
+        XCTAssertTrue(haushaltRow.waitForExistence(timeout: 5))
+        XCTAssertTrue(backwarenRow.waitForExistence(timeout: 5))
+        XCTAssertTrue(konservenRow.waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            dragCategoryRow(
+                backwarenRow,
+                before: haushaltRow,
+                listID: hostingListID,
+                firstCategoryID: backwarenCategoryID,
+                accessToken: session.accessToken
+            )
+        )
+
+        let konservenToggle = firstExistingElement(
+            [
+                app.switches["category-enabled-toggle-\(konservenCategoryID.uuidString)"],
+                app.buttons["category-enabled-toggle-\(konservenCategoryID.uuidString)"],
+            ],
+            timeout: 3
+        )
+        scrollToHittable(konservenToggle, in: app)
+        XCTAssertTrue(konservenToggle.waitForExistence(timeout: 5))
+        tapElement(konservenToggle)
+        XCTAssertTrue(
+            waitForDisabledCategory(
+                listID: hostingListID,
+                categoryID: konservenCategoryID,
+                disabled: true,
+                accessToken: session.accessToken
+            )
+        )
+        captureScreenshot(named: "ios-ui-list-settings")
+
+        tapElement(konservenToggle)
+        XCTAssertTrue(
+            waitForDisabledCategory(
+                listID: hostingListID,
+                categoryID: konservenCategoryID,
+                disabled: false,
+                accessToken: session.accessToken
+            )
+        )
+        app.buttons["Done"].tap()
+        XCTAssertTrue(listTitle.waitForExistence(timeout: 5))
+        XCTAssertEqual(listTitle.label, renamedHostingName)
 
         XCTAssertTrue(tapTab("Settings", in: app, timeout: 10))
         XCTAssertTrue(app.buttons["settings-sign-out-button"].waitForExistence(timeout: 5))
@@ -506,6 +624,24 @@ final class PlaniniUITests: XCTestCase {
         return false
     }
 
+    private func waitForListName(
+        listID: UUID,
+        name: String,
+        accessToken: String,
+        timeout: TimeInterval = 8
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let groceryList = try? fetchList(listID: listID, accessToken: accessToken),
+                groceryList.name == name
+            {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.35))
+        }
+        return false
+    }
+
     private func waitForItemCategory(
         named itemName: String,
         categoryNamed categoryName: String,
@@ -527,6 +663,77 @@ final class PlaniniUITests: XCTestCase {
         while Date() < deadline {
             if let items = try? fetchItems(inListNamed: listName, accessToken: accessToken),
                 items.contains(where: { $0.name == itemName && $0.categoryID == categoryID })
+            {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.35))
+        }
+        return false
+    }
+
+    private func waitForFirstCategoryOrder(
+        listID: UUID,
+        categoryID: UUID,
+        accessToken: String,
+        timeout: TimeInterval = 8
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let categoryOrder = try? fetchCategoryOrder(listID: listID, accessToken: accessToken),
+                categoryOrder.first?.categoryID == categoryID
+            {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.35))
+        }
+        return false
+    }
+
+    private func dragCategoryRow(
+        _ movingRow: XCUIElement,
+        before targetRow: XCUIElement,
+        listID: UUID,
+        firstCategoryID: UUID,
+        accessToken: String
+    ) -> Bool {
+        let targetOffsets: [CGFloat] = [-0.7, -0.35]
+        for targetOffset in targetOffsets {
+            guard movingRow.waitForExistence(timeout: 3), targetRow.waitForExistence(timeout: 3) else {
+                return false
+            }
+
+            let grabber = movingRow.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5))
+            let target = targetRow.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: targetOffset))
+            grabber.press(forDuration: 0.8, thenDragTo: target)
+            if waitForFirstCategoryOrder(
+                listID: listID,
+                categoryID: firstCategoryID,
+                accessToken: accessToken,
+                timeout: 4
+            ) {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        }
+        return waitForFirstCategoryOrder(
+            listID: listID,
+            categoryID: firstCategoryID,
+            accessToken: accessToken,
+            timeout: 2
+        )
+    }
+
+    private func waitForDisabledCategory(
+        listID: UUID,
+        categoryID: UUID,
+        disabled: Bool,
+        accessToken: String,
+        timeout: TimeInterval = 8
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let disabledCategoryIDs = try? fetchDisabledCategoryIDs(listID: listID, accessToken: accessToken),
+                disabledCategoryIDs.contains(categoryID) == disabled
             {
                 return true
             }
@@ -846,6 +1053,28 @@ final class PlaniniUITests: XCTestCase {
         }
     }
 
+    private func dismissKeyboard(in app: XCUIApplication) {
+        let keyboard = app.keyboards.firstMatch
+        guard keyboard.exists else { return }
+        if keyboard.buttons["done"].exists {
+            keyboard.buttons["done"].tap()
+        } else if keyboard.buttons["Done"].exists {
+            keyboard.buttons["Done"].tap()
+        } else {
+            app.swipeDown()
+        }
+        XCTAssertTrue(waitForElementToDisappear(keyboard, timeout: 3))
+    }
+
+    private func replaceText(in element: XCUIElement, with value: String) {
+        element.tap()
+        let deleteSequence = String(repeating: XCUIKeyboardKey.delete.rawValue, count: element.valueText.count)
+        if deleteSequence.isEmpty == false {
+            element.typeText(deleteSequence)
+        }
+        element.typeText(value)
+    }
+
     private func tapTrailingControl(in element: XCUIElement, app: XCUIApplication) {
         let frame = element.frame
         app.coordinate(withNormalizedOffset: .zero)
@@ -924,23 +1153,37 @@ final class PlaniniUITests: XCTestCase {
     }
 
     private func scrollToElement(_ element: XCUIElement, in app: XCUIApplication, maxSwipes: Int = 10) {
+        if element.waitForExistence(timeout: 0.25) {
+            return
+        }
         for _ in 0..<maxSwipes {
-            if elementIsVisible(element, in: app) {
+            app.swipeUp()
+            if element.waitForExistence(timeout: 0.25) {
                 return
             }
-            app.swipeUp()
+        }
+        for _ in 0..<maxSwipes {
+            app.swipeDown()
+            if element.waitForExistence(timeout: 0.25) {
+                return
+            }
         }
     }
 
     private func scrollToHittable(_ element: XCUIElement, in app: XCUIApplication, maxSwipes: Int = 6) {
         scrollToElement(element, in: app, maxSwipes: maxSwipes)
-    }
-
-    private func elementIsVisible(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
-        guard element.exists else { return false }
-        let frame = element.frame
-        guard frame.width > 1, frame.height > 1 else { return false }
-        return app.frame.intersects(frame)
+        for _ in 0..<maxSwipes {
+            if element.exists && element.isHittable {
+                return
+            }
+            app.swipeUp()
+        }
+        for _ in 0..<maxSwipes {
+            if element.exists && element.isHittable {
+                return
+            }
+            app.swipeDown()
+        }
     }
 
     private func assertReviewerOnboardingAvailable(in app: XCUIApplication) {
@@ -969,13 +1212,15 @@ final class PlaniniUITests: XCTestCase {
         XCTAssertFalse(app.buttons["passkey-add-submit-button"].isEnabled)
         XCTAssertFalse(app.buttons["registration-submit-button"].isEnabled)
 
+        let onboardingSheet = app.otherElements["reviewer-onboarding-sheet"]
         tapElement(
             firstExistingElement(
                 [app.buttons["reviewer-onboarding-cancel-button"], app.buttons["Cancel"], app.buttons["Abbrechen"]],
                 timeout: 3
             )
         )
-        XCTAssertFalse(app.otherElements["reviewer-onboarding-sheet"].exists)
+        XCTAssertTrue(waitForElementToDisappear(onboardingSheet, timeout: 5))
+        XCTAssertTrue(app.buttons["login-passkey-button"].waitForExistence(timeout: 3))
     }
 
     private func firstExistingElement(_ elements: [XCUIElement], timeout: TimeInterval) -> XCUIElement {
@@ -1106,6 +1351,46 @@ final class PlaniniUITests: XCTestCase {
         return try JSONDecoder().decode(UITestInvitePreview.self, from: data)
     }
 
+    private func fetchList(listID: UUID, accessToken: String) throws -> UITestList {
+        let request = jsonRequest(
+            path: "/api/v1/lists/\(listID.uuidString)",
+            method: "GET",
+            token: accessToken
+        )
+        let data = try performRequest(request)
+        return try JSONDecoder().decode(UITestList.self, from: data)
+    }
+
+    private func fetchCategories(listID: UUID, accessToken: String) throws -> [UITestCategory] {
+        let request = jsonRequest(
+            path: "/api/v1/lists/\(listID.uuidString)/categories",
+            method: "GET",
+            token: accessToken
+        )
+        let data = try performRequest(request)
+        return try JSONDecoder().decode([UITestCategory].self, from: data)
+    }
+
+    private func fetchCategoryOrder(listID: UUID, accessToken: String) throws -> [UITestCategoryOrderEntry] {
+        let request = jsonRequest(
+            path: "/api/v1/lists/\(listID.uuidString)/category-order",
+            method: "GET",
+            token: accessToken
+        )
+        let data = try performRequest(request)
+        return try JSONDecoder().decode([UITestCategoryOrderEntry].self, from: data)
+    }
+
+    private func fetchDisabledCategoryIDs(listID: UUID, accessToken: String) throws -> [UUID] {
+        let request = jsonRequest(
+            path: "/api/v1/lists/\(listID.uuidString)/disabled-categories",
+            method: "GET",
+            token: accessToken
+        )
+        let data = try performRequest(request)
+        return try JSONDecoder().decode(UITestDisabledCategories.self, from: data).categoryIDs
+    }
+
     private func itemID(named itemName: String, inListNamed listName: String, accessToken: String) throws -> UUID {
         if let item = try fetchItems(inListNamed: listName, accessToken: accessToken)
             .first(where: { $0.name == itemName })
@@ -1131,16 +1416,6 @@ final class PlaniniUITests: XCTestCase {
             code: 5,
             userInfo: [NSLocalizedDescriptionKey: "Could not find category named \(categoryName)."]
         )
-    }
-
-    private func fetchCategories(listID: UUID, accessToken: String) throws -> [UITestCategory] {
-        let request = jsonRequest(
-            path: "/api/v1/lists/\(listID.uuidString)/categories",
-            method: "GET",
-            token: accessToken
-        )
-        let data = try performRequest(request)
-        return try JSONDecoder().decode([UITestCategory].self, from: data)
     }
 
     private func createItem(
@@ -1362,6 +1637,24 @@ private struct UITestList: Decodable {
 private struct UITestCategory: Decodable {
     let id: UUID
     let name: String
+}
+
+private struct UITestCategoryOrderEntry: Decodable {
+    let categoryID: UUID
+    let sortOrder: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case categoryID = "category_id"
+        case sortOrder = "sort_order"
+    }
+}
+
+private struct UITestDisabledCategories: Decodable {
+    let categoryIDs: [UUID]
+
+    private enum CodingKeys: String, CodingKey {
+        case categoryIDs = "category_ids"
+    }
 }
 
 private struct UITestItem: Decodable {

@@ -156,6 +156,75 @@ struct ListPresentationTests {
         )
     }
 
+    @Test func listCategoryPresentationOrdersExplicitThenAlphabeticalCategories() {
+        let dairy = GroceryCategorySummary(id: UUID(), name: "Dairy", colorHex: nil)
+        let bakery = GroceryCategorySummary(id: UUID(), name: "Bakery", colorHex: nil)
+        let produce = GroceryCategorySummary(id: UUID(), name: "Produce", colorHex: nil)
+        let unknownID = UUID()
+
+        let ordered = ListCategoryPresentation.orderedCategories(
+            categories: [produce, dairy, bakery],
+            categoryOrder: [
+                ListCategoryOrderEntry(categoryID: unknownID, sortOrder: 0),
+                ListCategoryOrderEntry(categoryID: dairy.id, sortOrder: 1),
+                ListCategoryOrderEntry(categoryID: dairy.id, sortOrder: 2),
+            ]
+        )
+
+        #expect(ordered.map(\.name) == ["Dairy", "Bakery", "Produce"])
+    }
+
+    @Test func listCategoryPresentationFiltersDisabledCategoriesForPickers() {
+        let dairy = GroceryCategorySummary(id: UUID(), name: "Dairy", colorHex: nil)
+        let bakery = GroceryCategorySummary(id: UUID(), name: "Bakery", colorHex: nil)
+        let produce = GroceryCategorySummary(id: UUID(), name: "Produce", colorHex: nil)
+
+        let available = ListCategoryPresentation.availableCategories(
+            categories: [produce, dairy, bakery],
+            disabledCategoryIDs: [dairy.id]
+        )
+
+        #expect(available.map(\.name) == ["Bakery", "Produce"])
+    }
+
+    @Test func listCategoryPresentationMovesCategoriesWithinDisplayedOrder() {
+        let dairy = GroceryCategorySummary(id: UUID(), name: "Dairy", colorHex: nil)
+        let bakery = GroceryCategorySummary(id: UUID(), name: "Bakery", colorHex: nil)
+        let produce = GroceryCategorySummary(id: UUID(), name: "Produce", colorHex: nil)
+
+        let movedUp = ListCategoryPresentation.movedCategoryIDs(
+            categories: [produce, dairy, bakery],
+            categoryOrder: [ListCategoryOrderEntry(categoryID: dairy.id, sortOrder: 0)],
+            moving: bakery.id,
+            direction: .up
+        )
+        let movedDown = ListCategoryPresentation.movedCategoryIDs(
+            categories: [produce, dairy, bakery],
+            categoryOrder: [ListCategoryOrderEntry(categoryID: dairy.id, sortOrder: 0)],
+            moving: dairy.id,
+            direction: .down
+        )
+
+        #expect(movedUp == [bakery.id, dairy.id, produce.id])
+        #expect(movedDown == [bakery.id, dairy.id, produce.id])
+        #expect(
+            ListCategoryPresentation.movedCategoryIDs(
+                categories: [dairy, bakery],
+                categoryOrder: [],
+                moving: bakery.id,
+                direction: .up
+            ) == nil
+        )
+        #expect(
+            ListCategoryPresentation.movedCategoryIDs(
+                categories: [dairy, bakery],
+                categoryOrder: [],
+                moving: UUID(),
+                direction: .down
+            ) == nil
+        )
+    }
+
     @Test func groceryItemRecordParsesJSONWithFractionalCheckedAt() {
         let itemID = UUID()
         let listID = UUID()

@@ -32,6 +32,14 @@ if [[ -z "$binary" ]]; then
   echo "Swift test bundle not found" >&2
   exit 1
 fi
+if [[ -d "$binary" ]]; then
+  executable_name=$(basename "$binary" .xctest)
+  binary="$binary/Contents/MacOS/$executable_name"
+fi
+if [[ ! -f "$binary" ]]; then
+  echo "Swift test executable not found" >&2
+  exit 1
+fi
 
 coverage_json=$(mktemp)
 coverage_script=$(mktemp)
