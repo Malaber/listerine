@@ -145,6 +145,69 @@ def test_ios_ui_e2e_failure_summaries_reads_xcresulttool_json(tmp_path: Path, mo
     ]
 
 
+def test_ios_ui_e2e_failure_summaries_includes_xcresult_location(
+    tmp_path: Path, monkeypatch
+) -> None:
+    bundle_path = tmp_path / "PlaniniUITests.xcresult"
+    bundle_path.mkdir()
+
+    class Result:
+        returncode = 0
+        stdout = """
+        {
+          "tests": [
+            {
+              "identifier": "PlaniniUITests.testListViewFlow()",
+              "testStatus": "Failure",
+              "failureSummaries": [
+                {
+                  "message": {"_value": "XCTAssertTrue failed"},
+                  "sourceCodeContext": {
+                    "location": {
+                      "fileURL": {
+                        "_value": "ios/PlaniniIOS/UITests/PlaniniUITests.swift"
+                      },
+                      "lineNumber": {"_value": 44}
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+        """
+
+    monkeypatch.setattr(tasks.subprocess, "run", lambda *args, **kwargs: Result())
+
+    assert tasks._ios_ui_e2e_failure_summaries(bundle_path) == [
+        "PlaniniUITests.testListViewFlow() "
+        "(ios/PlaniniIOS/UITests/PlaniniUITests.swift:44): XCTAssertTrue failed"
+    ]
+
+
+def test_write_ios_ui_e2e_summary_includes_failure_summaries(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(tasks, "ROOT", tmp_path)
+    artifact_path = tmp_path / "e2e-artifacts" / "ios-ui-e2e"
+    artifact_path.mkdir(parents=True)
+    (artifact_path / "ios-ui-list-detail.png").write_text("fake png", encoding="utf-8")
+    result_bundle_path = artifact_path / tasks.DEFAULT_IOS_UI_E2E_RESULT_BUNDLE
+    result_bundle_path.mkdir()
+    monkeypatch.setattr(
+        tasks,
+        "_ios_ui_e2e_failure_summaries",
+        lambda path: ["PlaniniUITests.testListViewFlow() (PlaniniUITests.swift:44): XCT failed"],
+    )
+
+    tasks._write_ios_ui_e2e_summary("e2e-artifacts/ios-ui-e2e")
+
+    summary = (artifact_path / "summary.md").read_text(encoding="utf-8")
+    assert "## Failures" in summary
+    assert "- PlaniniUITests.testListViewFlow() (PlaniniUITests.swift:44): XCT failed" in summary
+    assert "## Screenshots" in summary
+    assert "- ios-ui-list-detail.png" in summary
+    assert f"- {tasks.DEFAULT_IOS_UI_E2E_RESULT_BUNDLE}" in summary
+
+
 def test_ios_simulator_destination_pins_latest_os_and_arm64_on_apple_silicon(
     monkeypatch,
 ) -> None:
