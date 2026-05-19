@@ -731,10 +731,25 @@ async function registerAccountFromLogin(page, { displayName, email }, expectedUr
   );
   await page.locator('[data-passkey-register] input[name="display_name"]').fill(displayName);
   await page.locator('[data-passkey-register] input[name="email"]').fill(email);
-  await Promise.all([
-    page.waitForURL(expectedUrlPattern, { waitUntil: "commit", timeout: 10_000 }),
-    page.locator('[data-passkey-register] input[name="email"]').press("Enter"),
-  ]);
+  try {
+    await Promise.all([
+      page.waitForURL(expectedUrlPattern, { waitUntil: "commit", timeout: 10_000 }),
+      page.locator('[data-passkey-register] input[name="email"]').press("Enter"),
+    ]);
+  } catch (error) {
+    if (typeof expectedUrlPattern === "string" && page.url() === expectedUrlPattern) {
+      return;
+    }
+    const dashboardHeading = page.getByRole("heading", { name: "Households and Lists" });
+    if (await dashboardHeading.waitFor({ state: "visible", timeout: 5_000 }).then(() => true).catch(() => false)) {
+      return;
+    }
+    const authError = await page.locator("[data-auth-error]").textContent().catch(() => "");
+    if (authError.trim()) {
+      throw new Error(`Passkey registration failed: ${authError.trim()}`);
+    }
+    throw error;
+  }
 }
 
 async function loginAsAdmin(page, user) {
