@@ -92,8 +92,7 @@ final class PlaniniUITests: XCTestCase {
             timeout: 3
         )
         XCTAssertTrue(quickAddUncategorized.waitForExistence(timeout: 3))
-        quickAddUncategorized.tap()
-        XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
+        XCTAssertTrue(openAddItemSheet(using: quickAddUncategorized, in: app))
         XCTAssertTrue(app.buttons["add-item-save-button"].waitForExistence(timeout: 3))
         captureScreenshot(named: "ios-ui-category-quick-add")
         tapElement(
@@ -104,8 +103,7 @@ final class PlaniniUITests: XCTestCase {
         )
         XCTAssertTrue(waitForElementToDisappear(app.otherElements["add-item-sheet"], timeout: 3))
 
-        tapElement(app.buttons["add-item-button"])
-        XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
+        XCTAssertTrue(openAddItemSheet(using: app.buttons["add-item-button"], in: app))
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         captureScreenshot(named: "ios-ui-add-item-sheet")
 
@@ -128,8 +126,7 @@ final class PlaniniUITests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(1.0))
         captureScreenshot(named: "ios-ui-suggestion-reactivated")
 
-        tapElement(app.buttons["add-item-button"])
-        XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
+        XCTAssertTrue(openAddItemSheet(using: app.buttons["add-item-button"], in: app))
 
         let uniqueSuffix = UUID().uuidString.prefix(8)
         let enterSavedItemName = "UI Test Enter \(uniqueSuffix)"
@@ -154,8 +151,7 @@ final class PlaniniUITests: XCTestCase {
         )
         XCTAssertTrue(app.staticTexts[enterSavedItemName].waitForExistence(timeout: 15))
 
-        tapElement(app.buttons["add-item-button"])
-        XCTAssertTrue(app.otherElements["add-item-sheet"].waitForExistence(timeout: 3))
+        XCTAssertTrue(openAddItemSheet(using: app.buttons["add-item-button"], in: app))
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         XCTAssertTrue(nameField.waitForExistence(timeout: 3))
         nameField.tap()
@@ -1082,6 +1078,31 @@ final class PlaniniUITests: XCTestCase {
             .tap()
     }
 
+    private func openAddItemSheet(
+        using trigger: XCUIElement,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10
+    ) -> Bool {
+        let sheet = app.otherElements["add-item-sheet"]
+        let deadline = Date().addingTimeInterval(timeout)
+
+        while Date() < deadline {
+            if sheet.exists {
+                return true
+            }
+            if trigger.exists {
+                scrollToHittable(trigger, in: app, maxSwipes: 2)
+                tapElement(trigger)
+            }
+            if sheet.waitForExistence(timeout: 1) {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+
+        return sheet.exists
+    }
+
     private func tapSuggestionAndWaitForSheetDismissal(_ element: XCUIElement, app: XCUIApplication) -> Bool {
         let sheet = app.otherElements["add-item-sheet"]
         let deadline = Date().addingTimeInterval(12)
@@ -1105,13 +1126,13 @@ final class PlaniniUITests: XCTestCase {
 
     private func tapAddItemSaveAndWaitForDismissal(in app: XCUIApplication, timeout: TimeInterval = 12) -> Bool {
         let sheet = app.otherElements["add-item-sheet"]
-        let saveButton = app.buttons["add-item-save-button"]
         let deadline = Date().addingTimeInterval(timeout)
 
         while Date() < deadline {
-            if waitForElementToDisappear(sheet, timeout: 1) {
+            guard sheet.exists else {
                 return true
             }
+            let saveButton = sheet.buttons["add-item-save-button"]
             if saveButton.exists && saveButton.isEnabled {
                 tapElement(saveButton)
             }
